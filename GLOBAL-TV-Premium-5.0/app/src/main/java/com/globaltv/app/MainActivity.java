@@ -100,19 +100,16 @@ public class MainActivity extends AppCompatActivity {
         View spacer=new View(this);sidebar.addView(spacer,new LinearLayout.LayoutParams(1,0,1));
         sourceLabel=text("SOURCE : M3U",10,CYAN,true);sidebar.addView(sourceLabel,new LinearLayout.LayoutParams(-1,dp(28)));
         addNav("⚙   Sources & paramètres","PARAMÈTRES");
-        // Point d'entrée D-pad : le focus ne reste pas bloqué dans la barre latérale.
-        View firstContentTarget=search;
-        for(int i=0;i<sidebar.getChildCount();i++){
-            View v=sidebar.getChildAt(i);
-            if(v.isFocusable()){
-                v.setNextFocusRightId(firstContentTarget.getId());
-            }
-        }
-        search.setNextFocusLeftId(sidebar.getChildAt(4).getId());
         content=column();content.setPadding(dp(25),dp(18),dp(25),dp(14));root.addView(content,new LinearLayout.LayoutParams(0,-1,1));
         LinearLayout top=row();content.addView(top,new LinearLayout.LayoutParams(-1,dp(58)));
         heading=text("Bienvenue sur GLOBAL TV",26,Color.WHITE,true);top.addView(heading,new LinearLayout.LayoutParams(0,-1,1));
         search=new EditText(this);search.setId(View.generateViewId());search.setSingleLine(true);search.setTextSize(14);search.setHintTextColor(MUTED);search.setTextColor(Color.WHITE);search.setHint("⌕  Rechercher un contenu…");search.setPadding(dp(14),0,dp(14),0);search.setBackground(bg(CARD,12));top.addView(search,new LinearLayout.LayoutParams(dp(300),dp(44)));
+        // Configure le focus D-pad uniquement après la création du champ de recherche.
+        for(int i=0;i<sidebar.getChildCount();i++){
+            View v=sidebar.getChildAt(i);
+            if(v.isFocusable()) v.setNextFocusRightId(search.getId());
+        }
+        search.setNextFocusLeftId(sidebar.getChildAt(4).getId());
         search.addTextChangedListener(new TextWatcher(){
             public void beforeTextChanged(CharSequence s,int st,int c,int a){}
             public void onTextChanged(CharSequence s,int st,int before,int count){
