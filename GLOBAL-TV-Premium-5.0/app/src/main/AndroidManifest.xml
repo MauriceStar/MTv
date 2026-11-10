@@ -5,6 +5,9 @@
     <application
         android:allowBackup="true"
         android:label="GLOBAL TV"
+        android:icon="@drawable/ic_launcher_tv"
+        android:roundIcon="@drawable/ic_launcher_tv"
+        android:banner="@drawable/tv_banner"
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="true"
         android:supportsRtl="true">
