@@ -220,29 +220,41 @@ public class MainActivity extends AppCompatActivity {
             TextView fav=text(favorites.contains(c.url)?"♥":"♡",22,0xFFFF7199,true);fav.setGravity(Gravity.CENTER);fav.setId(View.generateViewId());fav.setFocusable(true);fav.setClickable(true);fav.setBackground(bg(CARD,8));fav.setOnFocusChangeListener((v,focus)->v.setBackground(bg(focus?ACCENT:CARD,8)));item.setNextFocusRightId(fav.getId());item.addView(fav,new LinearLayout.LayoutParams(dp(52),-1));fav.setNextFocusLeftId(item.getId());fav.setOnClickListener(v->{if(!favorites.add(c.url))favorites.remove(c.url);getPreferences(0).edit().putStringSet("favorites",new HashSet<>(favorites)).apply();fav.setText(favorites.contains(c.url)?"♥":"♡");});item.setOnClickListener(v->{if(c.type.equals("series"))showSeries(c);else play(c);});shown++;if(shown>=maxRenderItems)break;}
         if(shown==0){TextView empty=text(section.equals("MTV")?(mtvPlaylistUrl.isEmpty()?"Configure une playlist M3U autorisée pour MTV dans Paramètres.":"Aucune chaîne MTV disponible dans cette source."):(all.isEmpty()?"Aucun contenu chargé. Configure une source M3U ou Xtream dans Paramètres.":"Aucun résultat dans cette rubrique. Vérifie la source ou le filtre."),14,MUTED,false);empty.setPadding(dp(12),dp(30),dp(12),dp(20));list.addView(empty);}}
     private void play(MediaEntry c){failedInCurrentRun.clear();startPlayer(c);}
-    private MediaEntry nextPlayable(MediaEntry failed){
+    private List<MediaEntry> playableQueue(MediaEntry selected){
         List<MediaEntry> source=section.equals("MTV")?mtvItems:all;
-        int index=source.indexOf(failed);
-        for(int i=index+1;i<source.size();i++){
-            MediaEntry candidate=source.get(i);
-            if(candidate!=null && candidate.url!=null && !failedInCurrentRun.contains(candidate.url)
-                && (candidate.url.startsWith("http://")||candidate.url.startsWith("https://"))
-                && matchSectionFor(candidate)){
-                return candidate;
-            }
+        ArrayList<MediaEntry> queue=new ArrayList<>();
+        String query=search==null?"":search.getText().toString().toLowerCase(Locale.ROOT);
+        for(MediaEntry entry:source){
+            if(entry==null||entry.url==null||!(entry.url.startsWith("http://")||entry.url.startsWith("https://")))continue;
+            if(PROFILE_CHILD.equals(activeProfile)&&isAdultEntry(entry))continue;
+            if(!matchSectionFor(entry))continue;
+            String searchable=((entry.name==null?"":entry.name)+" "+(entry.group==null?"":entry.group)).toLowerCase(Locale.ROOT);
+            if(!query.isEmpty()&&!searchable.contains(query))continue;
+            if(!activeFilter.equals("Tout")&&!searchable.contains(activeFilter.toLowerCase(Locale.ROOT)))continue;
+            queue.add(entry);
         }
+        if(!queue.contains(selected))queue.add(0,selected);
+        return queue;
+    }
+    private MediaEntry nextPlayable(MediaEntry failed){
+        List<MediaEntry> queue=playableQueue(failed);int index=queue.indexOf(failed);
+        for(int i=index+1;i<queue.size();i++)if(!failedInCurrentRun.contains(queue.get(i).url))return queue.get(i);
         return null;
     }
     private boolean matchSectionFor(MediaEntry entry){
-        if(section.equals("MTV")) return mtvItems.contains(entry);
-        if(section.equals("TV EN DIRECT")) return entry.type.equals("live")||entry.type.equals("m3u");
-        if(section.equals("FILMS")) return entry.type.equals("movie")||entry.group.toLowerCase(Locale.ROOT).contains("film")||entry.group.toLowerCase(Locale.ROOT).contains("vod");
-        if(section.equals("SÉRIES")) return entry.type.equals("series")||entry.group.toLowerCase(Locale.ROOT).contains("series");
-        if(section.equals("ANIMÉS")) return isAnimeEntry(entry);
+        if(entry==null)return false;
+        if(section.equals("MTV"))return mtvItems.contains(entry);
+        String group=entry.group==null?"":entry.group.toLowerCase(Locale.ROOT);
+        if(section.equals("FAVORIS"))return favorites.contains(entry.url);
+        if(section.equals("HISTORIQUE"))return hasHistory(entry);
+        if(section.equals("TV EN DIRECT"))return entry.type.equals("live")||entry.type.equals("m3u");
+        if(section.equals("FILMS"))return entry.type.equals("movie")||group.contains("movie")||group.contains("film")||group.contains("vod");
+        if(section.equals("SÉRIES"))return entry.type.equals("series")||group.contains("series");
+        if(section.equals("ANIMÉS"))return isAnimeEntry(entry);
         return true;
     }
     private boolean isAnimeEntry(MediaEntry e){
-        String v=(e.name+" "+e.group).toLowerCase(Locale.ROOT);
+        String v=((e.name==null?"":e.name)+" "+(e.group==null?"":e.group)).toLowerCase(Locale.ROOT);
         return v.contains("anime")||v.contains("animation")||v.contains("cartoon");
     }
     private void startPlayer(MediaEntry c){
@@ -250,25 +262,26 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(this,"Adresse du flux invalide",Toast.LENGTH_LONG).show();return;
         }
         try{
-            savePlaybackPosition();releasePlayer();
-            currentEntry=c;
-            failedInCurrentRun.remove(c.url);
+            savePlaybackPosition();releasePlayer();currentEntry=c;
             player=new ExoPlayer.Builder(getApplicationContext()).build();
-            playerView=new PlayerView(this);playerView.setPlayer(player);playerView.setUseController(true);
-            playerView.setBackgroundColor(Color.BLACK);
-            LinearLayout playerToolbar=row();
-            playerToolbar.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);
+            playerView=new PlayerView(this);playerView.setPlayer(player);playerView.setUseController(true);playerView.setBackgroundColor(Color.BLACK);
+            playerToolbar=row();playerToolbar.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);
             TextView expand=text("⛶  Plein écran",13,Color.WHITE,true);
-            expand.setFocusable(true);expand.setClickable(true);expand.setPadding(dp(14),dp(7),dp(14),dp(7));
-            expand.setBackground(bg(CARD,10));
+            expand.setFocusable(true);expand.setClickable(true);expand.setPadding(dp(14),dp(7),dp(14),dp(7));expand.setBackground(bg(CARD,10));
             expand.setOnFocusChangeListener((v,focus)->v.setBackground(bg(focus?ACCENT:CARD,10)));
             expand.setOnClickListener(v->togglePlayerExpanded());
             playerToolbar.addView(expand,new LinearLayout.LayoutParams(-2,dp(38)));
             content.addView(playerToolbar,2,new LinearLayout.LayoutParams(-1,dp(44)));
             content.addView(playerView,3,new LinearLayout.LayoutParams(-1,dp(285)));
             final ExoPlayer activePlayer=player;
-            lastPlayedUrl=c.url;pendingResumePosition=prefs.getLong("position_"+key(c.url),0L);
+            lastPlayedUrl=c.url;pendingResumePosition=historyPosition(c);
             prefs.edit().putString("last_url",c.url).putString("history_"+key(c.url),c.name).apply();
+            List<MediaEntry> queue=playableQueue(c);ArrayList<MediaItem> mediaItems=new ArrayList<>();int startIndex=0;
+            for(int i=0;i<queue.size();i++){
+                MediaEntry entry=queue.get(i);
+                mediaItems.add(new MediaItem.Builder().setUri(Uri.parse(entry.url)).setMediaId(entry.url).build());
+                if(entry.url.equals(c.url))startIndex=i;
+            }
             activePlayer.addListener(new Player.Listener(){
                 @Override public void onPlaybackStateChanged(int state){
                     if(state==Player.STATE_READY&&pendingResumePosition>5000&&player==activePlayer){
@@ -276,24 +289,32 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }
                 @Override public void onPlayerError(androidx.media3.common.PlaybackException e){
-                    failedInCurrentRun.add(c.url);
-                    MediaEntry next=nextPlayable(c);
+                    if(currentEntry!=null)failedInCurrentRun.add(currentEntry.url);
                     postUi(()->{
                         if(player!=activePlayer)return;
-                        if(next!=null){
-                            Toast.makeText(MainActivity.this,"Flux indisponible. Essai de la chaîne suivante…",Toast.LENGTH_SHORT).show();
-                            startPlayer(next);
+                        if(activePlayer.hasNextMediaItem()){
+                            Toast.makeText(MainActivity.this,"Flux indisponible. Passage au suivant…",Toast.LENGTH_SHORT).show();
+                            activePlayer.seekToNextMediaItem();activePlayer.prepare();activePlayer.play();
                         }else{
-                            status.setText("Lecture impossible : "+c.name);
-                            Toast.makeText(MainActivity.this,"Aucun flux suivant disponible dans cette rubrique.",Toast.LENGTH_LONG).show();
+                            status.setText("Lecture impossible : "+(currentEntry==null?c.name:currentEntry.name));
+                            Toast.makeText(MainActivity.this,"Aucun autre flux disponible dans cette liste.",Toast.LENGTH_LONG).show();
                         }
                     });
                 }
+                @Override public void onMediaItemTransition(MediaItem item,int reason){
+                    String uri=item.localConfiguration==null?"":item.localConfiguration.uri.toString();
+                    for(MediaEntry entry:queue)if(entry.url.equals(uri)){
+                        currentEntry=entry;lastPlayedUrl=entry.url;
+                        prefs.edit().putString("last_url",entry.url).putString("history_"+key(entry.url),entry.name).apply();
+                        break;
+                    }
+                }
             });
-            activePlayer.setMediaItem(MediaItem.fromUri(Uri.parse(c.url)));activePlayer.prepare();activePlayer.play();
+            activePlayer.setMediaItems(mediaItems,startIndex,pendingResumePosition);activePlayer.prepare();activePlayer.play();
             status.setText("Lecture : "+c.name);
         }catch(Exception e){releasePlayer();Toast.makeText(this,"Impossible de lancer ce flux",Toast.LENGTH_LONG).show();}
     }
+
     private void togglePlayerExpanded(){
         if(playerView==null)return;
         playerExpanded=!playerExpanded;
@@ -353,6 +374,25 @@ public class MainActivity extends AppCompatActivity {
                 }
                 dialog.dismiss();
             }).setNegativeButton("Fermer",null).show();
+    }
+    private void showMtvWebView(){
+        if(mtvWebView==null){
+            mtvWebView=new WebView(this);mtvWebView.setBackgroundColor(Color.BLACK);
+            mtvWebView.getSettings().setJavaScriptEnabled(true);
+            mtvWebView.getSettings().setDomStorageEnabled(true);
+            mtvWebView.getSettings().setLoadWithOverviewMode(true);
+            mtvWebView.getSettings().setUseWideViewPort(true);
+            mtvWebView.setWebViewClient(new WebViewClient());
+            mtvWebView.setWebChromeClient(new WebChromeClient());
+        }
+        chipScroll.setVisibility(View.GONE);status.setVisibility(View.GONE);catalogScroll.setVisibility(View.GONE);
+        if(mtvWebView.getParent()==null)content.addView(mtvWebView,3,new LinearLayout.LayoutParams(-1,0,1));
+        mtvWebView.setVisibility(View.VISIBLE);
+        if(mtvWebView.getUrl()==null||!mtvWebView.getUrl().startsWith("https://oxax.tv"))mtvWebView.loadUrl("https://oxax.tv/");
+    }
+    private void hideMtvWebView(){
+        if(mtvWebView!=null){mtvWebView.setVisibility(View.GONE);if(mtvWebView.getParent()==content)content.removeView(mtvWebView);}
+        chipScroll.setVisibility(View.VISIBLE);status.setVisibility(View.VISIBLE);catalogScroll.setVisibility(View.VISIBLE);
     }
     private void showMtvPlaylistDialog(){
         EditText url=field("URL de playlist M3U autorisée pour MTV");
@@ -415,9 +455,9 @@ public class MainActivity extends AppCompatActivity {
     private void showM3uDialog(){EditText input=new EditText(this);input.setSingleLine(true);input.setHint("https://exemple.com/playlist.m3u");input.setTextColor(Color.WHITE);input.setHintTextColor(MUTED);input.setText(DEFAULT_PLAYLIST);new AlertDialog.Builder(this).setTitle("Playlist M3U").setMessage("Entre l’adresse d’une playlist dont tu possèdes les droits d’utilisation.").setView(input).setNegativeButton("Annuler",null).setPositiveButton("Charger",(d,w)->{String u=input.getText().toString().trim();if(u.startsWith("https://")||u.startsWith("http://")){section="TV EN DIRECT";heading.setText(section);loadPlaylist(u);}else Toast.makeText(this,"Adresse HTTP/HTTPS requise",Toast.LENGTH_LONG).show();}).show();}
     private void showXtreamDialog(){LinearLayout form=column();form.setPadding(dp(8),dp(4),dp(8),dp(4));EditText host=field("URL du serveur (https://serveur:port)");EditText user=field("Nom d’utilisateur");EditText pass=field("Mot de passe");pass.setInputType(129);form.addView(host);form.addView(user);form.addView(pass);new AlertDialog.Builder(this).setTitle("Connexion Xtream Codes").setMessage("Utilise les identifiants fournis par ton fournisseur IPTV autorisé. HTTPS est recommandé.").setView(form).setNegativeButton("Annuler",null).setPositiveButton("Se connecter",(d,w)->{String h=host.getText().toString().trim(),u=user.getText().toString().trim(),p=pass.getText().toString();try{Uri uri=Uri.parse(h);if((!"https".equalsIgnoreCase(uri.getScheme())&&!("http".equalsIgnoreCase(uri.getScheme())))||uri.getHost()==null||u.isEmpty()||p.isEmpty())throw new Exception();xtreamBase=h;xtreamUser=u;xtreamPass=p;section="ACCUEIL";heading.setText("Bienvenue sur GLOBAL TV");loadXtream();}catch(Exception e){Toast.makeText(this,"Vérifie l’URL et les identifiants",Toast.LENGTH_LONG).show();}}).show();}
     private EditText field(String hint){EditText e=new EditText(this);e.setSingleLine(true);e.setTextColor(Color.WHITE);e.setHintTextColor(MUTED);e.setHint(hint);e.setPadding(dp(10),dp(6),dp(10),dp(6));return e;}
-    @Override public boolean dispatchKeyEvent(android.view.KeyEvent event){if(event.getAction()==KeyEvent.ACTION_DOWN&&event.getKeyCode()==KeyEvent.KEYCODE_BACK&&playerView!=null){
-            if(playerExpanded){togglePlayerExpanded();return true;}
-            savePlaybackPosition();releasePlayer();playerExpanded=false;status.setText("Lecture fermée");return true;
+    @Override public boolean dispatchKeyEvent(android.view.KeyEvent event){if(event.getAction()==KeyEvent.ACTION_DOWN&&event.getKeyCode()==KeyEvent.KEYCODE_BACK){
+            if(playerView!=null){if(playerExpanded){togglePlayerExpanded();return true;}savePlaybackPosition();releasePlayer();status.setText("Lecture fermée");return true;}
+            if(section.equals("MTV")&&mtvWebView!=null&&mtvWebView.canGoBack()){mtvWebView.goBack();return true;}
         }return super.dispatchKeyEvent(event);}
     @Override public void onTrimMemory(int level){
         super.onTrimMemory(level);
