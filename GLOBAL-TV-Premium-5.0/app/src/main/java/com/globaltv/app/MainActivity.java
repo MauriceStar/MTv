@@ -54,6 +54,7 @@ public class MainActivity extends AppCompatActivity {
     private final ArrayList<MediaEntry> mtvItems=new ArrayList<>();
     private String mtvPlaylistUrl="";
     private final Set<String> favorites=new HashSet<>();
+    private final Set<String> historyKeysCache=new HashSet<>();
     private final Map<String,String> epgNow=new ConcurrentHashMap<>();
     private SharedPreferences prefs;
     private String epgUrl="";
@@ -204,7 +205,7 @@ public class MainActivity extends AppCompatActivity {
     private Map<String,String> parseCategories(String json){Map<String,String> map=new HashMap<>();try{JSONArray a=new JSONArray(json);for(int i=0;i<a.length();i++){JSONObject o=a.optJSONObject(i);if(o!=null)map.put(o.optString("category_id"),o.optString("category_name","Autres"));}}catch(Exception ignored){}return map;}
     private void parseXtreamArray(ArrayList<MediaEntry> out,String json,String type,String fallback,Map<String,String> categories){try{JSONArray a=new JSONArray(json);for(int i=0;i<a.length()&&out.size()<MAX_CATALOG_ITEMS;i++){JSONObject o=a.optJSONObject(i);if(o==null)continue;String id=o.optString(type.equals("series")?"series_id":"stream_id",o.optString("id",""));if(id.isEmpty())continue;String name=o.optString("name",type.equals("series")?"Série":"Contenu");String cat=o.optString("category_name",(categories.containsKey(o.optString("category_id"))?categories.get(o.optString("category_id")):(type.equals("live")?"TV en direct":type.equals("movie")?"Films":"Séries")));String logo=o.optString("stream_icon",o.optString("cover",""));String ext=o.optString("container_extension",fallback);String path=xtreamBase+(xtreamBase.endsWith("/")?"":"/")+type+"/"+enc(xtreamUser)+"/"+enc(xtreamPass)+"/"+id+"."+ext;MediaEntry m=new MediaEntry(name,path,cat,logo,type);m.id=id;m.container=ext;m.tvgId=o.optString("epg_channel_id","");out.add(m);}}catch(Exception ignored){}}
 
-    private boolean hasHistory(MediaEntry c){if(c==null||c.url==null||c.url.isEmpty()||prefs==null)return false;try{Object value=prefs.getAll().get("history_"+key(c.url));return value instanceof String&&!((String)value).isEmpty();}catch(Exception ex){return false;}}
+    private boolean hasHistory(MediaEntry c){if(c==null||c.url==null||c.url.isEmpty())return false;try{return historyKeysCache.contains("history_"+key(c.url));}catch(Exception ex){return false;}}
     private long historyPosition(MediaEntry c){if(c==null||c.url==null||prefs==null)return 0L;try{Object value=prefs.getAll().get("position_"+key(c.url));return value instanceof Long?Math.max(0L,(Long)value):0L;}catch(Exception ex){return 0L;}}
     private boolean matchSection(MediaEntry c){
         if(c==null||c.url==null)return false;
@@ -212,7 +213,7 @@ public class MainActivity extends AppCompatActivity {
         if(section.equals("MUSIQUE"))return isMusicEntry(c);
         if(section.equals("INFOS"))return isNewsEntry(c);
         String g=c.group==null?"":c.group.toLowerCase(Locale.ROOT),n=c.name==null?"":c.name.toLowerCase(Locale.ROOT);if(section.equals("FAVORIS"))return favorites.contains(c.url);if(section.equals("HISTORIQUE"))return hasHistory(c);if(section.equals("GUIDE TV"))return (c.type.equals("live")||c.type.equals("m3u"))&&!c.tvgId.isEmpty();if(section.equals("TV EN DIRECT"))return c.type.equals("live")||c.type.equals("m3u");if(section.equals("FILMS"))return c.type.equals("movie")||g.contains("movie")||g.contains("film")||g.contains("vod");if(section.equals("SÉRIES"))return c.type.equals("series")||g.contains("series");if(section.equals("ANIMÉS"))return g.contains("anime")||g.contains("animation")||g.contains("cartoon")||n.contains("anime");return true;}
-    private void renderList(){if(list==null)return;list.removeAllViews();String q=search==null?"":search.getText().toString().toLowerCase(Locale.ROOT);int shown=0;List<MediaEntry> activeItems=section.equals("MTV")?mtvItems:all;
+    private void renderList(){if(list==null)return;list.removeAllViews();if(section.equals("HISTORIQUE")){historyKeysCache.clear();try{for(String prefKey:prefs.getAll().keySet())if(prefKey.startsWith("history_"))historyKeysCache.add(prefKey);}catch(Exception ignored){}}String q=search==null?"":search.getText().toString().toLowerCase(Locale.ROOT);int shown=0;List<MediaEntry> activeItems=section.equals("MTV")?mtvItems:all;
         for(MediaEntry c:activeItems){if(!matchSection(c))continue;
             if(PROFILE_CHILD.equals(activeProfile) && isAdultEntry(c)) continue;
             String itemName=c.name==null?"":c.name;String itemGroup=c.group==null?"":c.group;
@@ -292,7 +293,7 @@ public class MainActivity extends AppCompatActivity {
             content.addView(playerView,3,new LinearLayout.LayoutParams(-1,dp(285)));
             final ExoPlayer activePlayer=player;
             lastPlayedUrl=c.url;pendingResumePosition=historyPosition(c);
-            prefs.edit().putString("last_url",c.url).putString("history_"+key(c.url),c.name).apply();
+            historyKeysCache.add("history_"+key(c.url));prefs.edit().putString("last_url",c.url).putString("history_"+key(c.url),c.name==null?"":c.name).apply();
             List<MediaEntry> queue=playableQueue(c);ArrayList<MediaItem> mediaItems=new ArrayList<>();int startIndex=0;
             for(int i=0;i<queue.size();i++){
                 MediaEntry entry=queue.get(i);
@@ -322,7 +323,7 @@ public class MainActivity extends AppCompatActivity {
                     String uri=item.localConfiguration==null?"":item.localConfiguration.uri.toString();
                     for(MediaEntry entry:queue)if(entry.url.equals(uri)){
                         currentEntry=entry;lastPlayedUrl=entry.url;
-                        prefs.edit().putString("last_url",entry.url).putString("history_"+key(entry.url),entry.name).apply();
+                        historyKeysCache.add("history_"+key(entry.url));prefs.edit().putString("last_url",entry.url).putString("history_"+key(entry.url),entry.name==null?"":entry.name).apply();
                         break;
                     }
                 }
