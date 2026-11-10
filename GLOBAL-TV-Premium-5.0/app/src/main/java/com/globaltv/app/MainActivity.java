@@ -55,7 +55,11 @@ public class MainActivity extends AppCompatActivity {
     private String epgUrl="";
     private String lastPlayedUrl="";
     private long pendingResumePosition=0L;
-    private LinearLayout root,sidebar,content,list,chips;\n    private ScrollView catalogScroll;\n    private boolean playerExpanded=false;\n    private MediaEntry currentEntry;\n    private final Set<String> failedInCurrentRun=new HashSet<>();
+    private LinearLayout root,sidebar,content,list,chips;
+    private ScrollView catalogScroll;
+    private boolean playerExpanded=false;
+    private MediaEntry currentEntry;
+    private final Set<String> failedInCurrentRun=new HashSet<>();
     private EditText search;
     private TextView status,heading,sourceLabel;
     private PlayerView playerView;
