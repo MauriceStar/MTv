@@ -27,6 +27,9 @@ import androidx.media3.common.MediaItem;
 import androidx.media3.common.Player;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.ui.PlayerView;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import android.webkit.WebChromeClient;
 
 /** GLOBAL TV Premium - Android TV / Google TV. */
 public class MainActivity extends AppCompatActivity {
@@ -55,8 +58,10 @@ public class MainActivity extends AppCompatActivity {
     private String epgUrl="";
     private String lastPlayedUrl="";
     private long pendingResumePosition=0L;
-    private LinearLayout root,sidebar,content,list,chips;
-    private ScrollView catalogScroll;
+    private LinearLayout root,sidebar,content,list,chips,playerToolbar;
+    private ScrollView sidebarScroll,catalogScroll;
+    private HorizontalScrollView chipScroll;
+    private WebView mtvWebView;
     private boolean playerExpanded=false;
     private MediaEntry currentEntry;
     private final Set<String> failedInCurrentRun=new HashSet<>();
@@ -92,18 +97,19 @@ public class MainActivity extends AppCompatActivity {
     private LinearLayout row(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.HORIZONTAL);l.setGravity(Gravity.CENTER_VERTICAL);return l;}
     private void buildUi(){
         root=row();root.setBackgroundColor(BG);setContentView(root);
-        sidebar=column();sidebar.setPadding(dp(18),dp(22),dp(12),dp(14));sidebar.setBackgroundColor(0xFF0D1525);root.addView(sidebar,new LinearLayout.LayoutParams(dp(220),-1));
+        sidebarScroll=new ScrollView(this);sidebarScroll.setFillViewport(true);sidebarScroll.setVerticalScrollBarEnabled(true);sidebarScroll.setScrollbarFadingEnabled(false);sidebarScroll.setSmoothScrollingEnabled(true);sidebarScroll.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);root.addView(sidebarScroll,new LinearLayout.LayoutParams(dp(220),-1));
+        sidebar=column();sidebar.setPadding(dp(18),dp(22),dp(12),dp(14));sidebar.setBackgroundColor(0xFF0D1525);sidebarScroll.addView(sidebar,new ScrollView.LayoutParams(-1,-2));
         TextView brand=text("GLOBAL TV",25,Color.WHITE,true);sidebar.addView(brand,new LinearLayout.LayoutParams(-1,dp(48)));
         TextView premium=text("P R E M I U M",10,CYAN,true);sidebar.addView(premium,new LinearLayout.LayoutParams(-1,dp(25)));
         TextView tagline=text("LE DIVERTISSEMENT\nSANS FRONTIÈRES",10,MUTED,true);sidebar.addView(tagline,new LinearLayout.LayoutParams(-1,dp(54)));
         addNav("⌂   Accueil","ACCUEIL");addNav("▣   TV en direct","TV EN DIRECT");addNav("♫   MTV","MTV");addNav("▶   Films","FILMS");addNav("▤   Séries","SÉRIES");addNav("✦   Animés","ANIMÉS");addNav("♡   Mes favoris","FAVORIS");addNav("◷   Historique","HISTORIQUE");addNav("▦   Guide TV","GUIDE TV");
-        View spacer=new View(this);sidebar.addView(spacer,new LinearLayout.LayoutParams(1,0,1));
+        View spacer=new View(this);sidebar.addView(spacer,new LinearLayout.LayoutParams(1,dp(12)));
         sourceLabel=text("SOURCE : M3U",10,CYAN,true);sidebar.addView(sourceLabel,new LinearLayout.LayoutParams(-1,dp(28)));
         addNav("⚙   Sources & paramètres","PARAMÈTRES");
         content=column();content.setPadding(dp(25),dp(18),dp(25),dp(14));root.addView(content,new LinearLayout.LayoutParams(0,-1,1));
         LinearLayout top=row();content.addView(top,new LinearLayout.LayoutParams(-1,dp(58)));
-        heading=text("Bienvenue sur GLOBAL TV",26,Color.WHITE,true);top.addView(heading,new LinearLayout.LayoutParams(0,-1,1));
-        search=new EditText(this);search.setId(View.generateViewId());search.setSingleLine(true);search.setTextSize(14);search.setHintTextColor(MUTED);search.setTextColor(Color.WHITE);search.setHint("⌕  Rechercher un contenu…");search.setPadding(dp(14),0,dp(14),0);search.setBackground(bg(CARD,12));top.addView(search,new LinearLayout.LayoutParams(dp(300),dp(44)));
+        heading=text("",1,Color.TRANSPARENT,false);heading.setVisibility(View.GONE);top.addView(heading,new LinearLayout.LayoutParams(0,0));
+        search=new EditText(this);search.setId(View.generateViewId());search.setSingleLine(true);search.setTextSize(14);search.setHintTextColor(MUTED);search.setTextColor(Color.WHITE);search.setHint("⌕  Rechercher un contenu…");search.setPadding(dp(14),0,dp(14),0);search.setBackground(bg(CARD,12));top.addView(search,new LinearLayout.LayoutParams(0,dp(44),1f));
         // Configure le focus D-pad uniquement après la création du champ de recherche.
         for(int i=0;i<sidebar.getChildCount();i++){
             View v=sidebar.getChildAt(i);
@@ -119,9 +125,11 @@ public class MainActivity extends AppCompatActivity {
             }
             public void afterTextChanged(Editable e){}
         });
-        HorizontalScrollView chipScroll=new HorizontalScrollView(this);
+        chipScroll=new HorizontalScrollView(this);
         chipScroll.setHorizontalScrollBarEnabled(true);
         chipScroll.setScrollbarFadingEnabled(false);
+        chipScroll.setSmoothScrollingEnabled(true);
+        chipScroll.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
         chipScroll.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
         chips=row();chips.setPadding(0,dp(12),0,dp(9));
         chipScroll.addView(chips,new HorizontalScrollView.LayoutParams(-2,-1));
@@ -132,6 +140,8 @@ public class MainActivity extends AppCompatActivity {
         catalogScroll.setVerticalScrollBarEnabled(true);
         catalogScroll.setScrollbarFadingEnabled(false);
         catalogScroll.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
+        catalogScroll.setSmoothScrollingEnabled(true);
+        catalogScroll.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
         content.addView(catalogScroll,new LinearLayout.LayoutParams(-1,0,1));
         list=column();list.setPadding(0,dp(4),0,dp(12));catalogScroll.addView(list);
         TextView foot=text("GLOBAL TV • Les flux et catalogues dépendent des droits, de la disponibilité et des régions.",10,0xFF65738D,false);content.addView(foot,new LinearLayout.LayoutParams(-1,dp(26)));
@@ -142,11 +152,15 @@ public class MainActivity extends AppCompatActivity {
             view.setBackground(bg(hasFocus?ACCENT:(section.equals(target)?0xFF253452:0x00172035),10));
             ((TextView)view).setTextColor(hasFocus?Color.WHITE:0xFFD9E1F2);
         });LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,dp(47));p.bottomMargin=dp(3);sidebar.addView(v,p);v.setOnClickListener(w->{if(isProtectedSection(target)&&!prefs.getString("parental_pin_hash","").isEmpty()){requestParentalAccess(target);return;}navigateTo(target);});}
-    private void navigateTo(String target){section=target;activeFilter="Tout";heading.setText(target.equals("ACCUEIL")?"Bienvenue sur GLOBAL TV":target.equals("MTV")?"MTV":"".equals(target)?target:target);search.setHint("⌕  Rechercher…");updateChips();renderList();
+    private void navigateTo(String target){
+        section=target;activeFilter="Tout";search.setHint("⌕  Rechercher…");updateChips();
+        if(target.equals("MTV")){showMtvWebView();return;}
+        hideMtvWebView();renderList();
         if(target.equals("PARAMÈTRES"))showSettings();
-        else if(search!=null && !search.hasFocus()) search.requestFocus();
+        else if(search!=null&&!search.hasFocus())search.requestFocus();
     }
-    private void updateChips(){if(chips==null)return;chips.removeAllViews();String[] opts;if(section.equals("TV EN DIRECT")||section.equals("MTV"))opts=new String[]{"Tout","France","Afrique","Sports","News","Music","Kids"};else if(section.equals("FAVORIS")||section.equals("HISTORIQUE")||section.equals("GUIDE TV"))opts=new String[]{"Tout"};else opts=new String[]{"Tout","Action","Comédie","Drame","Aventure","Fantasy","Science-fiction","Animation"};for(String s:opts){TextView c=text(s,12,activeFilter.equals(s)?Color.WHITE:0xFFB8C4D8,true);c.setGravity(Gravity.CENTER);c.setPadding(dp(15),0,dp(15),0);c.setBackground(bg(activeFilter.equals(s)?ACCENT:CARD,18));c.setFocusable(true);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-2,dp(34));p.rightMargin=dp(8);chips.addView(c,p);c.setOnClickListener(v->{activeFilter=s;updateChips();renderList();});}}
+    private void updateChips(){if(chips==null)return;chips.removeAllViews();String[] opts;if(section.equals("TV EN DIRECT"))opts=new String[]{"Tout","France","Afrique","Sports","News","Music","Kids"};else if(section.equals("FAVORIS")||section.equals("HISTORIQUE")||section.equals("GUIDE TV"))opts=new String[]{"Tout"};else opts=new String[]{"Tout","Action","Comédie","Drame","Aventure","Fantasy","Science-fiction","Animation"};for(String s:opts){TextView c=text(s,12,activeFilter.equals(s)?Color.WHITE:0xFFB8C4D8,true);c.setGravity(Gravity.CENTER);c.setPadding(dp(15),0,dp(15),0);c.setBackground(bg(activeFilter.equals(s)?ACCENT:CARD,18));c.setFocusable(true);c.setClickable(true);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-2,dp(34));p.rightMargin=dp(8);chips.addView(c,p);c.setOnClickListener(v->{activeFilter=s;updateChips();renderList();});}}
+
 
     private void executeIo(Runnable task){
         if(destroyed)return;
@@ -158,7 +172,9 @@ public class MainActivity extends AppCompatActivity {
         if(!destroyed)mainHandler.post(()->{if(!destroyed&&!isFinishing())task.run();});
     }
     private void releasePlayer(){
+        if(playerExpanded){sidebar.setVisibility(View.VISIBLE);for(int i=0;i<content.getChildCount();i++)content.getChildAt(i).setVisibility(View.VISIBLE);playerExpanded=false;}
         if(playerView!=null){playerView.setPlayer(null);if(content!=null)content.removeView(playerView);playerView=null;}
+        if(playerToolbar!=null){if(content!=null)content.removeView(playerToolbar);playerToolbar=null;}
         if(player!=null){try{player.release();}catch(Exception ignored){}player=null;}
     }
     private HttpURLConnection open(String address)throws Exception{URL u=new URL(address);HttpURLConnection c=(HttpURLConnection)u.openConnection();c.setConnectTimeout(10000);c.setReadTimeout(20000);
@@ -186,9 +202,12 @@ public class MainActivity extends AppCompatActivity {
     private Map<String,String> parseCategories(String json){Map<String,String> map=new HashMap<>();try{JSONArray a=new JSONArray(json);for(int i=0;i<a.length();i++){JSONObject o=a.optJSONObject(i);if(o!=null)map.put(o.optString("category_id"),o.optString("category_name","Autres"));}}catch(Exception ignored){}return map;}
     private void parseXtreamArray(ArrayList<MediaEntry> out,String json,String type,String fallback,Map<String,String> categories){try{JSONArray a=new JSONArray(json);for(int i=0;i<a.length()&&out.size()<MAX_CATALOG_ITEMS;i++){JSONObject o=a.optJSONObject(i);if(o==null)continue;String id=o.optString(type.equals("series")?"series_id":"stream_id",o.optString("id",""));if(id.isEmpty())continue;String name=o.optString("name",type.equals("series")?"Série":"Contenu");String cat=o.optString("category_name",(categories.containsKey(o.optString("category_id"))?categories.get(o.optString("category_id")):(type.equals("live")?"TV en direct":type.equals("movie")?"Films":"Séries")));String logo=o.optString("stream_icon",o.optString("cover",""));String ext=o.optString("container_extension",fallback);String path=xtreamBase+(xtreamBase.endsWith("/")?"":"/")+type+"/"+enc(xtreamUser)+"/"+enc(xtreamPass)+"/"+id+"."+ext;MediaEntry m=new MediaEntry(name,path,cat,logo,type);m.id=id;m.container=ext;m.tvgId=o.optString("epg_channel_id","");out.add(m);}}catch(Exception ignored){}}
 
+    private boolean hasHistory(MediaEntry c){if(c==null||c.url==null||c.url.isEmpty())return false;try{return !prefs.getString("history_"+key(c.url),"").isEmpty();}catch(RuntimeException ex){return false;}}
+    private long historyPosition(MediaEntry c){if(c==null||c.url==null)return 0L;try{return Math.max(0L,prefs.getLong("position_"+key(c.url),0L));}catch(RuntimeException ex){return 0L;}}
     private boolean matchSection(MediaEntry c){
+        if(c==null||c.url==null)return false;
         if(section.equals("MTV")) return mtvItems.contains(c);
-        String g=c.group.toLowerCase(Locale.ROOT),n=c.name.toLowerCase(Locale.ROOT);if(section.equals("FAVORIS"))return favorites.contains(c.url);if(section.equals("HISTORIQUE"))return prefs.getString("history_"+key(c.url),"").length()>0;if(section.equals("GUIDE TV"))return (c.type.equals("live")||c.type.equals("m3u"))&&!c.tvgId.isEmpty();if(section.equals("TV EN DIRECT"))return c.type.equals("live")||c.type.equals("m3u");if(section.equals("FILMS"))return c.type.equals("movie")||g.contains("movie")||g.contains("film")||g.contains("vod");if(section.equals("SÉRIES"))return c.type.equals("series")||g.contains("series");if(section.equals("ANIMÉS"))return g.contains("anime")||g.contains("animation")||g.contains("cartoon")||n.contains("anime");return true;}
+        String g=c.group==null?"":c.group.toLowerCase(Locale.ROOT),n=c.name==null?"":c.name.toLowerCase(Locale.ROOT);if(section.equals("FAVORIS"))return favorites.contains(c.url);if(section.equals("HISTORIQUE"))return hasHistory(c);if(section.equals("GUIDE TV"))return (c.type.equals("live")||c.type.equals("m3u"))&&!c.tvgId.isEmpty();if(section.equals("TV EN DIRECT"))return c.type.equals("live")||c.type.equals("m3u");if(section.equals("FILMS"))return c.type.equals("movie")||g.contains("movie")||g.contains("film")||g.contains("vod");if(section.equals("SÉRIES"))return c.type.equals("series")||g.contains("series");if(section.equals("ANIMÉS"))return g.contains("anime")||g.contains("animation")||g.contains("cartoon")||n.contains("anime");return true;}
     private void renderList(){if(list==null)return;list.removeAllViews();String q=search==null?"":search.getText().toString().toLowerCase(Locale.ROOT);int shown=0;List<MediaEntry> activeItems=section.equals("MTV")?mtvItems:all;
         for(MediaEntry c:activeItems){if(!matchSection(c))continue;
             if(PROFILE_CHILD.equals(activeProfile) && isAdultEntry(c)) continue;
@@ -197,8 +216,8 @@ public class MainActivity extends AppCompatActivity {
             item.setBackground(bg(0xFF17233A,12));
             item.setOnFocusChangeListener((view,hasFocus)->view.setBackground(bg(hasFocus?ACCENT:0xFF17233A,12)));LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(-1,dp(62));ip.bottomMargin=dp(8);list.addView(item,ip);
             ImageView artwork=new ImageView(this);artwork.setScaleType(ImageView.ScaleType.CENTER_CROP);artwork.setBackground(bg(CARD,8));item.addView(artwork,new LinearLayout.LayoutParams(dp(76),dp(52)));if(c.logo!=null&&!c.logo.isEmpty())com.bumptech.glide.Glide.with(this).load(c.logo).placeholder(bg(CARD,8)).error(bg(CARD,8)).into(artwork);else artwork.setImageDrawable(bg(CARD,8));
-            LinearLayout meta=column();meta.setPadding(dp(12),0,0,0);item.addView(meta,new LinearLayout.LayoutParams(0,-1,1));meta.addView(text(c.name,14,Color.WHITE,true));String detail=c.group+"  •  "+(c.type.equals("live")||c.type.equals("m3u")?"En direct":c.type.equals("series")?"Série":"VOD");if(!c.tvgId.isEmpty()&&epgNow.containsKey(c.tvgId))detail+="  •  "+epgNow.get(c.tvgId);if(section.equals("HISTORIQUE")){long pos=prefs.getLong("position_"+key(c.url),0L);detail+="  •  Reprendre à "+(pos/60000)+" min";}meta.addView(text(detail,10,MUTED,false));
-            TextView fav=text(favorites.contains(c.url)?"♥":"♡",22,0xFFFF7199,true);fav.setGravity(Gravity.CENTER);item.addView(fav,new LinearLayout.LayoutParams(dp(44),-1));fav.setOnClickListener(v->{if(!favorites.add(c.url))favorites.remove(c.url);getPreferences(0).edit().putStringSet("favorites",new HashSet<>(favorites)).apply();fav.setText(favorites.contains(c.url)?"♥":"♡");});item.setOnClickListener(v->{if(c.type.equals("series"))showSeries(c);else play(c);});shown++;if(shown>=maxRenderItems)break;}
+            LinearLayout meta=column();meta.setPadding(dp(12),0,0,0);item.addView(meta,new LinearLayout.LayoutParams(0,-1,1));meta.addView(text(c.name,14,Color.WHITE,true));String detail=c.group+"  •  "+(c.type.equals("live")||c.type.equals("m3u")?"En direct":c.type.equals("series")?"Série":"VOD");if(!c.tvgId.isEmpty()&&epgNow.containsKey(c.tvgId))detail+="  •  "+epgNow.get(c.tvgId);if(section.equals("HISTORIQUE")){long pos=historyPosition(c);detail+="  •  Reprendre à "+(pos/60000)+" min";}meta.addView(text(detail,10,MUTED,false));
+            TextView fav=text(favorites.contains(c.url)?"♥":"♡",22,0xFFFF7199,true);fav.setGravity(Gravity.CENTER);fav.setId(View.generateViewId());fav.setFocusable(true);fav.setClickable(true);fav.setBackground(bg(CARD,8));fav.setOnFocusChangeListener((v,focus)->v.setBackground(bg(focus?ACCENT:CARD,8)));item.setNextFocusRightId(fav.getId());item.addView(fav,new LinearLayout.LayoutParams(dp(52),-1));fav.setNextFocusLeftId(item.getId());fav.setOnClickListener(v->{if(!favorites.add(c.url))favorites.remove(c.url);getPreferences(0).edit().putStringSet("favorites",new HashSet<>(favorites)).apply();fav.setText(favorites.contains(c.url)?"♥":"♡");});item.setOnClickListener(v->{if(c.type.equals("series"))showSeries(c);else play(c);});shown++;if(shown>=maxRenderItems)break;}
         if(shown==0){TextView empty=text(section.equals("MTV")?(mtvPlaylistUrl.isEmpty()?"Configure une playlist M3U autorisée pour MTV dans Paramètres.":"Aucune chaîne MTV disponible dans cette source."):(all.isEmpty()?"Aucun contenu chargé. Configure une source M3U ou Xtream dans Paramètres.":"Aucun résultat dans cette rubrique. Vérifie la source ou le filtre."),14,MUTED,false);empty.setPadding(dp(12),dp(30),dp(12),dp(20));list.addView(empty);}}
     private void play(MediaEntry c){failedInCurrentRun.clear();startPlayer(c);}
     private MediaEntry nextPlayable(MediaEntry failed){
