@@ -412,7 +412,7 @@ public class MainActivity extends AppCompatActivity {
             try{com.bumptech.glide.Glide.get(this).trimMemory(level);}catch(Exception ignored){}
         }
     }
-    @Override protected void onLowMemory(){
+    @Override public void onLowMemory(){
         super.onLowMemory();
         try{com.bumptech.glide.Glide.get(this).clearMemory();}catch(Exception ignored){}
     }
