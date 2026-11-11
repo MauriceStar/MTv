@@ -28,6 +28,7 @@ import androidx.media3.common.MediaItem;
 import androidx.media3.common.Player;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.ui.PlayerView;
+import androidx.media3.ui.AspectRatioFrameLayout;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.webkit.WebChromeClient;
@@ -61,6 +62,11 @@ public class MainActivity extends AppCompatActivity {
     private String lastPlayedUrl="";
     private long pendingResumePosition=0L;
     private LinearLayout root,sidebar,content,list,chips,playerToolbar,playerArea,webContainer;
+    private final Map<String,TextView> navViews=new LinkedHashMap<>();
+    private View webCustomView;
+    private WebChromeClient.CustomViewCallback webCustomViewCallback;
+    private FrameLayout webFullscreenContainer;
+    private int webOriginalSystemUiVisibility=0;
     private ScrollView sidebarScroll,catalogScroll;
     private HorizontalScrollView chipScroll;
     private WebView mtvWebView;
@@ -104,9 +110,7 @@ public class MainActivity extends AppCompatActivity {
         root=row();root.setBackgroundColor(BG);setContentView(root);
         sidebarScroll=new ScrollView(this);sidebarScroll.setFillViewport(true);sidebarScroll.setVerticalScrollBarEnabled(true);sidebarScroll.setScrollbarFadingEnabled(false);sidebarScroll.setSmoothScrollingEnabled(true);sidebarScroll.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);root.addView(sidebarScroll,new LinearLayout.LayoutParams(dp(220),-1));
         sidebar=column();sidebar.setPadding(dp(18),dp(22),dp(12),dp(14));sidebar.setBackgroundColor(0xFF0D1525);sidebarScroll.addView(sidebar,new ScrollView.LayoutParams(-1,-2));
-        TextView brand=text("GLOBAL TV",25,Color.WHITE,true);sidebar.addView(brand,new LinearLayout.LayoutParams(-1,dp(48)));
-        TextView premium=text("P R E M I U M",10,CYAN,true);sidebar.addView(premium,new LinearLayout.LayoutParams(-1,dp(25)));
-        TextView tagline=text("LE DIVERTISSEMENT\nSANS FRONTIÈRES",10,MUTED,true);sidebar.addView(tagline,new LinearLayout.LayoutParams(-1,dp(54)));
+        TextView brand=text("MTv",31,0xFF35E6FF,true);brand.setTypeface(Typeface.create("sans-serif-black",Typeface.BOLD_ITALIC));brand.setLetterSpacing(0.035f);brand.setShadowLayer(dp(9),0,0,0xFF8A4DFF);sidebar.addView(brand,new LinearLayout.LayoutParams(-1,dp(58)));
         addNav("⌂   Accueil","ACCUEIL");addNav("▣   TV en direct","TV EN DIRECT");addNav("♫   Musique","MUSIQUE");addNav("▤   Infos","INFOS");addNav("▶   Films","FILMS");addNav("▤   Séries","SÉRIES");addNav("✦   Animés","ANIMÉS");addNav("♡   Mes favoris","FAVORIS");addNav("🌐   AOXTv","MTV");addNav("◷   Historique","HISTORIQUE");addNav("▦   Guide TV","GUIDE TV");addNav("🌐   WiTv","WITV");addNav("🌐   FrSTv","FRSTV");addNav("🌐   FsLive","FSLIVE");addNav("🌐   EpiXtv","EPI XTV");addNav("🌐   DudeTV","DUDETV");addNav("🌐   Braflix","BRAFLIX");
         View spacer=new View(this);sidebar.addView(spacer,new LinearLayout.LayoutParams(1,dp(12)));
         sourceLabel=text("SOURCE : M3U",10,CYAN,true);sidebar.addView(sourceLabel,new LinearLayout.LayoutParams(-1,dp(28)));
@@ -153,14 +157,14 @@ public class MainActivity extends AppCompatActivity {
         TextView foot=text("GLOBAL TV • Les flux et catalogues dépendent des droits, de la disponibilité et des régions.",10,0xFF65738D,false);foot.setId(View.generateViewId());content.addView(foot,new LinearLayout.LayoutParams(-1,dp(26)));
         updateChips();
     }
-    private void addNav(String label,String target){TextView v=text(label,14,0xFFD9E1F2,true);v.setPadding(dp(13),0,dp(8),0);v.setId(View.generateViewId());v.setFocusable(true);v.setClickable(true);v.setBackground(bg(0x00172035,10));
-        v.setOnFocusChangeListener((view,hasFocus)->{
-            view.setBackground(bg(hasFocus?ACCENT:(section.equals(target)?0xFF253452:0x00172035),10));
-            ((TextView)view).setTextColor(hasFocus?Color.WHITE:0xFFD9E1F2);
-        });LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,dp(47));p.bottomMargin=dp(3);sidebar.addView(v,p);v.setOnClickListener(w->{if(isAdultWebSection(target)&&PROFILE_CHILD.equals(activeProfile)){Toast.makeText(this,"Cette rubrique est réservée au profil Adulte.",Toast.LENGTH_LONG).show();return;}if(isProtectedSection(target)&&!prefs.getString("parental_pin_hash","").isEmpty()){requestParentalAccess(target);return;}navigateTo(target);});}
+    private void addNav(String label,String target){TextView v=text(label,14,0xFFD9E1F2,true);v.setPadding(dp(13),0,dp(8),0);v.setId(View.generateViewId());v.setFocusable(true);v.setClickable(true);v.setBackground(bg(0x00172035,10));navViews.put(target,v);
+        v.setOnFocusChangeListener((view,hasFocus)->refreshNavStyle(target,hasFocus));
+        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,dp(47));p.bottomMargin=dp(3);sidebar.addView(v,p);v.setOnClickListener(w->{if(isAdultWebSection(target)&&PROFILE_CHILD.equals(activeProfile)){Toast.makeText(this,"Cette rubrique est réservée au profil Adulte.",Toast.LENGTH_LONG).show();return;}if(isProtectedSection(target)&&!prefs.getString("parental_pin_hash","").isEmpty()){requestParentalAccess(target);return;}navigateTo(target);});refreshNavStyle(target,v.hasFocus());}
+    private void refreshNavStyle(String target,boolean focused){TextView v=navViews.get(target);if(v==null)return;boolean selected=section.equals(target);v.setBackground(bg(selected?0xFF735BFF:(focused?0xFF263B5D:0x00172035),10));v.setTextColor(selected?Color.WHITE:(focused?0xFF42E8F5:0xFFD9E1F2));}
+    private void refreshAllNavStyles(){for(String target:navViews.keySet())refreshNavStyle(target,navViews.get(target).hasFocus());}
     private void navigateTo(String target){
         if(playerFullscreen)togglePlayerExpanded();
-        section=target;activeFilter="Tout";search.setHint("⌕  Rechercher…");updateChips();
+        section=target;refreshAllNavStyles();activeFilter="Tout";search.setHint("⌕  Rechercher…");updateChips();
         if(isWebSection(target)){showSiteWebView(webUrlFor(target));return;}
         hideMtvWebView();renderList();
         if(target.equals("PARAMÈTRES"))showSettings();
@@ -288,7 +292,7 @@ public class MainActivity extends AppCompatActivity {
         try{
             savePlaybackPosition();releasePlayer();currentEntry=c;
             player=new ExoPlayer.Builder(getApplicationContext()).build();
-            playerView=new PlayerView(this);playerView.setPlayer(player);playerView.setUseController(true);playerView.setBackgroundColor(Color.BLACK);
+            playerView=new PlayerView(this);playerView.setPlayer(player);playerView.setUseController(true);playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_ZOOM);playerView.setBackgroundColor(Color.BLACK);
             playerToolbar=row();playerToolbar.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);
             TextView expand=text("⛶  Plein écran",13,Color.WHITE,true);
             expand.setFocusable(true);expand.setClickable(true);expand.setPadding(dp(14),dp(7),dp(14),dp(7));expand.setBackground(bg(CARD,10));
@@ -344,7 +348,11 @@ public class MainActivity extends AppCompatActivity {
     private void togglePlayerExpanded(){
         if(playerView==null||playerArea==null)return;
         playerFullscreen=!playerFullscreen;playerExpanded=playerFullscreen;
+        // Masquer le conteneur complet de la barre laterale (pas seulement ses libelles).
+        sidebarScroll.setVisibility(playerFullscreen?View.GONE:View.VISIBLE);
         sidebar.setVisibility(playerFullscreen?View.GONE:View.VISIBLE);
+        content.setPadding(playerFullscreen?0:dp(25),playerFullscreen?0:dp(18),playerFullscreen?0:dp(25),playerFullscreen?0:dp(14));
+        root.setBackgroundColor(playerFullscreen?Color.BLACK:BG);
         for(int i=0;i<content.getChildCount();i++){
             View child=content.getChildAt(i);
             if(child==playerArea)continue;
@@ -352,10 +360,11 @@ public class MainActivity extends AppCompatActivity {
         }
         if(playerToolbar!=null)playerToolbar.setVisibility(playerFullscreen?View.GONE:View.VISIBLE);
         if(catalogScroll!=null)catalogScroll.setVisibility(playerFullscreen?View.GONE:View.VISIBLE);
+        playerArea.setBackgroundColor(Color.BLACK);
         LinearLayout.LayoutParams areaParams=(LinearLayout.LayoutParams)playerArea.getLayoutParams();
         areaParams.width=-1;areaParams.height=0;areaParams.weight=1f;playerArea.setLayoutParams(areaParams);
         LinearLayout.LayoutParams videoParams=(LinearLayout.LayoutParams)playerView.getLayoutParams();
-        videoParams.width=-1;videoParams.height=playerFullscreen?-1:dp(245);videoParams.weight=playerFullscreen?1f:0f;playerView.setLayoutParams(videoParams);
+        videoParams.width=-1;videoParams.height=playerFullscreen?-1:dp(245);videoParams.weight=0f;playerView.setLayoutParams(videoParams);
         if(!playerFullscreen&&catalogScroll.getParent()!=playerArea){playerArea.addView(catalogScroll,new LinearLayout.LayoutParams(0,-1,0.38f));}
         applyImmersiveMode();playerView.requestFocus();
     }
@@ -426,7 +435,11 @@ public class MainActivity extends AppCompatActivity {
                 @Override public boolean shouldOverrideUrlLoading(WebView view,android.webkit.WebResourceRequest request){return false;}
                 @Override public void onPageFinished(WebView view,String loaded){super.onPageFinished(view,loaded);if(isWebSection(section)&&view.getVisibility()==View.VISIBLE){view.requestFocus();}}
             });
-            mtvWebView.setWebChromeClient(new WebChromeClient());
+            mtvWebView.setWebChromeClient(new WebChromeClient(){
+                @Override public void onShowCustomView(View view,CustomViewCallback callback){showWebCustomView(view,callback);}
+                @Override public void onHideCustomView(){hideWebCustomView();}
+                @Override public void onShowCustomView(View view,int requestedOrientation,CustomViewCallback callback){showWebCustomView(view,callback);}
+            });
             mtvWebView.setOnFocusChangeListener((v,focused)->{if(focused)v.setBackgroundColor(Color.BLACK);});
         }
         chipScroll.setVisibility(View.GONE);status.setVisibility(View.GONE);catalogScroll.setVisibility(View.GONE);if(playerArea!=null)playerArea.setVisibility(View.GONE);
@@ -443,6 +456,25 @@ public class MainActivity extends AppCompatActivity {
         webContainer.setVisibility(View.VISIBLE);mtvWebView.setVisibility(View.VISIBLE);mtvWebView.setFocusable(true);mtvWebView.setFocusableInTouchMode(true);
         mtvWebView.bringToFront();mtvWebView.requestFocus();
         if(mtvWebView.getUrl()==null||!mtvWebView.getUrl().equals(url))mtvWebView.loadUrl(url);
+    }
+    private void showWebCustomView(View view,WebChromeClient.CustomViewCallback callback){
+        if(webCustomView!=null){hideWebCustomView();return;}
+        webCustomView=view;webCustomViewCallback=callback;
+        webOriginalSystemUiVisibility=getWindow().getDecorView().getSystemUiVisibility();
+        webFullscreenContainer=new FrameLayout(this);webFullscreenContainer.setBackgroundColor(Color.BLACK);
+        webFullscreenContainer.addView(view,new FrameLayout.LayoutParams(-1,-1));
+        View decor=getWindow().getDecorView();
+        if(decor instanceof ViewGroup)((ViewGroup)decor).addView(webFullscreenContainer,new ViewGroup.LayoutParams(-1,-1));
+        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY|View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN|View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+    }
+    private void hideWebCustomView(){
+        if(webCustomView==null)return;
+        if(webFullscreenContainer!=null){View decor=getWindow().getDecorView();if(decor instanceof ViewGroup)((ViewGroup)decor).removeView(webFullscreenContainer);webFullscreenContainer.removeAllViews();webFullscreenContainer=null;}
+        webCustomView=null;
+        if(webCustomViewCallback!=null){webCustomViewCallback.onCustomViewHidden();webCustomViewCallback=null;}
+        getWindow().getDecorView().setSystemUiVisibility(webOriginalSystemUiVisibility);
+        applyImmersiveMode();
+        if(mtvWebView!=null)mtvWebView.requestFocus();
     }
     private void hideMtvWebView(){
         activeWebUrl="";
@@ -512,6 +544,7 @@ public class MainActivity extends AppCompatActivity {
     private void showXtreamDialog(){LinearLayout form=column();form.setPadding(dp(8),dp(4),dp(8),dp(4));EditText host=field("URL du serveur (https://serveur:port)");EditText user=field("Nom d’utilisateur");EditText pass=field("Mot de passe");pass.setInputType(129);form.addView(host);form.addView(user);form.addView(pass);new AlertDialog.Builder(this).setTitle("Connexion Xtream Codes").setMessage("Utilise les identifiants fournis par ton fournisseur IPTV autorisé. HTTPS est recommandé.").setView(form).setNegativeButton("Annuler",null).setPositiveButton("Se connecter",(d,w)->{String h=host.getText().toString().trim(),u=user.getText().toString().trim(),p=pass.getText().toString();try{Uri uri=Uri.parse(h);if((!"https".equalsIgnoreCase(uri.getScheme())&&!("http".equalsIgnoreCase(uri.getScheme())))||uri.getHost()==null||u.isEmpty()||p.isEmpty())throw new Exception();xtreamBase=h;xtreamUser=u;xtreamPass=p;section="ACCUEIL";heading.setText("Bienvenue sur GLOBAL TV");loadXtream();}catch(Exception e){Toast.makeText(this,"Vérifie l’URL et les identifiants",Toast.LENGTH_LONG).show();}}).show();}
     private EditText field(String hint){EditText e=new EditText(this);e.setSingleLine(true);e.setTextColor(Color.WHITE);e.setHintTextColor(MUTED);e.setHint(hint);e.setPadding(dp(10),dp(6),dp(10),dp(6));return e;}
     @Override public boolean dispatchKeyEvent(android.view.KeyEvent event){if(event.getAction()==KeyEvent.ACTION_DOWN&&event.getKeyCode()==KeyEvent.KEYCODE_BACK){
+            if(webCustomView!=null){hideWebCustomView();return true;}
             if(playerView!=null){if(playerFullscreen){togglePlayerExpanded();return true;}savePlaybackPosition();releasePlayer();status.setText("Lecture fermée");return true;}
             if(isWebSection(section)){navigateTo("ACCUEIL");return true;}
         }
