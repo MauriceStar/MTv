@@ -111,7 +111,7 @@ public class MainActivity extends AppCompatActivity {
         root=row();root.setBackgroundColor(BG);setContentView(root);
         sidebarScroll=new ScrollView(this);sidebarScroll.setFillViewport(true);sidebarScroll.setVerticalScrollBarEnabled(true);sidebarScroll.setScrollbarFadingEnabled(false);sidebarScroll.setSmoothScrollingEnabled(true);sidebarScroll.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);root.addView(sidebarScroll,new LinearLayout.LayoutParams(dp(220),-1));
         sidebar=column();sidebar.setPadding(dp(18),dp(22),dp(12),dp(14));sidebar.setBackgroundColor(0xFF0D1525);sidebarScroll.addView(sidebar,new ScrollView.LayoutParams(-1,-2));
-        TextView brand=text("MTv",31,0xFF35E6FF,true);brand.setTypeface(Typeface.create("sans-serif-black",Typeface.BOLD_ITALIC));brand.setLetterSpacing(0.035f);brand.setShadowLayer(dp(9),0,0,0xFF8A4DFF);sidebar.addView(brand,new LinearLayout.LayoutParams(-1,dp(58)));
+        TextView brand=text("MTv",42,0xFFFFB52E,true);brand.setTypeface(Typeface.create("cursive",Typeface.BOLD));brand.setGravity(Gravity.CENTER);brand.setLetterSpacing(0.015f);brand.setShadowLayer(dp(8),0,dp(2),0xFFFF654F);LinearLayout.LayoutParams brandParams=new LinearLayout.LayoutParams(-1,dp(66));brandParams.bottomMargin=dp(5);sidebar.addView(brand,brandParams);
         addNav("⌂   Accueil","ACCUEIL");addNav("▣   TV en direct","TV EN DIRECT");addNav("♫   Musique","MUSIQUE");addNav("▤   Infos","INFOS");addNav("▶   Films","FILMS");addNav("▤   Séries","SÉRIES");addNav("✦   Animés","ANIMÉS");addNav("♡   Mes favoris","FAVORIS");addNav("◷   Historique","HISTORIQUE");addNav("▦   Guide TV","GUIDE TV");addNav("🌐   AOXTv","MTV");addNav("🌐   WiTv","WITV");addNav("🌐   FrSTv","FRSTV");addNav("🌐   FsLive","FSLIVE");addNav("🌐   EpiXtv","EPI XTV");addNav("🌐   DudeTV","DUDETV");addNav("🌐   Braflix","BRAFLIX");
         View spacer=new View(this);sidebar.addView(spacer,new LinearLayout.LayoutParams(1,dp(12)));
         sourceLabel=text("SOURCE : M3U",10,CYAN,true);sidebar.addView(sourceLabel,new LinearLayout.LayoutParams(-1,dp(28)));
@@ -249,7 +249,7 @@ public class MainActivity extends AppCompatActivity {
     private void renderHome(){
         list.removeAllViews();
         TextView eyebrow=text("BIENVENUE SUR",11,CYAN,true);eyebrow.setLetterSpacing(0.16f);list.addView(eyebrow,new LinearLayout.LayoutParams(-1,dp(24)));
-        TextView title=text("MTv",34,Color.WHITE,true);title.setTypeface(Typeface.create("sans-serif-black",Typeface.BOLD_ITALIC));title.setShadowLayer(dp(10),0,0,0xFF765BFF);list.addView(title,new LinearLayout.LayoutParams(-1,dp(44)));
+        TextView title=text("MTv",34,0xFFFFB52E,true);title.setTypeface(Typeface.create("cursive",Typeface.BOLD));title.setShadowLayer(dp(8),0,dp(2),0xFFFF654F);list.addView(title,new LinearLayout.LayoutParams(-1,dp(44)));
         TextView subtitle=text("Tout votre divertissement, au même endroit.",14,MUTED,false);list.addView(subtitle,new LinearLayout.LayoutParams(-1,dp(30)));
         LinearLayout hero=column();GradientDrawable heroBg=new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,new int[]{0xFF33205F,0xFF154A61,0xFF10243B});heroBg.setCornerRadius(dp(18));hero.setBackground(heroBg);hero.setPadding(dp(22),dp(16),dp(18),dp(16));LinearLayout.LayoutParams hp=new LinearLayout.LayoutParams(-1,dp(128));hp.topMargin=dp(12);hp.bottomMargin=dp(14);list.addView(hero,hp);
         TextView heroTag=text("À LA UNE  •  MTv",10,0xFFFFD36A,true);hero.addView(heroTag,new LinearLayout.LayoutParams(-1,dp(22)));
@@ -340,15 +340,18 @@ public class MainActivity extends AppCompatActivity {
             savePlaybackPosition();releasePlayer();currentEntry=c;
             player=new ExoPlayer.Builder(getApplicationContext()).build();
             playerView=new PlayerView(this);playerView.setPlayer(player);playerView.setUseController(true);playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_ZOOM);playerView.setBackgroundColor(Color.BLACK);
-            playerToolbar=row();playerToolbar.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);
+            playerToolbar=row();playerToolbar.setGravity(Gravity.CENTER);
             TextView expand=text("⛶  Plein écran",13,Color.WHITE,true);
             expand.setFocusable(true);expand.setClickable(true);expand.setPadding(dp(14),dp(7),dp(14),dp(7));expand.setBackground(bg(CARD,10));
             expand.setOnFocusChangeListener((v,focus)->stylePlayerButton((TextView)v,focus));
             expand.setOnClickListener(v->togglePlayerExpanded());
-            playerToolbar.addView(playerControl("⏮", "Précédent", ()->{if(player!=null&&player.hasPreviousMediaItem())player.seekToPreviousMediaItem();}),new LinearLayout.LayoutParams(dp(48),dp(38)));playerToolbar.addView(playerControl(player!=null&&player.isPlaying()?"Ⅱ":"▶","Pause / Lecture",()->{if(player!=null){if(player.isPlaying())player.pause();else player.play();}}),new LinearLayout.LayoutParams(dp(48),dp(38)));playerToolbar.addView(playerControl("⏭","Suivant",()->{if(player!=null&&player.hasNextMediaItem())player.seekToNextMediaItem();}),new LinearLayout.LayoutParams(dp(48),dp(38)));playerToolbar.addView(expand,new LinearLayout.LayoutParams(-2,dp(38)));
-            content.addView(playerToolbar,2,new LinearLayout.LayoutParams(-1,dp(44)));
+            playerToolbar.addView(playerControl("🔇","Muet / Son",()->{if(player!=null){boolean muted=player.getVolume()>0f;player.setVolume(muted?0f:1f);Toast.makeText(this,muted?"Son coupé":"Son activé",Toast.LENGTH_SHORT).show();}}),new LinearLayout.LayoutParams(dp(44),dp(40)));
+            playerToolbar.addView(playerControl("⏮","Précédent",()->{if(player!=null&&player.hasPreviousMediaItem())player.seekToPreviousMediaItem();}),new LinearLayout.LayoutParams(dp(44),dp(40)));
+            playerToolbar.addView(playerControl("▶","Pause / Lecture",()->{if(player!=null){if(player.isPlaying())player.pause();else player.play();}}),new LinearLayout.LayoutParams(dp(44),dp(40)));
+            playerToolbar.addView(playerControl("⏭","Suivant",()->{if(player!=null&&player.hasNextMediaItem())player.seekToNextMediaItem();}),new LinearLayout.LayoutParams(dp(44),dp(40)));
+            playerToolbar.addView(expand,new LinearLayout.LayoutParams(-2,dp(40)));
             if(catalogScroll.getParent()==playerArea)playerArea.removeView(catalogScroll);
-            playerArea.addView(playerView,new LinearLayout.LayoutParams(0,dp(245),0.62f));
+            LinearLayout videoColumn=column();videoColumn.setGravity(Gravity.CENTER_HORIZONTAL);playerArea.addView(videoColumn,new LinearLayout.LayoutParams(0,-1,0.62f));videoColumn.addView(playerView,new LinearLayout.LayoutParams(-1,dp(245)));videoColumn.addView(playerToolbar,new LinearLayout.LayoutParams(-1,dp(48)));
             playerArea.addView(catalogScroll,new LinearLayout.LayoutParams(0,-1,0.38f));
             final ExoPlayer activePlayer=player;
             lastPlayedUrl=c.url;pendingResumePosition=historyPosition(c);
