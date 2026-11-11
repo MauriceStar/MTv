@@ -83,6 +83,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView status,heading,sourceLabel;
     private PlayerView playerView;
     private ExoPlayer player;
+    private int playerResizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM;
     private String section="ACCUEIL",activeFilter="Tout",sourceMode="M3U",xtreamBase="",xtreamUser="",xtreamPass="";
 
     static class MediaEntry {
