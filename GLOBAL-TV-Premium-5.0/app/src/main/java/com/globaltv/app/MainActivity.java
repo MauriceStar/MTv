@@ -364,7 +364,7 @@ public class MainActivity extends AppCompatActivity {
         LinearLayout.LayoutParams areaParams=(LinearLayout.LayoutParams)playerArea.getLayoutParams();
         areaParams.width=-1;areaParams.height=0;areaParams.weight=1f;playerArea.setLayoutParams(areaParams);
         LinearLayout.LayoutParams videoParams=(LinearLayout.LayoutParams)playerView.getLayoutParams();
-        videoParams.width=-1;videoParams.height=playerFullscreen?-1:dp(245);videoParams.weight=0f;playerView.setLayoutParams(videoParams);
+        videoParams.width=playerFullscreen?-1:0;videoParams.height=playerFullscreen?-1:dp(245);videoParams.weight=playerFullscreen?0f:0.62f;playerView.setLayoutParams(videoParams);
         if(!playerFullscreen&&catalogScroll.getParent()!=playerArea){playerArea.addView(catalogScroll,new LinearLayout.LayoutParams(0,-1,0.38f));}
         applyImmersiveMode();playerView.requestFocus();
     }
