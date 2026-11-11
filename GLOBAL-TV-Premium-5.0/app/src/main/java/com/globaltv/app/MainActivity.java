@@ -99,6 +99,7 @@ public class MainActivity extends AppCompatActivity {
         activeProfile=prefs.getString("active_profile",PROFILE_ADULT);
         configureMemoryBudget();
         favorites.addAll(prefs.getStringSet("favorites",new HashSet<>()));for(String group:prefs.getStringSet("favorite_groups",new HashSet<>()))favoriteGroups.put(group,new LinkedHashSet<>(prefs.getStringSet("favorite_group_"+key(group),new HashSet<>())));playlistSources.addAll(prefs.getStringSet("m3u_sources",new LinkedHashSet<>()));
+        playlistSources.add(DEFAULT_PLAYLIST);
         playlistSources.addAll(Arrays.asList(BUILT_IN_PLAYLISTS));
         prefs.edit().putStringSet("m3u_sources",new LinkedHashSet<>(playlistSources)).apply();
         epgUrl=prefs.getString("epg_url","");mtvPlaylistUrl=prefs.getString("mtv_playlist_url","");lastPlayedUrl=prefs.getString("last_url","");buildUi();loadAllPlaylists();if(!epgUrl.isEmpty())loadEpg(epgUrl);}
@@ -176,7 +177,9 @@ public class MainActivity extends AppCompatActivity {
     private void refreshAllNavStyles(){for(String target:navViews.keySet())refreshNavStyle(target,navViews.get(target).hasFocus());}
     private void navigateTo(String target){
         if(playerFullscreen)togglePlayerExpanded();
-        section=target;refreshAllNavStyles();activeFilter="Tout";search.setHint("⌕  Rechercher…");updateChips();
+        section=target;refreshAllNavStyles();activeFilter="Tout";
+        if(pendingSearch!=null){mainHandler.removeCallbacks(pendingSearch);pendingSearch=null;}
+        search.setText("");search.setHint("⌕  Rechercher…");updateChips();
         if(catalogScroll!=null)catalogScroll.scrollTo(0,0);
         if(isWebSection(target)){showSiteWebView(webUrlFor(target));return;}
         hideMtvWebView();renderList();
