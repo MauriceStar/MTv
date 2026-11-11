@@ -57,6 +57,7 @@ public class MainActivity extends AppCompatActivity {
     private final Set<String> favorites=new HashSet<>();
     private final Set<String> historyKeysCache=new HashSet<>();
     private final Map<String,String> epgNow=new ConcurrentHashMap<>();
+    private final Map<String,String> epgNext=new ConcurrentHashMap<>();
     private SharedPreferences prefs;
     private String epgUrl="";
     private final LinkedHashSet<String> playlistSources=new LinkedHashSet<>();
