@@ -36,6 +36,11 @@ import android.webkit.WebChromeClient;
 /** GLOBAL TV Premium - Android TV / Google TV. */
 public class MainActivity extends AppCompatActivity {
     private static final String DEFAULT_PLAYLIST="https://iptv-org.github.io/iptv/index.m3u";
+    private static final String[] BUILT_IN_PLAYLISTS={
+        "https://iptv-org.github.io/iptv/countries/fr.m3u",
+        "https://raw.githubusercontent.com/iptv-org/iptv/master/streams/fr.m3u",
+        "https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8"
+    };
     private static final int BG=0xFF080D19, PANEL=0xFF111A2B, CARD=0xFF17233A, MUTED=0xFF91A0BA, ACCENT=0xFF746BFF, CYAN=0xFF27C8C0, FOCUS_GOLD=0xFFFFB52E, FOCUS_RED=0xFFFF654F;
     // Pool borne pour eviter une file de taches sans limite sur les box peu puissantes.
     private final ThreadPoolExecutor io=new ThreadPoolExecutor(2,2,30L,TimeUnit.SECONDS,
@@ -93,7 +98,10 @@ public class MainActivity extends AppCompatActivity {
     @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);getWindow().setStatusBarColor(BG);getWindow().setNavigationBarColor(BG);prefs=getPreferences(0);
         activeProfile=prefs.getString("active_profile",PROFILE_ADULT);
         configureMemoryBudget();
-        favorites.addAll(prefs.getStringSet("favorites",new HashSet<>()));for(String group:prefs.getStringSet("favorite_groups",new HashSet<>()))favoriteGroups.put(group,new LinkedHashSet<>(prefs.getStringSet("favorite_group_"+key(group),new HashSet<>())));playlistSources.addAll(prefs.getStringSet("m3u_sources",new LinkedHashSet<>()));epgUrl=prefs.getString("epg_url","");mtvPlaylistUrl=prefs.getString("mtv_playlist_url","");lastPlayedUrl=prefs.getString("last_url","");buildUi();loadPlaylist(playlistSources.isEmpty()?DEFAULT_PLAYLIST:playlistSources.iterator().next());if(!epgUrl.isEmpty())loadEpg(epgUrl);}
+        favorites.addAll(prefs.getStringSet("favorites",new HashSet<>()));for(String group:prefs.getStringSet("favorite_groups",new HashSet<>()))favoriteGroups.put(group,new LinkedHashSet<>(prefs.getStringSet("favorite_group_"+key(group),new HashSet<>())));playlistSources.addAll(prefs.getStringSet("m3u_sources",new LinkedHashSet<>()));
+        playlistSources.addAll(Arrays.asList(BUILT_IN_PLAYLISTS));
+        prefs.edit().putStringSet("m3u_sources",new LinkedHashSet<>(playlistSources)).apply();
+        epgUrl=prefs.getString("epg_url","");mtvPlaylistUrl=prefs.getString("mtv_playlist_url","");lastPlayedUrl=prefs.getString("last_url","");buildUi();loadAllPlaylists();if(!epgUrl.isEmpty())loadEpg(epgUrl);}
     // Adapte le nombre de cartes rendues à la classe mémoire réelle de l'appareil.
     // Le catalogue reste complet en mémoire (plafonné), seule la vue est limitée.
     private void configureMemoryBudget(){
@@ -169,6 +177,7 @@ public class MainActivity extends AppCompatActivity {
     private void navigateTo(String target){
         if(playerFullscreen)togglePlayerExpanded();
         section=target;refreshAllNavStyles();activeFilter="Tout";search.setHint("⌕  Rechercher…");updateChips();
+        if(catalogScroll!=null)catalogScroll.scrollTo(0,0);
         if(isWebSection(target)){showSiteWebView(webUrlFor(target));return;}
         hideMtvWebView();renderList();
         if(target.equals("PARAMÈTRES"))showSettings();
@@ -355,8 +364,16 @@ public class MainActivity extends AppCompatActivity {
             transportControls.addView(playerControl("⏭","Suivant",()->{if(player!=null&&player.hasNextMediaItem())player.seekToNextMediaItem();}),new LinearLayout.LayoutParams(dp(44),dp(40)));
             LinearLayout optionControls=row();optionControls.setGravity(Gravity.CENTER);optionControls.addView(playerControl("♫","Pistes audio",()->{if(player!=null)new androidx.media3.ui.TrackSelectionDialogBuilder(this,"Pistes audio",player,androidx.media3.common.C.TRACK_TYPE_AUDIO).build().show();}),new LinearLayout.LayoutParams(dp(44),dp(38)));optionControls.addView(playerControl("CC","Sous-titres",()->{if(player!=null)new androidx.media3.ui.TrackSelectionDialogBuilder(this,"Sous-titres",player,androidx.media3.common.C.TRACK_TYPE_TEXT).build().show();}),new LinearLayout.LayoutParams(dp(44),dp(38)));optionControls.addView(playerControl("▣","Format image",()->{if(playerView!=null){int[] modes={AspectRatioFrameLayout.RESIZE_MODE_ZOOM,AspectRatioFrameLayout.RESIZE_MODE_FIT,AspectRatioFrameLayout.RESIZE_MODE_FILL,AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH};String[] labels={"Zoom","Ajuster","Remplir","Largeur fixe"};int current=0;for(int i=0;i<modes.length;i++)if(modes[i]==playerResizeMode)current=i;playerResizeMode=modes[(current+1)%modes.length];playerView.setResizeMode(playerResizeMode);Toast.makeText(this,"Format : "+labels[(current+1)%labels.length],Toast.LENGTH_SHORT).show();}}),new LinearLayout.LayoutParams(dp(44),dp(38)));transportControls.addView(expand,new LinearLayout.LayoutParams(-2,dp(40)));playerToolbar.addView(transportControls,new LinearLayout.LayoutParams(-1,dp(42)));playerToolbar.addView(optionControls,new LinearLayout.LayoutParams(-1,dp(38)));
             if(catalogScroll.getParent()==playerArea)playerArea.removeView(catalogScroll);
-            playerArea.setOrientation(LinearLayout.VERTICAL);LinearLayout videoColumn=column();videoColumn.setGravity(Gravity.CENTER_HORIZONTAL);playerArea.addView(videoColumn,new LinearLayout.LayoutParams(-1,dp(327)));videoColumn.addView(playerView,new LinearLayout.LayoutParams(-1,dp(245)));videoColumn.addView(playerToolbar,new LinearLayout.LayoutParams(-1,dp(82)));
-            playerArea.addView(catalogScroll,new LinearLayout.LayoutParams(-1,0,1f));
+            boolean wideLayout=(getResources().getDisplayMetrics().widthPixels/getResources().getDisplayMetrics().density)>=720f;
+            playerArea.setOrientation(wideLayout?LinearLayout.HORIZONTAL:LinearLayout.VERTICAL);
+            LinearLayout videoColumn=column();videoColumn.setGravity(Gravity.CENTER_HORIZONTAL);
+            if(wideLayout)playerArea.addView(videoColumn,new LinearLayout.LayoutParams(0,-1,0.62f));
+            else playerArea.addView(videoColumn,new LinearLayout.LayoutParams(-1,dp(327)));
+            if(wideLayout)videoColumn.addView(playerView,new LinearLayout.LayoutParams(-1,0,1f));
+            else videoColumn.addView(playerView,new LinearLayout.LayoutParams(-1,dp(245)));
+            videoColumn.addView(playerToolbar,new LinearLayout.LayoutParams(-1,dp(82)));
+            if(wideLayout)playerArea.addView(catalogScroll,new LinearLayout.LayoutParams(0,-1,0.38f));
+            else playerArea.addView(catalogScroll,new LinearLayout.LayoutParams(-1,0,1f));
             final ExoPlayer activePlayer=player;
             lastPlayedUrl=c.url;pendingResumePosition=historyPosition(c);
             historyKeysCache.add("history_"+key(c.url));prefs.edit().putString("last_url",c.url).putString("history_"+key(c.url),c.name==null?"":c.name).apply();
@@ -418,9 +435,20 @@ public class MainActivity extends AppCompatActivity {
         LinearLayout.LayoutParams areaParams=(LinearLayout.LayoutParams)playerArea.getLayoutParams();
         areaParams.width=-1;areaParams.height=0;areaParams.weight=1f;playerArea.setLayoutParams(areaParams);
         View videoColumn=playerView.getParent() instanceof ViewGroup? (View)playerView.getParent():null;
-        if(videoColumn instanceof LinearLayout){LinearLayout.LayoutParams columnParams=(LinearLayout.LayoutParams)videoColumn.getLayoutParams();columnParams.width=-1;columnParams.height=playerFullscreen?-1:dp(327);columnParams.weight=0f;videoColumn.setLayoutParams(columnParams);}
-        LinearLayout.LayoutParams videoParams=(LinearLayout.LayoutParams)playerView.getLayoutParams();videoParams.width=-1;videoParams.height=playerFullscreen?-1:dp(245);videoParams.weight=0f;playerView.setLayoutParams(videoParams);
-        if(!playerFullscreen&&catalogScroll.getParent()!=playerArea){playerArea.addView(catalogScroll,new LinearLayout.LayoutParams(-1,0,1f));}
+        boolean wideLayout=(getResources().getDisplayMetrics().widthPixels/getResources().getDisplayMetrics().density)>=720f;
+        playerArea.setOrientation(wideLayout?LinearLayout.HORIZONTAL:LinearLayout.VERTICAL);
+        if(videoColumn instanceof LinearLayout){
+            LinearLayout.LayoutParams columnParams=(LinearLayout.LayoutParams)videoColumn.getLayoutParams();
+            columnParams.width=wideLayout?0:-1;columnParams.height=playerFullscreen?-1:(wideLayout?-1:dp(327));
+            columnParams.weight=playerFullscreen?0f:(wideLayout?0.62f:0f);videoColumn.setLayoutParams(columnParams);
+        }
+        LinearLayout.LayoutParams videoParams=(LinearLayout.LayoutParams)playerView.getLayoutParams();
+        videoParams.width=-1;videoParams.height=playerFullscreen?-1:(wideLayout?0:dp(245));
+        videoParams.weight=playerFullscreen?0f:(wideLayout?1f:0f);playerView.setLayoutParams(videoParams);
+        if(!playerFullscreen&&catalogScroll.getParent()!=playerArea){
+            if(wideLayout)playerArea.addView(catalogScroll,new LinearLayout.LayoutParams(0,-1,0.38f));
+            else playerArea.addView(catalogScroll,new LinearLayout.LayoutParams(-1,0,1f));
+        }
         applyImmersiveMode();playerView.requestFocus();
     }
     private void applyImmersiveMode(){
