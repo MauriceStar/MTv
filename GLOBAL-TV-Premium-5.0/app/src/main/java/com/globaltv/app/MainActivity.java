@@ -270,7 +270,7 @@ public class MainActivity extends AppCompatActivity {
         if(count==0){TextView empty=text("Les chaînes apparaîtront ici dès que la playlist sera chargée.",12,MUTED,false);list.addView(empty);}
         TextView hint=text("Astuce : utilise les flèches de la télécommande pour parcourir les cartes, puis OK pour ouvrir.",11,MUTED,false);LinearLayout.LayoutParams hintP=new LinearLayout.LayoutParams(-1,dp(34));hintP.topMargin=dp(8);list.addView(hint,hintP);
     }
-    private void renderList(){if(list==null)return;list.removeAllViews();if(section.equals("HISTORIQUE")){historyKeysCache.clear();try{for(String prefKey:prefs.getAll().keySet())if(prefKey.startsWith("history_"))historyKeysCache.add(prefKey);}catch(Exception ignored){}}String q=search==null?"":search.getText().toString().toLowerCase(Locale.ROOT);int shown=0;List<MediaEntry> activeItems=section.equals("MTV")?mtvItems:all;
+    private void renderList(){if(list==null)return;list.removeAllViews();if(section.equals("HISTORIQUE")){historyKeysCache.clear();try{for(String prefKey:prefs.getAll().keySet())if(prefKey.startsWith("history_"))historyKeysCache.add(prefKey);}catch(Exception ignored){}}String q=search==null?"":search.getText().toString().toLowerCase(Locale.ROOT);if(section.equals("ACCUEIL")&&q.trim().isEmpty()){renderHome();return;}int shown=0;List<MediaEntry> activeItems=section.equals("MTV")?mtvItems:all;
         for(MediaEntry c:activeItems){if(!matchSection(c))continue;
             if(PROFILE_CHILD.equals(activeProfile) && isAdultEntry(c)) continue;
             String itemName=c.name==null?"":c.name;String itemGroup=c.group==null?"":c.group;
