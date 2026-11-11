@@ -429,15 +429,15 @@ public class MainActivity extends AppCompatActivity {
             mtvWebView.setWebChromeClient(new WebChromeClient());
             mtvWebView.setOnFocusChangeListener((v,focused)->{if(focused)v.setBackgroundColor(Color.BLACK);});
         }
-        chipScroll.setVisibility(View.GONE);status.setVisibility(View.GONE);catalogScroll.setVisibility(View.GONE);
+        chipScroll.setVisibility(View.GONE);status.setVisibility(View.GONE);catalogScroll.setVisibility(View.GONE);if(playerArea!=null)playerArea.setVisibility(View.GONE);
         if(webContainer==null){
             webContainer=column();webContainer.setBackgroundColor(Color.BLACK);
             LinearLayout webNav=row();webNav.setPadding(dp(8),dp(4),dp(8),dp(4));
-            TextView backMenu=text("☰  MENU PRINCIPAL",13,Color.WHITE,true);backMenu.setFocusable(true);backMenu.setFocusableInTouchMode(true);backMenu.setClickable(true);backMenu.setPadding(dp(16),dp(8),dp(16),dp(8));backMenu.setBackground(bg(ACCENT,10));
+            TextView backMenu=text("☰  MENU PRINCIPAL",13,Color.WHITE,true);backMenu.setId(View.generateViewId());backMenu.setFocusable(true);backMenu.setFocusableInTouchMode(true);backMenu.setClickable(true);backMenu.setPadding(dp(16),dp(8),dp(16),dp(8));backMenu.setBackground(bg(ACCENT,10));
             backMenu.setOnClickListener(v->navigateTo("ACCUEIL"));webNav.addView(backMenu,new LinearLayout.LayoutParams(-2,dp(42)));
             webContainer.addView(webNav,new LinearLayout.LayoutParams(-1,dp(50)));
             webContainer.addView(mtvWebView,new LinearLayout.LayoutParams(-1,0,1));
-            mtvWebView.setNextFocusUpId(backMenu.getId());backMenu.setId(View.generateViewId());
+            mtvWebView.setNextFocusUpId(backMenu.getId());
         }
         if(webContainer.getParent()==null)content.addView(webContainer,Math.min(3,content.getChildCount()),new LinearLayout.LayoutParams(-1,0,1));
         webContainer.setVisibility(View.VISIBLE);mtvWebView.setVisibility(View.VISIBLE);mtvWebView.setFocusable(true);mtvWebView.setFocusableInTouchMode(true);
@@ -447,7 +447,7 @@ public class MainActivity extends AppCompatActivity {
     private void hideMtvWebView(){
         activeWebUrl="";
         if(mtvWebView!=null){mtvWebView.setVisibility(View.GONE);}if(webContainer!=null){webContainer.setVisibility(View.GONE);if(webContainer.getParent()==content)content.removeView(webContainer);}
-        chipScroll.setVisibility(View.VISIBLE);status.setVisibility(View.VISIBLE);catalogScroll.setVisibility(View.VISIBLE);
+        chipScroll.setVisibility(View.VISIBLE);status.setVisibility(View.VISIBLE);catalogScroll.setVisibility(View.VISIBLE);if(playerArea!=null)playerArea.setVisibility(View.VISIBLE);
     }
     private void showMtvPlaylistDialog(){
         EditText url=field("URL de playlist M3U autorisée pour MTV");
