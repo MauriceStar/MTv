@@ -60,13 +60,14 @@ public class MainActivity extends AppCompatActivity {
     private String epgUrl="";
     private String lastPlayedUrl="";
     private long pendingResumePosition=0L;
-    private LinearLayout root,sidebar,content,list,chips,playerToolbar;
+    private LinearLayout root,sidebar,content,list,chips,playerToolbar,playerArea,webContainer;
     private ScrollView sidebarScroll,catalogScroll;
     private HorizontalScrollView chipScroll;
     private WebView mtvWebView;
     private String activeWebUrl="";
     private boolean playerExpanded=false;
     private boolean playerFullscreen=false;
+    private View playerFullscreenTop,playerFullscreenChips,playerFullscreenStatus,playerFullscreenFooter;
     private MediaEntry currentEntry;
     private final Set<String> failedInCurrentRun=new HashSet<>();
     private EditText search;
@@ -146,24 +147,26 @@ public class MainActivity extends AppCompatActivity {
         catalogScroll.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
         catalogScroll.setSmoothScrollingEnabled(true);
         catalogScroll.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
-        content.addView(catalogScroll,new LinearLayout.LayoutParams(-1,0,1));
+        playerArea=row();playerArea.setGravity(Gravity.TOP);content.addView(playerArea,new LinearLayout.LayoutParams(-1,0,1));
+        playerArea.addView(catalogScroll,new LinearLayout.LayoutParams(-1,-1));
         list=column();list.setPadding(0,dp(4),0,dp(12));catalogScroll.addView(list);
-        TextView foot=text("GLOBAL TV • Les flux et catalogues dépendent des droits, de la disponibilité et des régions.",10,0xFF65738D,false);content.addView(foot,new LinearLayout.LayoutParams(-1,dp(26)));
+        TextView foot=text("GLOBAL TV • Les flux et catalogues dépendent des droits, de la disponibilité et des régions.",10,0xFF65738D,false);foot.setId(View.generateViewId());content.addView(foot,new LinearLayout.LayoutParams(-1,dp(26)));
         updateChips();
     }
     private void addNav(String label,String target){TextView v=text(label,14,0xFFD9E1F2,true);v.setPadding(dp(13),0,dp(8),0);v.setId(View.generateViewId());v.setFocusable(true);v.setClickable(true);v.setBackground(bg(0x00172035,10));
         v.setOnFocusChangeListener((view,hasFocus)->{
             view.setBackground(bg(hasFocus?ACCENT:(section.equals(target)?0xFF253452:0x00172035),10));
             ((TextView)view).setTextColor(hasFocus?Color.WHITE:0xFFD9E1F2);
-        });LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,dp(47));p.bottomMargin=dp(3);sidebar.addView(v,p);v.setOnClickListener(w->{if(("EPI XTV".equals(target)||"DUDETV".equals(target))&&PROFILE_CHILD.equals(activeProfile)){Toast.makeText(this,"Cette rubrique est réservée au profil Adulte.",Toast.LENGTH_LONG).show();return;}if(isProtectedSection(target)&&!prefs.getString("parental_pin_hash","").isEmpty()){requestParentalAccess(target);return;}navigateTo(target);});}
+        });LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,dp(47));p.bottomMargin=dp(3);sidebar.addView(v,p);v.setOnClickListener(w->{if(isAdultWebSection(target)&&PROFILE_CHILD.equals(activeProfile)){Toast.makeText(this,"Cette rubrique est réservée au profil Adulte.",Toast.LENGTH_LONG).show();return;}if(isProtectedSection(target)&&!prefs.getString("parental_pin_hash","").isEmpty()){requestParentalAccess(target);return;}navigateTo(target);});}
     private void navigateTo(String target){
+        if(playerFullscreen)togglePlayerExpanded();
         section=target;activeFilter="Tout";search.setHint("⌕  Rechercher…");updateChips();
         if(isWebSection(target)){showSiteWebView(webUrlFor(target));return;}
         hideMtvWebView();renderList();
         if(target.equals("PARAMÈTRES"))showSettings();
         else if(search!=null&&!search.hasFocus())search.requestFocus();
     }
-    private void updateChips(){if(chips==null)return;chips.removeAllViews();String[] opts;if(section.equals("TV EN DIRECT"))opts=new String[]{"Tout","France","Afrique","Sports","News","Music","Kids"};else if(section.equals("FAVORIS")||section.equals("HISTORIQUE")||section.equals("GUIDE TV")||section.equals("MUSIQUE")||section.equals("INFOS"))opts=new String[]{"Tout"};else opts=new String[]{"Tout","Action","Comédie","Drame","Aventure","Fantasy","Science-fiction","Animation"};int previousId=View.NO_ID;for(String value:opts){final String filter=value;TextView c=text(value,12,activeFilter.equals(value)?Color.WHITE:0xFFB8C4D8,true);c.setGravity(Gravity.CENTER);c.setPadding(dp(15),0,dp(15),0);c.setBackground(bg(activeFilter.equals(value)?ACCENT:CARD,18));c.setFocusable(true);c.setClickable(true);c.setId(View.generateViewId());c.setNextFocusUpId(search.getId());if(previousId!=View.NO_ID)c.setNextFocusLeftId(previousId);if(previousId!=View.NO_ID)chips.getChildAt(chips.getChildCount()-1).setNextFocusRightId(c.getId());previousId=c.getId();c.setOnFocusChangeListener((v,focus)->{if(focus){Rect rect=new Rect();v.getDrawingRect(rect);chipScroll.requestChildRectangleOnScreen(v,rect,true);}});LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-2,dp(38));p.rightMargin=dp(8);chips.addView(c,p);c.setOnClickListener(v->{activeFilter=filter;updateChips();renderList();});}search.setNextFocusDownId(chips.getChildAt(0).getId());}
+    private void updateChips(){if(chips==null)return;chips.removeAllViews();String[] opts;if(section.equals("TV EN DIRECT"))opts=new String[]{"Tout","France","Afrique","Sports","News","Music","Kids"};else if(section.equals("FAVORIS")||section.equals("HISTORIQUE")||section.equals("GUIDE TV")||section.equals("MUSIQUE")||section.equals("INFOS"))opts=new String[]{"Tout"};else opts=new String[]{"Tout","Action","Comédie","Drame","Aventure","Fantasy","Science-fiction","Animation"};int previousId=View.NO_ID;for(String value:opts){final String filter=value;TextView c=text(value,12,activeFilter.equals(value)?Color.WHITE:0xFFB8C4D8,true);c.setGravity(Gravity.CENTER);c.setPadding(dp(15),0,dp(15),0);c.setBackground(bg(activeFilter.equals(value)?ACCENT:CARD,18));c.setFocusable(true);c.setFocusableInTouchMode(true);c.setClickable(true);c.setId(View.generateViewId());c.setNextFocusUpId(search.getId());if(previousId!=View.NO_ID)c.setNextFocusLeftId(previousId);if(previousId!=View.NO_ID)chips.getChildAt(chips.getChildCount()-1).setNextFocusRightId(c.getId());previousId=c.getId();c.setOnFocusChangeListener((v,focus)->{if(focus){Rect rect=new Rect();v.getDrawingRect(rect);chipScroll.requestChildRectangleOnScreen(v,rect,true);}});c.setOnKeyListener((v,keyCode,event)->{if(event.getAction()!=KeyEvent.ACTION_DOWN)return false;if(keyCode==KeyEvent.KEYCODE_DPAD_CENTER||keyCode==KeyEvent.KEYCODE_ENTER){v.performClick();return true;}if(keyCode==KeyEvent.KEYCODE_DPAD_RIGHT||keyCode==KeyEvent.KEYCODE_DPAD_LEFT){int idx=chips.indexOfChild(v),next=idx+(keyCode==KeyEvent.KEYCODE_DPAD_RIGHT?1:-1);if(next>=0&&next<chips.getChildCount()){chips.getChildAt(next).requestFocus();return true;}}if(keyCode==KeyEvent.KEYCODE_DPAD_DOWN){if(list.getChildCount()>0){list.getChildAt(0).requestFocus();return true;}}return false;});LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-2,dp(38));p.rightMargin=dp(8);chips.addView(c,p);c.setOnClickListener(v->{activeFilter=filter;updateChips();renderList();});}search.setNextFocusDownId(chips.getChildAt(0).getId());}
 
 
     private void executeIo(Runnable task){
@@ -176,9 +179,10 @@ public class MainActivity extends AppCompatActivity {
         if(!destroyed)mainHandler.post(()->{if(!destroyed&&!isFinishing())task.run();});
     }
     private void releasePlayer(){
-        if(playerFullscreen){setContentView(root);if(playerView!=null&&playerView.getParent()==null)content.addView(playerView,Math.min(3,content.getChildCount()),new LinearLayout.LayoutParams(-1,dp(285)));playerFullscreen=false;applyImmersiveMode();}
+        if(playerFullscreen){togglePlayerExpanded();}
         if(playerExpanded){sidebar.setVisibility(View.VISIBLE);for(int i=0;i<content.getChildCount();i++)content.getChildAt(i).setVisibility(View.VISIBLE);playerExpanded=false;}
-        if(playerView!=null){playerView.setPlayer(null);if(content!=null)content.removeView(playerView);playerView=null;}
+        if(playerView!=null){playerView.setPlayer(null);if(playerView.getParent() instanceof ViewGroup)((ViewGroup)playerView.getParent()).removeView(playerView);playerView=null;}
+        if(catalogScroll!=null&&catalogScroll.getParent()!=playerArea)playerArea.addView(catalogScroll,new LinearLayout.LayoutParams(-1,-1));
         if(playerToolbar!=null){if(content!=null)content.removeView(playerToolbar);playerToolbar=null;}
         if(player!=null){try{player.release();}catch(Exception ignored){}player=null;}
     }
@@ -292,7 +296,9 @@ public class MainActivity extends AppCompatActivity {
             expand.setOnClickListener(v->togglePlayerExpanded());
             playerToolbar.addView(expand,new LinearLayout.LayoutParams(-2,dp(38)));
             content.addView(playerToolbar,2,new LinearLayout.LayoutParams(-1,dp(44)));
-            content.addView(playerView,3,new LinearLayout.LayoutParams(-1,dp(285)));
+            if(catalogScroll.getParent()==playerArea)playerArea.removeView(catalogScroll);
+            playerArea.addView(playerView,new LinearLayout.LayoutParams(0,dp(245),0.62f));
+            playerArea.addView(catalogScroll,new LinearLayout.LayoutParams(0,-1,0.38f));
             final ExoPlayer activePlayer=player;
             lastPlayedUrl=c.url;pendingResumePosition=historyPosition(c);
             historyKeysCache.add("history_"+key(c.url));prefs.edit().putString("last_url",c.url).putString("history_"+key(c.url),c.name==null?"":c.name).apply();
@@ -336,17 +342,22 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void togglePlayerExpanded(){
-        if(playerView==null)return;
-        if(!playerFullscreen){
-            if(playerView.getParent()==content)content.removeView(playerView);
-            playerFullscreen=true;playerExpanded=true;setContentView(playerView);
-            playerView.setLayoutParams(new ViewGroup.LayoutParams(-1,-1));
-            applyImmersiveMode();playerView.requestFocus();
-        }else{
-            playerFullscreen=false;playerExpanded=false;setContentView(root);
-            content.addView(playerView,Math.min(3,content.getChildCount()),new LinearLayout.LayoutParams(-1,dp(285)));
-            applyImmersiveMode();playerView.requestFocus();
+        if(playerView==null||playerArea==null)return;
+        playerFullscreen=!playerFullscreen;playerExpanded=playerFullscreen;
+        sidebar.setVisibility(playerFullscreen?View.GONE:View.VISIBLE);
+        for(int i=0;i<content.getChildCount();i++){
+            View child=content.getChildAt(i);
+            if(child==playerArea)continue;
+            child.setVisibility(playerFullscreen?View.GONE:View.VISIBLE);
         }
+        if(playerToolbar!=null)playerToolbar.setVisibility(playerFullscreen?View.GONE:View.VISIBLE);
+        if(catalogScroll!=null)catalogScroll.setVisibility(playerFullscreen?View.GONE:View.VISIBLE);
+        LinearLayout.LayoutParams areaParams=(LinearLayout.LayoutParams)playerArea.getLayoutParams();
+        areaParams.width=-1;areaParams.height=0;areaParams.weight=1f;playerArea.setLayoutParams(areaParams);
+        LinearLayout.LayoutParams videoParams=(LinearLayout.LayoutParams)playerView.getLayoutParams();
+        videoParams.width=-1;videoParams.height=playerFullscreen?-1:dp(245);videoParams.weight=playerFullscreen?1f:0f;playerView.setLayoutParams(videoParams);
+        if(!playerFullscreen&&catalogScroll.getParent()!=playerArea){playerArea.addView(catalogScroll,new LinearLayout.LayoutParams(0,-1,0.38f));}
+        applyImmersiveMode();playerView.requestFocus();
     }
     private void applyImmersiveMode(){
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
@@ -419,14 +430,23 @@ public class MainActivity extends AppCompatActivity {
             mtvWebView.setOnFocusChangeListener((v,focused)->{if(focused)v.setBackgroundColor(Color.BLACK);});
         }
         chipScroll.setVisibility(View.GONE);status.setVisibility(View.GONE);catalogScroll.setVisibility(View.GONE);
-        if(mtvWebView.getParent()==null)content.addView(mtvWebView,Math.min(3,content.getChildCount()),new LinearLayout.LayoutParams(-1,0,1));
-        mtvWebView.setVisibility(View.VISIBLE);mtvWebView.setFocusable(true);mtvWebView.setFocusableInTouchMode(true);
+        if(webContainer==null){
+            webContainer=column();webContainer.setBackgroundColor(Color.BLACK);
+            LinearLayout webNav=row();webNav.setPadding(dp(8),dp(4),dp(8),dp(4));
+            TextView backMenu=text("☰  MENU PRINCIPAL",13,Color.WHITE,true);backMenu.setFocusable(true);backMenu.setFocusableInTouchMode(true);backMenu.setClickable(true);backMenu.setPadding(dp(16),dp(8),dp(16),dp(8));backMenu.setBackground(bg(ACCENT,10));
+            backMenu.setOnClickListener(v->navigateTo("ACCUEIL"));webNav.addView(backMenu,new LinearLayout.LayoutParams(-2,dp(42)));
+            webContainer.addView(webNav,new LinearLayout.LayoutParams(-1,dp(50)));
+            webContainer.addView(mtvWebView,new LinearLayout.LayoutParams(-1,0,1));
+            mtvWebView.setNextFocusUpId(backMenu.getId());backMenu.setId(View.generateViewId());
+        }
+        if(webContainer.getParent()==null)content.addView(webContainer,Math.min(3,content.getChildCount()),new LinearLayout.LayoutParams(-1,0,1));
+        webContainer.setVisibility(View.VISIBLE);mtvWebView.setVisibility(View.VISIBLE);mtvWebView.setFocusable(true);mtvWebView.setFocusableInTouchMode(true);
         mtvWebView.bringToFront();mtvWebView.requestFocus();
         if(mtvWebView.getUrl()==null||!mtvWebView.getUrl().equals(url))mtvWebView.loadUrl(url);
     }
     private void hideMtvWebView(){
         activeWebUrl="";
-        if(mtvWebView!=null){mtvWebView.setVisibility(View.GONE);if(mtvWebView.getParent()==content)content.removeView(mtvWebView);}
+        if(mtvWebView!=null){mtvWebView.setVisibility(View.GONE);}if(webContainer!=null){webContainer.setVisibility(View.GONE);if(webContainer.getParent()==content)content.removeView(webContainer);}
         chipScroll.setVisibility(View.VISIBLE);status.setVisibility(View.VISIBLE);catalogScroll.setVisibility(View.VISIBLE);
     }
     private void showMtvPlaylistDialog(){
@@ -478,7 +498,8 @@ public class MainActivity extends AppCompatActivity {
         });
     }
     private void showSettings(){String[] options={"Changer de profil (Adulte / Enfant)","Charger une playlist M3U","Connexion Xtream Codes","Configurer le guide TV (XMLTV)","Définir / modifier le code parental","Effacer l’historique et les reprises","Configurer la source MTV"};new AlertDialog.Builder(this).setTitle("GLOBAL TV • Paramètres").setItems(options,(d,w)->{if(w==0)showProfileDialog();else if(w==1)showM3uDialog();else if(w==2)showXtreamDialog();else if(w==3)showEpgDialog();else if(w==4)showPinDialog();else if(w==5)new AlertDialog.Builder(this).setTitle("Effacer l’historique ?").setMessage("Les positions de lecture et l’historique seront supprimés.").setNegativeButton("Annuler",null).setPositiveButton("Effacer",(a,b)->{Map<String,?> allPrefs=prefs.getAll();SharedPreferences.Editor ed=prefs.edit();for(String k:allPrefs.keySet())if(k.startsWith("history_")||k.startsWith("position_"))ed.remove(k);ed.apply();renderList();}).show();else if(w==6)showMtvPlaylistDialog();}).show();}
-    private boolean isProtectedSection(String target){return target.equals("FILMS")||target.equals("SÉRIES")||target.equals("ANIMÉS")||target.equals("EPI XTV")||target.equals("DUDETV");}
+    private boolean isAdultWebSection(String target){return "MTV".equals(target)||"EPI XTV".equals(target)||"DUDETV".equals(target);}
+    private boolean isProtectedSection(String target){return target.equals("FILMS")||target.equals("SÉRIES")||target.equals("ANIMÉS")||isAdultWebSection(target);}
     private void requestParentalAccess(String target){String expected=prefs.getString("parental_pin_hash","");EditText pin=field("Code PIN parental");pin.setInputType(2);new AlertDialog.Builder(this).setTitle("Contrôle parental").setMessage("Entre le code PIN pour accéder à cette rubrique.").setView(pin).setNegativeButton("Annuler",null).setPositiveButton("Valider",(d,w)->{if(expected.equals(hash(pin.getText().toString())))navigateTo(target);else Toast.makeText(this,"Code PIN incorrect",Toast.LENGTH_LONG).show();}).show();}
     private void showPinDialog(){EditText pin=field("Nouveau code PIN (4 à 8 chiffres)");pin.setInputType(2);new AlertDialog.Builder(this).setTitle("Contrôle parental").setMessage("Laisse vide pour désactiver le contrôle parental.").setView(pin).setNegativeButton("Annuler",null).setPositiveButton("Enregistrer",(d,w)->{String v=pin.getText().toString();if(v.isEmpty())prefs.edit().remove("parental_pin_hash").apply();else if(v.matches("\\d{4,8}"))prefs.edit().putString("parental_pin_hash",hash(v)).apply();else Toast.makeText(this,"Utilise 4 à 8 chiffres",Toast.LENGTH_LONG).show();}).show();}
     private String hash(String value){try{byte[] b=MessageDigest.getInstance("SHA-256").digest(value.getBytes("UTF-8"));StringBuilder out=new StringBuilder();for(byte x:b)out.append(String.format(Locale.US,"%02x",x));return out.toString();}catch(Exception e){return value;}}
@@ -492,7 +513,10 @@ public class MainActivity extends AppCompatActivity {
     private EditText field(String hint){EditText e=new EditText(this);e.setSingleLine(true);e.setTextColor(Color.WHITE);e.setHintTextColor(MUTED);e.setHint(hint);e.setPadding(dp(10),dp(6),dp(10),dp(6));return e;}
     @Override public boolean dispatchKeyEvent(android.view.KeyEvent event){if(event.getAction()==KeyEvent.ACTION_DOWN&&event.getKeyCode()==KeyEvent.KEYCODE_BACK){
             if(playerView!=null){if(playerFullscreen){togglePlayerExpanded();return true;}savePlaybackPosition();releasePlayer();status.setText("Lecture fermée");return true;}
-            if(isWebSection(section)&&mtvWebView!=null&&mtvWebView.canGoBack()){mtvWebView.goBack();return true;}
+            if(isWebSection(section)){navigateTo("ACCUEIL");return true;}
+        }
+        if(event.getAction()==KeyEvent.ACTION_DOWN&&isWebSection(section)&&webContainer!=null&&webContainer.getVisibility()==View.VISIBLE&&event.getKeyCode()==KeyEvent.KEYCODE_DPAD_UP&&mtvWebView.hasFocus()){
+            View menu=webContainer.getChildAt(0).getChildAt(0);if(menu!=null){menu.requestFocus();return true;}
         }
         if(isWebSection(section)&&mtvWebView!=null&&mtvWebView.getVisibility()==View.VISIBLE){
             if(event.getAction()==KeyEvent.ACTION_DOWN&&(event.getKeyCode()==KeyEvent.KEYCODE_DPAD_UP||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_DOWN||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_LEFT||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_RIGHT||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_CENTER||event.getKeyCode()==KeyEvent.KEYCODE_ENTER)&&!mtvWebView.hasFocus())mtvWebView.requestFocus();
