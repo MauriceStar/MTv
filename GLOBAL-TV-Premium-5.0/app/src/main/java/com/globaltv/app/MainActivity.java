@@ -66,6 +66,7 @@ public class MainActivity extends AppCompatActivity {
     private WebView mtvWebView;
     private String activeWebUrl="";
     private boolean playerExpanded=false;
+    private boolean playerFullscreen=false;
     private MediaEntry currentEntry;
     private final Set<String> failedInCurrentRun=new HashSet<>();
     private EditText search;
@@ -105,7 +106,7 @@ public class MainActivity extends AppCompatActivity {
         TextView brand=text("GLOBAL TV",25,Color.WHITE,true);sidebar.addView(brand,new LinearLayout.LayoutParams(-1,dp(48)));
         TextView premium=text("P R E M I U M",10,CYAN,true);sidebar.addView(premium,new LinearLayout.LayoutParams(-1,dp(25)));
         TextView tagline=text("LE DIVERTISSEMENT\nSANS FRONTIÈRES",10,MUTED,true);sidebar.addView(tagline,new LinearLayout.LayoutParams(-1,dp(54)));
-        addNav("⌂   Accueil","ACCUEIL");addNav("▣   TV en direct","TV EN DIRECT");addNav("♫   MTV","MTV");addNav("♫   Musique","MUSIQUE");addNav("▤   Infos","INFOS");addNav("▶   Films","FILMS");addNav("▤   Séries","SÉRIES");addNav("✦   Animés","ANIMÉS");addNav("♡   Mes favoris","FAVORIS");addNav("◷   Historique","HISTORIQUE");addNav("▦   Guide TV","GUIDE TV");addNav("🌐   WiTv","WITV");addNav("🌐   FrSTv","FRSTV");addNav("🌐   FsLive","FSLIVE");
+        addNav("⌂   Accueil","ACCUEIL");addNav("▣   TV en direct","TV EN DIRECT");addNav("♫   Musique","MUSIQUE");addNav("▤   Infos","INFOS");addNav("▶   Films","FILMS");addNav("▤   Séries","SÉRIES");addNav("✦   Animés","ANIMÉS");addNav("♡   Mes favoris","FAVORIS");addNav("🌐   AOXTv","MTV");addNav("◷   Historique","HISTORIQUE");addNav("▦   Guide TV","GUIDE TV");addNav("🌐   WiTv","WITV");addNav("🌐   FrSTv","FRSTV");addNav("🌐   FsLive","FSLIVE");addNav("🌐   EpiXtv","EPI XTV");addNav("🌐   DudeTV","DUDETV");addNav("🌐   Braflix","BRAFLIX");
         View spacer=new View(this);sidebar.addView(spacer,new LinearLayout.LayoutParams(1,dp(12)));
         sourceLabel=text("SOURCE : M3U",10,CYAN,true);sidebar.addView(sourceLabel,new LinearLayout.LayoutParams(-1,dp(28)));
         addNav("⚙   Sources & paramètres","PARAMÈTRES");
@@ -154,7 +155,7 @@ public class MainActivity extends AppCompatActivity {
         v.setOnFocusChangeListener((view,hasFocus)->{
             view.setBackground(bg(hasFocus?ACCENT:(section.equals(target)?0xFF253452:0x00172035),10));
             ((TextView)view).setTextColor(hasFocus?Color.WHITE:0xFFD9E1F2);
-        });LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,dp(47));p.bottomMargin=dp(3);sidebar.addView(v,p);v.setOnClickListener(w->{if(isProtectedSection(target)&&!prefs.getString("parental_pin_hash","").isEmpty()){requestParentalAccess(target);return;}navigateTo(target);});}
+        });LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,dp(47));p.bottomMargin=dp(3);sidebar.addView(v,p);v.setOnClickListener(w->{if(("EPI XTV".equals(target)||"DUDETV".equals(target))&&PROFILE_CHILD.equals(activeProfile)){Toast.makeText(this,"Cette rubrique est réservée au profil Adulte.",Toast.LENGTH_LONG).show();return;}if(isProtectedSection(target)&&!prefs.getString("parental_pin_hash","").isEmpty()){requestParentalAccess(target);return;}navigateTo(target);});}
     private void navigateTo(String target){
         section=target;activeFilter="Tout";search.setHint("⌕  Rechercher…");updateChips();
         if(isWebSection(target)){showSiteWebView(webUrlFor(target));return;}
@@ -175,6 +176,7 @@ public class MainActivity extends AppCompatActivity {
         if(!destroyed)mainHandler.post(()->{if(!destroyed&&!isFinishing())task.run();});
     }
     private void releasePlayer(){
+        if(playerFullscreen){setContentView(root);if(playerView!=null&&playerView.getParent()==null)content.addView(playerView,Math.min(3,content.getChildCount()),new LinearLayout.LayoutParams(-1,dp(285)));playerFullscreen=false;applyImmersiveMode();}
         if(playerExpanded){sidebar.setVisibility(View.VISIBLE);for(int i=0;i<content.getChildCount();i++)content.getChildAt(i).setVisibility(View.VISIBLE);playerExpanded=false;}
         if(playerView!=null){playerView.setPlayer(null);if(content!=null)content.removeView(playerView);playerView=null;}
         if(playerToolbar!=null){if(content!=null)content.removeView(playerToolbar);playerToolbar=null;}
@@ -335,20 +337,19 @@ public class MainActivity extends AppCompatActivity {
 
     private void togglePlayerExpanded(){
         if(playerView==null)return;
-        playerExpanded=!playerExpanded;
-        if(playerExpanded){
-            sidebar.setVisibility(View.GONE);
-            for(int i=0;i<content.getChildCount();i++){
-                View child=content.getChildAt(i);
-                if(child!=playerView && child.getVisibility()!=View.GONE) child.setVisibility(View.GONE);
-            }
-            playerView.setLayoutParams(new LinearLayout.LayoutParams(-1,-1));
-            playerView.requestFocus();
+        if(!playerFullscreen){
+            if(playerView.getParent()==content)content.removeView(playerView);
+            playerFullscreen=true;playerExpanded=true;setContentView(playerView);
+            playerView.setLayoutParams(new ViewGroup.LayoutParams(-1,-1));
+            applyImmersiveMode();playerView.requestFocus();
         }else{
-            sidebar.setVisibility(View.VISIBLE);
-            for(int i=0;i<content.getChildCount();i++) content.getChildAt(i).setVisibility(View.VISIBLE);
-            playerView.setLayoutParams(new LinearLayout.LayoutParams(-1,dp(285)));
+            playerFullscreen=false;playerExpanded=false;setContentView(root);
+            content.addView(playerView,Math.min(3,content.getChildCount()),new LinearLayout.LayoutParams(-1,dp(285)));
+            applyImmersiveMode();playerView.requestFocus();
         }
+    }
+    private void applyImmersiveMode(){
+        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
     }
 
     private void showSeries(MediaEntry s){if(!sourceMode.equals("XTREAM")){Toast.makeText(this,"Les épisodes doivent être fournis par une source VOD compatible.",Toast.LENGTH_LONG).show();return;}status.setText("Chargement des saisons…");executeIo(()->{String err=null;ArrayList<MediaEntry> eps=new ArrayList<>();try{JSONObject data=new JSONObject(get(api("get_series_info","&series_id="+enc(s.id))));JSONObject seasons=data.optJSONObject("episodes");if(seasons!=null){Iterator<String> keys=seasons.keys();while(keys.hasNext()){String k=keys.next();JSONArray a=seasons.optJSONArray(k);if(a==null)continue;for(int i=0;i<a.length();i++){JSONObject o=a.optJSONObject(i);if(o==null)continue;String id=o.optString("id","");if(id.isEmpty())continue;String ext=o.optString("container_extension","mp4");String u=xtreamBase+(xtreamBase.endsWith("/")?"":"/")+"series/"+enc(xtreamUser)+"/"+enc(xtreamPass)+"/"+id+"."+ext;eps.add(new MediaEntry(o.optString("title","Épisode "+(i+1)),u,"Saison "+k,"","episode"));}}}}catch(Exception e){err=e.getMessage();}final String error=err;postUi(()->{if(error!=null||eps.isEmpty()){Toast.makeText(this,"Aucun épisode disponible",Toast.LENGTH_LONG).show();return;}String[] names=new String[eps.size()];for(int i=0;i<eps.size();i++)names[i]=eps.get(i).group+" — "+eps.get(i).name;new AlertDialog.Builder(this).setTitle(s.name).setItems(names,(d,w)->play(eps.get(w))).setNegativeButton("Fermer",null).show();});});}
@@ -394,23 +395,33 @@ public class MainActivity extends AppCompatActivity {
                 dialog.dismiss();
             }).setNegativeButton("Fermer",null).show();
     }
-    private boolean isWebSection(String target){return "MTV".equals(target)||"WITV".equals(target)||"FRSTV".equals(target)||"FSLIVE".equals(target);}
-    private String webUrlFor(String target){if("WITV".equals(target))return "https://wiflix.mov/";if("FRSTV".equals(target))return "https://french-stream.net/";if("FSLIVE".equals(target))return "https://fstv.one/";return "https://oxax.tv/";}
+    private boolean isWebSection(String target){return "MTV".equals(target)||"WITV".equals(target)||"FRSTV".equals(target)||"FSLIVE".equals(target)||"EPI XTV".equals(target)||"DUDETV".equals(target)||"BRAFLIX".equals(target);}
+    private String webUrlFor(String target){if("WITV".equals(target))return "https://wiflix.mov/";if("FRSTV".equals(target))return "https://french-stream.net/";if("FSLIVE".equals(target))return "https://fstv.one/";if("EPI XTV".equals(target))return "https://www.xnxx.com/";if("DUDETV".equals(target))return "https://theporndude.com/";if("BRAFLIX".equals(target))return "https://braflix.uk/";return "https://oxax.tv/";}
     private void showMtvWebView(){showSiteWebView("https://oxax.tv/");}
     private void showSiteWebView(String url){
         activeWebUrl=url;
         if(mtvWebView==null){
             mtvWebView=new WebView(this);mtvWebView.setBackgroundColor(Color.BLACK);
-            mtvWebView.getSettings().setJavaScriptEnabled(true);
-            mtvWebView.getSettings().setDomStorageEnabled(true);
-            mtvWebView.getSettings().setLoadWithOverviewMode(true);
-            mtvWebView.getSettings().setUseWideViewPort(true);
-            mtvWebView.setWebViewClient(new WebViewClient());
+            mtvWebView.setFocusable(true);mtvWebView.setFocusableInTouchMode(true);
+            mtvWebView.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
+            mtvWebView.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
+            android.webkit.WebSettings settings=mtvWebView.getSettings();
+            settings.setJavaScriptEnabled(true);settings.setDomStorageEnabled(true);
+            settings.setDatabaseEnabled(true);settings.setLoadsImagesAutomatically(true);
+            settings.setJavaScriptCanOpenWindowsAutomatically(true);settings.setSupportMultipleWindows(false);
+            settings.setLoadWithOverviewMode(true);settings.setUseWideViewPort(true);
+            settings.setMediaPlaybackRequiresUserGesture(false);
+            mtvWebView.setWebViewClient(new WebViewClient(){
+                @Override public boolean shouldOverrideUrlLoading(WebView view,android.webkit.WebResourceRequest request){return false;}
+                @Override public void onPageFinished(WebView view,String loaded){super.onPageFinished(view,loaded);if(isWebSection(section)&&view.getVisibility()==View.VISIBLE){view.requestFocus();}}
+            });
             mtvWebView.setWebChromeClient(new WebChromeClient());
+            mtvWebView.setOnFocusChangeListener((v,focused)->{if(focused)v.setBackgroundColor(Color.BLACK);});
         }
         chipScroll.setVisibility(View.GONE);status.setVisibility(View.GONE);catalogScroll.setVisibility(View.GONE);
-        if(mtvWebView.getParent()==null)content.addView(mtvWebView,3,new LinearLayout.LayoutParams(-1,0,1));
-        mtvWebView.setVisibility(View.VISIBLE);
+        if(mtvWebView.getParent()==null)content.addView(mtvWebView,Math.min(3,content.getChildCount()),new LinearLayout.LayoutParams(-1,0,1));
+        mtvWebView.setVisibility(View.VISIBLE);mtvWebView.setFocusable(true);mtvWebView.setFocusableInTouchMode(true);
+        mtvWebView.bringToFront();mtvWebView.requestFocus();
         if(mtvWebView.getUrl()==null||!mtvWebView.getUrl().equals(url))mtvWebView.loadUrl(url);
     }
     private void hideMtvWebView(){
@@ -467,7 +478,7 @@ public class MainActivity extends AppCompatActivity {
         });
     }
     private void showSettings(){String[] options={"Changer de profil (Adulte / Enfant)","Charger une playlist M3U","Connexion Xtream Codes","Configurer le guide TV (XMLTV)","Définir / modifier le code parental","Effacer l’historique et les reprises","Configurer la source MTV"};new AlertDialog.Builder(this).setTitle("GLOBAL TV • Paramètres").setItems(options,(d,w)->{if(w==0)showProfileDialog();else if(w==1)showM3uDialog();else if(w==2)showXtreamDialog();else if(w==3)showEpgDialog();else if(w==4)showPinDialog();else if(w==5)new AlertDialog.Builder(this).setTitle("Effacer l’historique ?").setMessage("Les positions de lecture et l’historique seront supprimés.").setNegativeButton("Annuler",null).setPositiveButton("Effacer",(a,b)->{Map<String,?> allPrefs=prefs.getAll();SharedPreferences.Editor ed=prefs.edit();for(String k:allPrefs.keySet())if(k.startsWith("history_")||k.startsWith("position_"))ed.remove(k);ed.apply();renderList();}).show();else if(w==6)showMtvPlaylistDialog();}).show();}
-    private boolean isProtectedSection(String target){return target.equals("FILMS")||target.equals("SÉRIES")||target.equals("ANIMÉS");}
+    private boolean isProtectedSection(String target){return target.equals("FILMS")||target.equals("SÉRIES")||target.equals("ANIMÉS")||target.equals("EPI XTV")||target.equals("DUDETV");}
     private void requestParentalAccess(String target){String expected=prefs.getString("parental_pin_hash","");EditText pin=field("Code PIN parental");pin.setInputType(2);new AlertDialog.Builder(this).setTitle("Contrôle parental").setMessage("Entre le code PIN pour accéder à cette rubrique.").setView(pin).setNegativeButton("Annuler",null).setPositiveButton("Valider",(d,w)->{if(expected.equals(hash(pin.getText().toString())))navigateTo(target);else Toast.makeText(this,"Code PIN incorrect",Toast.LENGTH_LONG).show();}).show();}
     private void showPinDialog(){EditText pin=field("Nouveau code PIN (4 à 8 chiffres)");pin.setInputType(2);new AlertDialog.Builder(this).setTitle("Contrôle parental").setMessage("Laisse vide pour désactiver le contrôle parental.").setView(pin).setNegativeButton("Annuler",null).setPositiveButton("Enregistrer",(d,w)->{String v=pin.getText().toString();if(v.isEmpty())prefs.edit().remove("parental_pin_hash").apply();else if(v.matches("\\d{4,8}"))prefs.edit().putString("parental_pin_hash",hash(v)).apply();else Toast.makeText(this,"Utilise 4 à 8 chiffres",Toast.LENGTH_LONG).show();}).show();}
     private String hash(String value){try{byte[] b=MessageDigest.getInstance("SHA-256").digest(value.getBytes("UTF-8"));StringBuilder out=new StringBuilder();for(byte x:b)out.append(String.format(Locale.US,"%02x",x));return out.toString();}catch(Exception e){return value;}}
@@ -480,8 +491,11 @@ public class MainActivity extends AppCompatActivity {
     private void showXtreamDialog(){LinearLayout form=column();form.setPadding(dp(8),dp(4),dp(8),dp(4));EditText host=field("URL du serveur (https://serveur:port)");EditText user=field("Nom d’utilisateur");EditText pass=field("Mot de passe");pass.setInputType(129);form.addView(host);form.addView(user);form.addView(pass);new AlertDialog.Builder(this).setTitle("Connexion Xtream Codes").setMessage("Utilise les identifiants fournis par ton fournisseur IPTV autorisé. HTTPS est recommandé.").setView(form).setNegativeButton("Annuler",null).setPositiveButton("Se connecter",(d,w)->{String h=host.getText().toString().trim(),u=user.getText().toString().trim(),p=pass.getText().toString();try{Uri uri=Uri.parse(h);if((!"https".equalsIgnoreCase(uri.getScheme())&&!("http".equalsIgnoreCase(uri.getScheme())))||uri.getHost()==null||u.isEmpty()||p.isEmpty())throw new Exception();xtreamBase=h;xtreamUser=u;xtreamPass=p;section="ACCUEIL";heading.setText("Bienvenue sur GLOBAL TV");loadXtream();}catch(Exception e){Toast.makeText(this,"Vérifie l’URL et les identifiants",Toast.LENGTH_LONG).show();}}).show();}
     private EditText field(String hint){EditText e=new EditText(this);e.setSingleLine(true);e.setTextColor(Color.WHITE);e.setHintTextColor(MUTED);e.setHint(hint);e.setPadding(dp(10),dp(6),dp(10),dp(6));return e;}
     @Override public boolean dispatchKeyEvent(android.view.KeyEvent event){if(event.getAction()==KeyEvent.ACTION_DOWN&&event.getKeyCode()==KeyEvent.KEYCODE_BACK){
-            if(playerView!=null){if(playerExpanded){togglePlayerExpanded();return true;}savePlaybackPosition();releasePlayer();status.setText("Lecture fermée");return true;}
+            if(playerView!=null){if(playerFullscreen){togglePlayerExpanded();return true;}savePlaybackPosition();releasePlayer();status.setText("Lecture fermée");return true;}
             if(isWebSection(section)&&mtvWebView!=null&&mtvWebView.canGoBack()){mtvWebView.goBack();return true;}
+        }
+        if(isWebSection(section)&&mtvWebView!=null&&mtvWebView.getVisibility()==View.VISIBLE){
+            if(event.getAction()==KeyEvent.ACTION_DOWN&&(event.getKeyCode()==KeyEvent.KEYCODE_DPAD_UP||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_DOWN||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_LEFT||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_RIGHT||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_CENTER||event.getKeyCode()==KeyEvent.KEYCODE_ENTER)&&!mtvWebView.hasFocus())mtvWebView.requestFocus();
         }return super.dispatchKeyEvent(event);}
     @Override public void onTrimMemory(int level){
         super.onTrimMemory(level);
