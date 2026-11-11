@@ -39,7 +39,8 @@ public class MainActivity extends AppCompatActivity {
     private static final String[] BUILT_IN_PLAYLISTS={
         "https://iptv-org.github.io/iptv/countries/fr.m3u",
         "https://raw.githubusercontent.com/iptv-org/iptv/master/streams/fr.m3u",
-        "https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8"
+        "https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8",
+        "https://raw.githubusercontent.com/reklamalinir/M3U-1/master/m3u%20playlists/3-%20Africa%20African%20Iptv%20Channels.m3u"
     };
     private static final int BG=0xFF080D19, PANEL=0xFF111A2B, CARD=0xFF17233A, MUTED=0xFF91A0BA, ACCENT=0xFF746BFF, CYAN=0xFF27C8C0, FOCUS_GOLD=0xFFFFB52E, FOCUS_RED=0xFFFF654F;
     // Pool borne pour eviter une file de taches sans limite sur les box peu puissantes.
@@ -123,7 +124,7 @@ public class MainActivity extends AppCompatActivity {
         root=row();root.setBackgroundColor(BG);setContentView(root);
         sidebarScroll=new ScrollView(this);sidebarScroll.setFillViewport(true);sidebarScroll.setVerticalScrollBarEnabled(true);sidebarScroll.setScrollbarFadingEnabled(false);sidebarScroll.setSmoothScrollingEnabled(true);sidebarScroll.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);root.addView(sidebarScroll,new LinearLayout.LayoutParams(dp(220),-1));
         sidebar=column();sidebar.setPadding(dp(18),dp(22),dp(12),dp(14));sidebar.setBackgroundColor(0xFF0D1525);sidebarScroll.addView(sidebar,new ScrollView.LayoutParams(-1,-2));
-        TextView brand=text("MTv",48,0xFFFFB52E,true);brand.setTypeface(Typeface.create("sans-serif-black",Typeface.NORMAL));brand.setGravity(Gravity.CENTER);brand.setLetterSpacing(0.01f);brand.setShadowLayer(dp(7),0,dp(2),0xFFFF654F);LinearLayout.LayoutParams brandParams=new LinearLayout.LayoutParams(-1,dp(72));brandParams.bottomMargin=dp(5);sidebar.addView(brand,brandParams);
+        LinearLayout brand=row();brand.setGravity(Gravity.CENTER);TextView dish=text("📡",25,0xFFFFC45C,true);dish.setGravity(Gravity.CENTER);brand.addView(dish,new LinearLayout.LayoutParams(dp(38),dp(62)));TextView brandName=text("MTv",50,0xFFFFB52E,true);brandName.setTypeface(Typeface.create("sans-serif-black",Typeface.BOLD_ITALIC));brandName.setGravity(Gravity.CENTER);brandName.setLetterSpacing(0.025f);brandName.setShadowLayer(dp(8),0,dp(2),0xFFFF654F);brand.addView(brandName,new LinearLayout.LayoutParams(-2,dp(68)));LinearLayout.LayoutParams brandParams=new LinearLayout.LayoutParams(-1,dp(72));brandParams.bottomMargin=dp(5);sidebar.addView(brand,brandParams);
         addNav("⌂   Accueil","ACCUEIL");addNav("▣   TV en direct","TV EN DIRECT");addNav("♫   Musique","MUSIQUE");addNav("▤   Infos","INFOS");addNav("▶   Films","FILMS");addNav("▤   Séries","SÉRIES");addNav("✦   Animés","ANIMÉS");addNav("♡   Mes favoris","FAVORIS");addNav("◷   Historique","HISTORIQUE");addNav("▦   Guide TV","GUIDE TV");addNav("🌐   AOXTv","MTV");addNav("🌐   WiTv","WITV");addNav("🌐   FrSTv","FRSTV");addNav("🌐   FsLive","FSLIVE");addNav("🌐   EpiXtv","EPI XTV");addNav("🌐   DudeTV","DUDETV");addNav("🌐   Braflix","BRAFLIX");
         View spacer=new View(this);sidebar.addView(spacer,new LinearLayout.LayoutParams(1,dp(12)));
         sourceLabel=text("SOURCE : M3U",10,CYAN,true);sidebar.addView(sourceLabel,new LinearLayout.LayoutParams(-1,dp(28)));
@@ -263,9 +264,7 @@ public class MainActivity extends AppCompatActivity {
     }
     private void renderHome(){
         list.removeAllViews();
-        TextView eyebrow=text("BIENVENUE SUR",11,CYAN,true);eyebrow.setLetterSpacing(0.16f);list.addView(eyebrow,new LinearLayout.LayoutParams(-1,dp(24)));
-        TextView title=text("MTv",40,0xFFFFB52E,true);title.setTypeface(Typeface.create("sans-serif-black",Typeface.NORMAL));title.setLetterSpacing(0.01f);title.setShadowLayer(dp(7),0,dp(2),0xFFFF654F);list.addView(title,new LinearLayout.LayoutParams(-1,dp(52)));
-        TextView subtitle=text("Tout votre divertissement, au même endroit.",14,MUTED,false);list.addView(subtitle,new LinearLayout.LayoutParams(-1,dp(30)));
+
         LinearLayout hero=column();GradientDrawable heroBg=new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,new int[]{0xFF33205F,0xFF154A61,0xFF10243B});heroBg.setCornerRadius(dp(18));hero.setBackground(heroBg);hero.setPadding(dp(22),dp(16),dp(18),dp(16));LinearLayout.LayoutParams hp=new LinearLayout.LayoutParams(-1,dp(128));hp.topMargin=dp(12);hp.bottomMargin=dp(14);list.addView(hero,hp);
         TextView heroTag=text("À LA UNE  •  MTv",10,0xFFFFD36A,true);hero.addView(heroTag,new LinearLayout.LayoutParams(-1,dp(22)));
         TextView heroTitle=text("Vos chaînes et programmes préférés",20,Color.WHITE,true);hero.addView(heroTitle,new LinearLayout.LayoutParams(-1,dp(38)));
@@ -357,8 +356,8 @@ public class MainActivity extends AppCompatActivity {
             playerView=new PlayerView(this);playerView.setPlayer(player);playerView.setUseController(true);playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_ZOOM);playerView.setBackgroundColor(Color.BLACK);
             GestureDetector playerGestures=new GestureDetector(this,new GestureDetector.SimpleOnGestureListener(){@Override public boolean onDown(android.view.MotionEvent e){return true;}@Override public boolean onDoubleTap(android.view.MotionEvent e){togglePlayerExpanded();return true;}});playerView.setOnTouchListener((v,event)->{playerGestures.onTouchEvent(event);return false;});
             playerToolbar=column();playerToolbar.setGravity(Gravity.CENTER);playerToolbar.setPadding(0,dp(3),0,dp(3));
-            TextView expand=text("⛶  Plein écran",13,Color.WHITE,true);
-            expand.setFocusable(true);expand.setClickable(true);expand.setPadding(dp(14),dp(7),dp(14),dp(7));expand.setBackground(bg(CARD,10));
+            TextView expand=text("⛶",23,Color.WHITE,true);
+            expand.setGravity(Gravity.CENTER);expand.setContentDescription("Plein écran");expand.setFocusable(true);expand.setClickable(true);expand.setPadding(dp(5),dp(5),dp(5),dp(5));expand.setBackground(bg(CARD,10));
             expand.setOnFocusChangeListener((v,focus)->stylePlayerButton((TextView)v,focus));
             expand.setOnClickListener(v->togglePlayerExpanded());
             LinearLayout transportControls=row();transportControls.setGravity(Gravity.CENTER);transportControls.addView(playerControl("🔇","Muet / Son",()->{if(player!=null){boolean muted=player.getVolume()>0f;player.setVolume(muted?0f:1f);Toast.makeText(this,muted?"Son coupé":"Son activé",Toast.LENGTH_SHORT).show();}}),new LinearLayout.LayoutParams(dp(44),dp(40)));
@@ -439,10 +438,12 @@ public class MainActivity extends AppCompatActivity {
         areaParams.width=-1;areaParams.height=0;areaParams.weight=1f;playerArea.setLayoutParams(areaParams);
         View videoColumn=playerView.getParent() instanceof ViewGroup? (View)playerView.getParent():null;
         boolean wideLayout=(getResources().getDisplayMetrics().widthPixels/getResources().getDisplayMetrics().density)>=720f;
-        playerArea.setOrientation(wideLayout?LinearLayout.HORIZONTAL:LinearLayout.VERTICAL);
+        // En plein écran, la vidéo occupe toute la largeur, y compris sur TV.
+        // L'ancien width=0 avec weight=0 réduisait la vue à zéro sur écran large.
+        playerArea.setOrientation(playerFullscreen?LinearLayout.VERTICAL:(wideLayout?LinearLayout.HORIZONTAL:LinearLayout.VERTICAL));
         if(videoColumn instanceof LinearLayout){
             LinearLayout.LayoutParams columnParams=(LinearLayout.LayoutParams)videoColumn.getLayoutParams();
-            columnParams.width=wideLayout?0:-1;columnParams.height=playerFullscreen?-1:(wideLayout?-1:dp(327));
+            columnParams.width=playerFullscreen?-1:(wideLayout?0:-1);columnParams.height=playerFullscreen?-1:(wideLayout?-1:dp(327));
             columnParams.weight=playerFullscreen?0f:(wideLayout?0.62f:0f);videoColumn.setLayoutParams(columnParams);
         }
         LinearLayout.LayoutParams videoParams=(LinearLayout.LayoutParams)playerView.getLayoutParams();
