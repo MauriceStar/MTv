@@ -895,9 +895,15 @@ private void loadAllPlaylists(){
             int failedIndex=activePlayer.getCurrentMediaItemIndex();
             if(failedIndex>=0&&failedIndex<activePlayer.getMediaItemCount())activePlayer.removeMediaItem(failedIndex);
             if(activePlayer.getMediaItemCount()>0){
+                if(failedIndex>=activePlayer.getMediaItemCount()){
+                    activePlayer.pause();
+                    status.setText("Fin de la file de lecture");
+                    Toast.makeText(MainActivity.this,"Ce flux a échoué et aucun autre flux ne le suit dans la file.",Toast.LENGTH_LONG).show();
+                    return;
+                }
                 String message=retryable?"Flux indisponible après nouvelle tentative.":playbackFailureMessage(error);
                 Toast.makeText(MainActivity.this,message+" Passage au suivant…",Toast.LENGTH_SHORT).show();
-                int nextIndex=failedIndex>=0&&failedIndex<activePlayer.getMediaItemCount()?failedIndex:0;
+                int nextIndex=failedIndex>=0?failedIndex:0;
                 activePlayer.seekTo(nextIndex,0L);activePlayer.prepare();activePlayer.play();
             }else{
                 String detail=playbackFailureMessage(error);
