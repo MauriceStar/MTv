@@ -290,7 +290,8 @@ public class MainActivity extends AppCompatActivity {
  if(pendingSearch!=null){mainHandler.removeCallbacks(pendingSearch);pendingSearch=null;}
  search.setText("");search.setHint("⌕  Rechercher…");updateChips();TextView targetNav=navViews.get(target);if(targetNav!=null)search.setNextFocusLeftId(targetNav.getId());
  if(catalogScroll!=null)catalogScroll.scrollTo(0,0);
- if(isWebSection(target)){showSiteWebView(webUrlFor(target));return;}\n hideMtvWebView();
+ if(isWebSection(target)){showSiteWebView(webUrlFor(target));return;}
+        hideMtvWebView();
  renderList();
  if(target.equals("PARAMÈTRES"))showSettings();else{TextView selectedNav=navViews.get(target);if(selectedNav!=null)selectedNav.requestFocus();}
 }
