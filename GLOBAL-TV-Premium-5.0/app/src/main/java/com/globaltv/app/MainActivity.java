@@ -367,16 +367,32 @@ public class MainActivity extends AppCompatActivity {
                 return out.toString("UTF-8");
             }}finally{c.disconnect();}}
     private void loadPlaylist(String url){if(url!=null&&(url.startsWith("http://")||url.startsWith("https://"))){playlistSources.add(url);prefs.edit().putStringSet("m3u_sources",new HashSet<>(playlistSources)).apply();}loadAllPlaylists();}
+    // Applique une vraie limite en octets avant le décodage UTF-8 de la playlist.
+    private InputStream limitM3uStream(InputStream source,long maxBytes){
+        return new FilterInputStream(source){
+            private long total=0L;
+            @Override public int read()throws IOException{
+                int value=super.read();
+                if(value!=-1&&++total>maxBytes)throw new IOException("Playlist trop volumineuse (limite 64 Mo)");
+                return value;
+            }
+            @Override public int read(byte[] buffer,int offset,int length)throws IOException{
+                int count=super.read(buffer,offset,length);
+                if(count>0){total+=count;if(total>maxBytes)throw new IOException("Playlist trop volumineuse (limite 64 Mo)");}
+                return count;
+            }
+        };
+    }
     private int appendM3uPlaylist(String address,ArrayList<MediaEntry> merged)throws Exception{
  HttpURLConnection connection=open(address);
  try{
   int code=connection.getResponseCode();if(code<200||code>=300)throw new IOException("Serveur HTTP "+code);
   InputStream input=connection.getInputStream();if(input==null)throw new IOException("Réponse vide du serveur");
-  int count=0;long chars=0L;
-  try(BufferedReader reader=new BufferedReader(new InputStreamReader(input,"UTF-8"))){
+  int count=0;
+  try(BufferedReader reader=new BufferedReader(new InputStreamReader(limitM3uStream(input,64L*1024L*1024L),"UTF-8"))){
    String line,name=null,group="Autres",logo="",tvgId="";
    while((line=reader.readLine())!=null&&merged.size()<MAX_CATALOG_ITEMS){
-    chars+=line.length();if(chars>64L*1024L*1024L)throw new IOException("Playlist trop volumineuse (limite 64 Mo)");
+    if(line.length()>1024*1024)throw new IOException("Ligne M3U trop longue (limite 1 Mo)");
     line=line.trim();if(line.startsWith("\uFEFF"))line=line.substring(1);
     if(line.startsWith("#EXTINF:")){
      name=line.substring(line.lastIndexOf(',')+1).trim();group="Autres";logo="";tvgId="";
