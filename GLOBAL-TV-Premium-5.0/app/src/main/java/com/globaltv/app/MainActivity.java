@@ -143,55 +143,75 @@ public class MainActivity extends AppCompatActivity {
     }
     private void onStartupPlaylistLoadFinished(boolean success,String message){if(brandSplash==null)return;splashLoadFinished=true;brandSplash.setMessage(message);long elapsed=android.os.SystemClock.uptimeMillis()-splashStartedAt;long remaining=Math.max(0L,15000L-elapsed);mainHandler.postDelayed(()->{if(splashLoadFinished)finishBrandSplash();},remaining);}
     private void finishBrandSplash(){if(brandSplash==null)return;if(splashTimeoutRunnable!=null)mainHandler.removeCallbacks(splashTimeoutRunnable);BrandSplash splash=brandSplash;brandSplash=null;splash.animate().alpha(0f).setDuration(500L).withEndAction(()->{if(splash.getParent() instanceof ViewGroup)((ViewGroup)splash.getParent()).removeView(splash);}).start();}
-    private final class BrandSplash extends View {
-        private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
-        private float progress=0f;
-        private ValueAnimator animator;
-        private String message="PRÉPARATION DES CHAÎNES TV";
-        void setMessage(String value){message=value==null?"CHARGEMENT DES PLAYLISTS":value;invalidate();}
-        BrandSplash(Context context){super(context);setLayerType(View.LAYER_TYPE_SOFTWARE,null);}
-        void start(){
-            animator=ValueAnimator.ofFloat(0f,1f);animator.setDuration(15000L);animator.setRepeatCount(ValueAnimator.INFINITE);animator.setRepeatMode(ValueAnimator.RESTART);animator.addUpdateListener(a->{progress=(Float)a.getAnimatedValue();invalidate();});animator.start();
+    private final class BrandSplash extends FrameLayout {
+        private final ImageView artwork;
+        private final TextView messageView;
+        private final ProgressBar progressBar;
+
+        void setMessage(String value) {
+            messageView.setText(value == null ? "CHARGEMENT DU CATALOGUE…" : value);
         }
-        private void style(int color,float width,Paint.Style fill){
-            p.setColor(color);p.setStrokeWidth(width);p.setStyle(fill);p.setStrokeCap(Paint.Cap.ROUND);p.setStrokeJoin(Paint.Join.ROUND);p.setShader(null);p.clearShadowLayer();
-        }
-        @Override protected void onDraw(Canvas canvas){
-            super.onDraw(canvas);float w=getWidth(),h=getHeight(),s=Math.max(w/420f,h/760f);
-            canvas.save();canvas.translate((w-420*s)/2f,(h-760*s)/2f);canvas.scale(s,s);
-            p.setShader(new android.graphics.RadialGradient(210,350,520,new int[]{0xFF142B55,0xFF080D19,0xFF050914},null,android.graphics.Shader.TileMode.CLAMP));
-            canvas.drawRect(0,0,420,760,p);p.setShader(null);
-            float appear=Math.min(1f,progress/.28f);
-            float tvL=65,tvT=255,tvR=325,tvB=445;
-            style(0xFF253D70,1,Paint.Style.FILL);canvas.drawRoundRect(tvL,tvT,tvR,tvB,25,25,p);
-            style(0xFF27C8F2,5,Paint.Style.STROKE);p.setShadowLayer(18,0,0,0xFF168FFF);canvas.drawRoundRect(tvL,tvT,tvR,tvB,25,25,p);p.clearShadowLayer();
-            style(0xFF101A35,1,Paint.Style.FILL);canvas.drawRoundRect(tvL+13,tvT+13,tvR-13,tvB-13,16,16,p);
-            style(0xFFB8D7F2,5,Paint.Style.STROKE);canvas.drawLine(165,tvT,140,tvT-36,p);canvas.drawLine(225,tvT,250,tvT-36,p);
-            style(0xFFFFC928,1,Paint.Style.FILL);canvas.drawCircle(138,tvT-39,5,p);canvas.drawCircle(252,tvT-39,5,p);
-            // Le nom apparaît dans l'écran, puis gagne légèrement en relief.
-            float textScale=1f+Math.max(0f,Math.min(1f,(progress-.42f)/.28f))*.18f;
-            canvas.save();canvas.scale(textScale,textScale,195,350);
-            p.setTypeface(Typeface.create("sans-serif-black",Typeface.BOLD));p.setTextAlign(Paint.Align.CENTER);p.setTextSize(62);
-            style(0xFFFFFFFF,1,Paint.Style.FILL);p.setTypeface(Typeface.create("sans-serif-black",Typeface.BOLD));p.setShadowLayer(15,0,0,0xFF27C8F2);
-            canvas.drawText("MT",181,371,p);p.setColor(0xFFFFA51F);canvas.drawText("v",270,371,p);p.clearShadowLayer();canvas.restore();
-            // La parabole arrive uniquement dans la seconde moitié de l'animation.
-            float dish=Math.max(0f,Math.min(1f,(progress-.52f)/.25f));
-            if(dish>0f){
-                p.setAlpha((int)(255*dish));
-                style(0xFFCAD8E8,5,Paint.Style.STROKE);
-                canvas.drawLine(326,360,350,335,p);
-                canvas.drawOval(328,292,393,350,p);
-                style(0xFFCAD8E8,1,Paint.Style.FILL);canvas.drawOval(333,298,388,344,p);
-                style(0xFF263F78,1,Paint.Style.FILL);canvas.drawOval(340,304,382,339,p);
-                style(0xFFFFA51F,4,Paint.Style.STROKE);canvas.drawArc(348,280,410,342,205,95,false,p);
-                style(0xFFFFC928,3,Paint.Style.STROKE);canvas.drawArc(337,265,420,350,205,95,false,p);
-                p.setAlpha(255);
+
+        BrandSplash(Context context) {
+            super(context);
+            setBackgroundColor(Color.BLACK);
+            setFocusable(true);
+            setClickable(true);
+
+            artwork = new ImageView(context);
+            artwork.setImageResource(R.drawable.splash_mtv);
+            artwork.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            artwork.setAdjustViewBounds(false);
+            artwork.setBackgroundColor(Color.BLACK);
+            addView(artwork, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                Gravity.CENTER
+            ));
+
+            LinearLayout loading = new LinearLayout(context);
+            loading.setOrientation(LinearLayout.VERTICAL);
+            loading.setGravity(Gravity.CENTER_HORIZONTAL);
+            loading.setPadding(dp(18), dp(10), dp(18), dp(8));
+            GradientDrawable panel = new GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{0x00101830, 0xB8000716, 0xE6000614}
+            );
+            panel.setCornerRadius(dp(12));
+            loading.setBackground(panel);
+
+            messageView = new TextView(context);
+            messageView.setText("PRÉPARATION DES CHAÎNES TV…");
+            messageView.setTextColor(Color.WHITE);
+            messageView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+            messageView.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+            messageView.setGravity(Gravity.CENTER);
+            messageView.setShadowLayer(dp(4), 0, dp(1), Color.BLACK);
+            loading.addView(messageView, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ));
+
+            progressBar = new ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal);
+            progressBar.setIndeterminate(true);
+            if (android.os.Build.VERSION.SDK_INT >= 21) {
+                progressBar.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(0xFFFFC52B));
+                progressBar.setProgressTintList(android.content.res.ColorStateList.valueOf(0xFFFFC52B));
             }
-            if(progress>.84f){style(0xFFFFC928,2,Paint.Style.STROKE);canvas.drawCircle(205,350,125+(progress-.84f)*55,p);}
-            canvas.restore();
-            p.setShader(null);p.setTypeface(Typeface.create("sans-serif-medium",Typeface.BOLD));p.setTextAlign(Paint.Align.CENTER);p.setTextSize(Math.max(13f,dp(13)));p.setColor(0xFFE7F2FF);p.setAlpha(225);canvas.drawText(message,w/2f,h*.84f,p);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(Math.max(2f,dp(2)));p.setColor(0xFF27C8F2);canvas.drawArc(w/2f-dp(15),h*.89f-dp(15),w/2f+dp(15),h*.89f+dp(15),progress*360f,245f,false,p);p.setStyle(Paint.Style.FILL);p.setAlpha(255);
+            LinearLayout.LayoutParams barParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(7)
+            );
+            barParams.topMargin = dp(10);
+            loading.addView(progressBar, barParams);
+
+            FrameLayout.LayoutParams loadingParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL
+            );
+            loadingParams.leftMargin = dp(18);
+            loadingParams.rightMargin = dp(18);
+            loadingParams.bottomMargin = dp(20);
+            addView(loading, loadingParams);
         }
-        @Override protected void onDetachedFromWindow(){if(animator!=null&&animator.isRunning())animator.cancel();super.onDetachedFromWindow();}
     }
 
     private void buildUi(){
