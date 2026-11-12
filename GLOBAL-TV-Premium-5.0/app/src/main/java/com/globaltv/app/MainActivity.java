@@ -66,6 +66,7 @@ public class MainActivity extends AppCompatActivity {
     private volatile boolean destroyed=false;
     private volatile int catalogRequestId=0;
     private volatile int epgRequestId=0;
+    private volatile int seriesRequestId=0;
     private String parentalAuthorizedTarget="";
     private boolean resumePlaybackOnStart=false;
     private BrandSplash brandSplash;
@@ -536,18 +537,28 @@ private void loadAllPlaylists(){
     private String api(String action,String extra){String base=xtreamBase;if(!base.endsWith("/"))base+="/";return base+"player_api.php?username="+enc(xtreamUser)+"&password="+enc(xtreamPass)+"&action="+action+(extra==null?"":extra);}
     private String enc(String s){try{return java.net.URLEncoder.encode(s,"UTF-8");}catch(Exception e){return s;}}
     private void loadXtream(){
- final int request=++catalogRequestId;status.setText("Connexion au serveur Xtream Codes…");
+ final int request=++catalogRequestId;seriesRequestId++;status.setText("Connexion au serveur Xtream Codes…");
  executeIo(()->{
   ArrayList<MediaEntry> parsed=new ArrayList<>();ArrayList<String> endpointErrors=new ArrayList<>();String err=null;
   try{
+   if(request!=catalogRequestId||destroyed)return;
    String auth=get(xtreamBase+(xtreamBase.endsWith("/")?"":"/")+"player_api.php?username="+enc(xtreamUser)+"&password="+enc(xtreamPass));
+   if(request!=catalogRequestId||destroyed)return;
    JSONObject root=new JSONObject(auth);JSONObject user=root.optJSONObject("user_info");if(user!=null&&!user.optString("auth","1").equals("1"))throw new IOException("Identifiants refusés par le serveur");
-   Map<String,String> liveCats=safeCategories("get_live_categories"),vodCats=safeCategories("get_vod_categories"),seriesCats=safeCategories("get_series_categories");
-   try{parseXtreamArray(parsed,get(api("get_live_streams","")),"live","m3u8",liveCats);}catch(Exception e){endpointErrors.add("TV : "+e.getMessage());}
-   try{parseXtreamArray(parsed,get(api("get_vod_streams","")),"movie","mp4",vodCats);}catch(Exception e){endpointErrors.add("Films : "+e.getMessage());}
-   try{parseXtreamArray(parsed,get(api("get_series","")),"series","mp4",seriesCats);}catch(Exception e){endpointErrors.add("Séries : "+e.getMessage());}
+   Map<String,String> liveCats=safeCategories("get_live_categories",request);
+   if(request!=catalogRequestId||destroyed)return;
+   Map<String,String> vodCats=safeCategories("get_vod_categories",request);
+   if(request!=catalogRequestId||destroyed)return;
+   Map<String,String> seriesCats=safeCategories("get_series_categories",request);
+   if(request!=catalogRequestId||destroyed)return;
+   try{parseXtreamArray(parsed,get(api("get_live_streams","")),"live","m3u8",liveCats);}catch(Exception e){if(request==catalogRequestId)endpointErrors.add("TV : "+e.getMessage());}
+   if(request!=catalogRequestId||destroyed)return;
+   try{parseXtreamArray(parsed,get(api("get_vod_streams","")),"movie","mp4",vodCats);}catch(Exception e){if(request==catalogRequestId)endpointErrors.add("Films : "+e.getMessage());}
+   if(request!=catalogRequestId||destroyed)return;
+   try{parseXtreamArray(parsed,get(api("get_series","")),"series","mp4",seriesCats);}catch(Exception e){if(request==catalogRequestId)endpointErrors.add("Séries : "+e.getMessage());}
+   if(request!=catalogRequestId||destroyed)return;
    if(parsed.isEmpty()&&!endpointErrors.isEmpty())throw new IOException(endpointErrors.get(0));
-  }catch(Exception e){err=e.getMessage();}
+  }catch(Exception e){if(request!=catalogRequestId||destroyed)return;err=e.getMessage();}
   final String error=err;final ArrayList<String> failures=endpointErrors;if(request!=catalogRequestId||destroyed)return;
   postUi(()->{if(request!=catalogRequestId)return;if(error!=null){status.setText("Connexion Xtream impossible : "+error);return;}
    renderOffset=0;all.clear();all.addAll(parsed);sourceMode="XTREAM";sourceLabel.setText("SOURCE : XTREAM");
@@ -555,7 +566,7 @@ private void loadAllPlaylists(){
   });
  });
 }
-    private Map<String,String> safeCategories(String action){try{return parseCategories(get(api(action,"")));}catch(Exception ignored){return new HashMap<>();}}
+    private Map<String,String> safeCategories(String action,int request){try{if(request!=catalogRequestId||destroyed)return new HashMap<>();String json=get(api(action,""));if(request!=catalogRequestId||destroyed)return new HashMap<>();return parseCategories(json);}catch(Exception ignored){return new HashMap<>();}}
     private Map<String,String> parseCategories(String json){Map<String,String> map=new HashMap<>();try{JSONArray a=new JSONArray(json);for(int i=0;i<a.length();i++){JSONObject o=a.optJSONObject(i);if(o!=null)map.put(o.optString("category_id"),o.optString("category_name","Autres"));}}catch(Exception ignored){}return map;}
     private void parseXtreamArray(ArrayList<MediaEntry> out,String json,String type,String fallback,Map<String,String> categories){try{JSONArray a=new JSONArray(json);for(int i=0;i<a.length()&&out.size()<MAX_CATALOG_ITEMS;i++){JSONObject o=a.optJSONObject(i);if(o==null)continue;String id=o.optString(type.equals("series")?"series_id":"stream_id",o.optString("id",""));if(id.isEmpty())continue;String name=o.optString("name",type.equals("series")?"Série":"Contenu");String cat=o.optString("category_name",(categories.containsKey(o.optString("category_id"))?categories.get(o.optString("category_id")):(type.equals("live")?"TV en direct":type.equals("movie")?"Films":"Séries")));String logo=o.optString("stream_icon",o.optString("cover",""));String ext=o.optString("container_extension",fallback);String path=xtreamBase+(xtreamBase.endsWith("/")?"":"/")+type+"/"+enc(xtreamUser)+"/"+enc(xtreamPass)+"/"+id+"."+ext;MediaEntry m=new MediaEntry(name,path,cat,logo,type);m.id=id;m.container=ext;m.tvgId=o.optString("epg_channel_id","");out.add(m);}}catch(Exception ignored){}}
 
@@ -602,7 +613,7 @@ private void loadAllPlaylists(){
         TextView featuredTitle=text("CHAÎNES À DÉCOUVRIR",12,0xFFFFC45C,true);featuredTitle.setLetterSpacing(0.08f);LinearLayout.LayoutParams ft=new LinearLayout.LayoutParams(-1,dp(34));ft.topMargin=dp(8);list.addView(featuredTitle,ft);
         HorizontalScrollView featuredScroll=new HorizontalScrollView(this);featuredScroll.setHorizontalScrollBarEnabled(false);LinearLayout featured=row();featuredScroll.addView(featured);list.addView(featuredScroll,new LinearLayout.LayoutParams(-1,dp(154)));
         int count=0;for(MediaEntry entry:all){if(entry==null||entry.name==null||entry.name.isEmpty())continue;if(PROFILE_CHILD.equals(activeProfile)&&isAdultEntry(entry))continue;LinearLayout card=column();card.setGravity(Gravity.CENTER_HORIZONTAL);card.setPadding(dp(8),dp(8),dp(8),dp(6));card.setBackground(bg(PANEL,12));card.setFocusable(true);card.setClickable(true);LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(dp(132),dp(138));cp.rightMargin=dp(10);featured.addView(card,cp);
-            ImageView logo=new ImageView(this);logo.setScaleType(ImageView.ScaleType.FIT_CENTER);logo.setBackground(bg(CARD,8));card.addView(logo,new LinearLayout.LayoutParams(dp(112),dp(78)));if(entry.logo!=null&&!entry.logo.isEmpty())com.bumptech.glide.Glide.with(this).load(entry.logo).placeholder(bg(CARD,8)).error(bg(CARD,8)).into(logo);
+            ImageView logo=new ImageView(this);logo.setScaleType(ImageView.ScaleType.FIT_CENTER);logo.setBackground(bg(CARD,8));card.addView(logo,new LinearLayout.LayoutParams(dp(112),dp(78)));if(entry.logo!=null&&!entry.logo.isEmpty())com.bumptech.glide.Glide.with(this).load(entry.logo).override(dp(112),dp(78)).placeholder(bg(CARD,8)).error(bg(CARD,8)).into(logo);
             TextView label=text(entry.name,11,Color.WHITE,true);label.setGravity(Gravity.CENTER);label.setMaxLines(2);card.addView(label,new LinearLayout.LayoutParams(-1,dp(42)));
             card.setOnFocusChangeListener((v,focus)->{if(focus){GradientDrawable d=bg(0xFF3A315D,12);d.setStroke(dp(2),FOCUS_GOLD);v.setBackground(d);v.animate().scaleX(1.05f).scaleY(1.05f).setDuration(110).start();}else{v.setBackground(bg(PANEL,12));v.animate().scaleX(1f).scaleY(1f).setDuration(110).start();}});
             card.setOnClickListener(v->play(entry));if(++count>=12)break;
@@ -637,7 +648,7 @@ private void loadAllPlaylists(){
             LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(-1,dp(62));ip.bottomMargin=dp(8);list.addView(item,ip);
             if(chips!=null){for(int ci=0;ci<chips.getChildCount();ci++)chips.getChildAt(ci).setNextFocusDownId(item.getId());if(chips.getChildCount()>0)item.setNextFocusUpId(chips.getChildAt(0).getId());}
             ImageView artwork=new ImageView(this);artwork.setScaleType(ImageView.ScaleType.CENTER_CROP);artwork.setBackground(bg(CARD,8));item.addView(artwork,new LinearLayout.LayoutParams(dp(76),dp(52)));
-            if(c.logo!=null&&!c.logo.isEmpty())com.bumptech.glide.Glide.with(this).load(c.logo).placeholder(bg(CARD,8)).error(bg(CARD,8)).into(artwork);else artwork.setImageDrawable(bg(CARD,8));
+            if(c.logo!=null&&!c.logo.isEmpty())com.bumptech.glide.Glide.with(this).load(c.logo).override(dp(76),dp(52)).placeholder(bg(CARD,8)).error(bg(CARD,8)).into(artwork);else artwork.setImageDrawable(bg(CARD,8));
             LinearLayout meta=column();meta.setPadding(dp(12),0,0,0);item.addView(meta,new LinearLayout.LayoutParams(0,-1,1));
             meta.addView(text(itemName,14,Color.WHITE,true));
             String detail=itemGroup+"  •  "+(c.type.equals("live")||c.type.equals("m3u")?"En direct":c.type.equals("series")?"Série":"VOD");
@@ -913,7 +924,38 @@ private void loadAllPlaylists(){
         if(controller!=null){controller.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);controller.hide(WindowInsetsCompat.Type.systemBars());}
     }
 
-    private void showSeries(MediaEntry s){if(!sourceMode.equals("XTREAM")){Toast.makeText(this,"Les épisodes doivent être fournis par une source VOD compatible.",Toast.LENGTH_LONG).show();return;}status.setText("Chargement des saisons…");executeIo(()->{String err=null;ArrayList<MediaEntry> eps=new ArrayList<>();try{JSONObject data=new JSONObject(get(api("get_series_info","&series_id="+enc(s.id))));JSONObject seasons=data.optJSONObject("episodes");if(seasons!=null){Iterator<String> keys=seasons.keys();while(keys.hasNext()){String k=keys.next();JSONArray a=seasons.optJSONArray(k);if(a==null)continue;for(int i=0;i<a.length();i++){JSONObject o=a.optJSONObject(i);if(o==null)continue;String id=o.optString("id","");if(id.isEmpty())continue;String ext=o.optString("container_extension","mp4");String u=xtreamBase+(xtreamBase.endsWith("/")?"":"/")+"series/"+enc(xtreamUser)+"/"+enc(xtreamPass)+"/"+id+"."+ext;eps.add(new MediaEntry(o.optString("title","Épisode "+(i+1)),u,"Saison "+k,"","episode"));}}}}catch(Exception e){err=e.getMessage();}final String error=err;postUi(()->{if(error!=null||eps.isEmpty()){Toast.makeText(this,"Aucun épisode disponible",Toast.LENGTH_LONG).show();return;}String[] names=new String[eps.size()];for(int i=0;i<eps.size();i++)names[i]=eps.get(i).group+" — "+eps.get(i).name;new AlertDialog.Builder(this).setTitle(s.name).setItems(names,(d,w)->play(eps.get(w))).setNegativeButton("Fermer",null).show();});});}
+    private void showSeries(MediaEntry s){
+ if(!sourceMode.equals("XTREAM")){Toast.makeText(this,"Les épisodes doivent être fournis par une source VOD compatible.",Toast.LENGTH_LONG).show();return;}
+ final int request=++seriesRequestId;status.setText("Chargement des saisons…");
+ executeIo(()->{
+  String err=null;ArrayList<MediaEntry> eps=new ArrayList<>();
+  try{
+   String response=get(api("get_series_info","&series_id="+enc(s.id)));
+   if(request!=seriesRequestId||destroyed)return;
+   JSONObject data=new JSONObject(response);JSONObject seasons=data.optJSONObject("episodes");
+   if(seasons!=null){
+    Iterator<String> keys=seasons.keys();
+    while(keys.hasNext()&&eps.size()<2000&&request==seriesRequestId&&!destroyed){
+     String k=keys.next();JSONArray a=seasons.optJSONArray(k);if(a==null)continue;
+     for(int i=0;i<a.length()&&eps.size()<2000&&request==seriesRequestId&&!destroyed;i++){
+      JSONObject o=a.optJSONObject(i);if(o==null)continue;String id=o.optString("id","");if(id.isEmpty())continue;
+      String ext=o.optString("container_extension","mp4");
+      String u=xtreamBase+(xtreamBase.endsWith("/")?"":"/")+"series/"+enc(xtreamUser)+"/"+enc(xtreamPass)+"/"+id+"."+ext;
+      eps.add(new MediaEntry(o.optString("title","Épisode "+(i+1)),u,"Saison "+k,"","episode"));
+     }
+    }
+   }
+  }catch(Exception e){if(request!=seriesRequestId||destroyed)return;err=e.getMessage();}
+  if(request!=seriesRequestId||destroyed)return;
+  final String error=err;
+  postUi(()->{
+   if(request!=seriesRequestId)return;
+   if(error!=null||eps.isEmpty()){Toast.makeText(this,"Aucun épisode disponible",Toast.LENGTH_LONG).show();return;}
+   String[] names=new String[eps.size()];for(int i=0;i<eps.size();i++)names[i]=eps.get(i).group+" — "+eps.get(i).name;
+   new AlertDialog.Builder(this).setTitle(s.name).setItems(names,(d,w)->play(eps.get(w))).setNegativeButton("Fermer",null).show();
+  });
+ });
+}
 
     private boolean isAdultEntry(MediaEntry item){
         if(item==null)return false;
@@ -1291,6 +1333,7 @@ private void showPinEditor(){
         destroyed=true;
         catalogRequestId++;
         epgRequestId++;
+        seriesRequestId++;
         unregisterNetworkMonitor();
         if(pendingSearch!=null){mainHandler.removeCallbacks(pendingSearch);pendingSearch=null;}
         if(networkRecoveryRunnable!=null){mainHandler.removeCallbacks(networkRecoveryRunnable);networkRecoveryRunnable=null;}
