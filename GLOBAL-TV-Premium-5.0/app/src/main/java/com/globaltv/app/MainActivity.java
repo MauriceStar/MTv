@@ -612,13 +612,14 @@ private void loadAllPlaylists(){
   final String error=err;final ArrayList<String> failures=endpointErrors;if(request!=catalogRequestId||destroyed)return;
   postUi(()->{if(request!=catalogRequestId)return;if(error!=null){status.setText("Connexion Xtream impossible : "+error);return;}
    renderOffset=0;all.clear();all.addAll(parsed);sourceMode="XTREAM";sourceLabel.setText("SOURCE : XTREAM");
-   status.setText(parsed.size()+" éléments récupérés • Serveur Xtream"+(failures.isEmpty()?"":" • "+failures.size()+" catégorie(s) indisponible(s)"));renderList();
+   status.setText(parsed.size()+" éléments récupérés • Serveur Xtream"+(failures.isEmpty()?"":" • "+failures.size()+" endpoint(s) partiellement indisponible(s)"));renderList();
   });
  });
 }
     private Map<String,String> safeCategories(String action,int request,ArrayList<String> errors,String label){try{if(request!=catalogRequestId||destroyed)return new HashMap<>();String json=get(api(action,""));if(request!=catalogRequestId||destroyed)return new HashMap<>();return parseCategories(json,request);}catch(Exception e){if(request==catalogRequestId&&!destroyed)errors.add(label+" : "+(e.getMessage()==null?"réponse invalide":e.getMessage()));return new HashMap<>();}}
     private Map<String,String> parseCategories(String json,int request)throws Exception{Map<String,String> map=new HashMap<>();JSONArray a;try{a=new JSONArray(json);}catch(Exception e){throw new IOException("Réponse catégories Xtream invalide",e);}for(int i=0;i<a.length()&&request==catalogRequestId&&!destroyed;i++){JSONObject o=a.optJSONObject(i);if(o!=null){String id=o.optString("category_id","");if(!id.isEmpty())map.put(id,o.optString("category_name","Autres"));}}return map;}
-    private void parseXtreamArray(ArrayList<MediaEntry> out,String json,String type,String fallback,Map<String,String> categories,int request)throws Exception{JSONArray a;try{a=new JSONArray(json);}catch(Exception e){throw new IOException("Réponse "+(type.equals("live")?"TV":type.equals("movie")?"films":"séries")+" Xtream invalide",e);}for(int i=0;i<a.length()&&out.size()<MAX_CATALOG_ITEMS&&request==catalogRequestId&&!destroyed;i++){JSONObject o=a.optJSONObject(i);if(o==null)continue;String id=o.optString(type.equals("series")?"series_id":"stream_id",o.optString("id",""));if(id.isEmpty())continue;String name=o.optString("name",type.equals("series")?"Série":"Contenu");String cat=o.optString("category_name",(categories.containsKey(o.optString("category_id"))?categories.get(o.optString("category_id")):(type.equals("live")?"TV en direct":type.equals("movie")?"Films":"Séries")));String logo=o.optString("stream_icon",o.optString("cover",""));String ext=o.optString("container_extension",fallback);if(!ext.matches("[A-Za-z0-9]{1,8}"))ext=fallback;String path=xtreamBase+(xtreamBase.endsWith("/")?"":"/")+type+"/"+enc(xtreamUser)+"/"+enc(xtreamPass)+"/"+id+"."+ext;MediaEntry m=new MediaEntry(name,path,cat,logo,type);m.id=id;m.container=ext;m.tvgId=o.optString("epg_channel_id","");out.add(m);}}
+    private boolean isSafeXtreamId(String id){return id!=null&&id.matches("[0-9]{1,20}");}
+    private void parseXtreamArray(ArrayList<MediaEntry> out,String json,String type,String fallback,Map<String,String> categories,int request)throws Exception{JSONArray a;try{a=new JSONArray(json);}catch(Exception e){throw new IOException("Réponse "+(type.equals("live")?"TV":type.equals("movie")?"films":"séries")+" Xtream invalide",e);}for(int i=0;i<a.length()&&out.size()<MAX_CATALOG_ITEMS&&request==catalogRequestId&&!destroyed;i++){JSONObject o=a.optJSONObject(i);if(o==null)continue;String id=o.optString(type.equals("series")?"series_id":"stream_id",o.optString("id",""));if(!isSafeXtreamId(id))continue;String name=o.optString("name",type.equals("series")?"Série":"Contenu");String cat=o.optString("category_name",(categories.containsKey(o.optString("category_id"))?categories.get(o.optString("category_id")):(type.equals("live")?"TV en direct":type.equals("movie")?"Films":"Séries")));String logo=o.optString("stream_icon",o.optString("cover",""));String ext=o.optString("container_extension",fallback);if(!ext.matches("[A-Za-z0-9]{1,8}"))ext=fallback;String path=xtreamBase+(xtreamBase.endsWith("/")?"":"/")+type+"/"+enc(xtreamUser)+"/"+enc(xtreamPass)+"/"+id+"."+ext;MediaEntry m=new MediaEntry(name,path,cat,logo,type);m.id=id;m.container=ext;m.tvgId=o.optString("epg_channel_id","");out.add(m);}}
 
     private boolean hasHistory(MediaEntry c){if(c==null||c.url==null||c.url.isEmpty())return false;try{return historyKeysCache.contains("history_"+key(c.url));}catch(Exception ex){return false;}}
     private long historyPosition(MediaEntry c){if(c==null||c.url==null||prefs==null)return 0L;try{Object value=prefs.getAll().get("position_"+key(c.url));return value instanceof Long?Math.max(0L,(Long)value):0L;}catch(Exception ex){return 0L;}}
@@ -1064,13 +1065,14 @@ private void loadAllPlaylists(){
    String response=get(api("get_series_info","&series_id="+enc(s.id)));
    if(request!=seriesRequestId||destroyed)return;
    JSONObject data=new JSONObject(response);JSONObject seasons=data.optJSONObject("episodes");
-   if(seasons!=null){
+   if(seasons==null)throw new IOException("Réponse des saisons Xtream invalide ou indisponible");
+    {
     Iterator<String> keys=seasons.keys();
     while(keys.hasNext()&&eps.size()<2000&&request==seriesRequestId&&!destroyed){
      String k=keys.next();JSONArray a=seasons.optJSONArray(k);if(a==null)continue;
      for(int i=0;i<a.length()&&eps.size()<2000&&request==seriesRequestId&&!destroyed;i++){
-      JSONObject o=a.optJSONObject(i);if(o==null)continue;String id=o.optString("id","");if(id.isEmpty())continue;
-      String ext=o.optString("container_extension","mp4");
+      JSONObject o=a.optJSONObject(i);if(o==null)continue;String id=o.optString("id","");if(!isSafeXtreamId(id))continue;
+      String ext=o.optString("container_extension","mp4");if(!ext.matches("[A-Za-z0-9]{1,8}"))ext="mp4";
       String u=xtreamBase+(xtreamBase.endsWith("/")?"":"/")+"series/"+enc(xtreamUser)+"/"+enc(xtreamPass)+"/"+id+"."+ext;
       eps.add(new MediaEntry(o.optString("title","Épisode "+(i+1)),u,"Saison "+k,"","episode"));
      }
@@ -1081,7 +1083,7 @@ private void loadAllPlaylists(){
   final String error=err;
   postUi(()->{
    if(request!=seriesRequestId)return;
-   if(error!=null||eps.isEmpty()){Toast.makeText(this,"Aucun épisode disponible",Toast.LENGTH_LONG).show();return;}
+   if(error!=null||eps.isEmpty()){Toast.makeText(this,error==null?"Aucun épisode disponible":("Séries : "+error),Toast.LENGTH_LONG).show();return;}
    String[] names=new String[eps.size()];for(int i=0;i<eps.size();i++)names[i]=eps.get(i).group+" — "+eps.get(i).name;
    new AlertDialog.Builder(this).setTitle(s.name).setItems(names,(d,w)->play(eps.get(w))).setNegativeButton("Fermer",null).show();
   });
