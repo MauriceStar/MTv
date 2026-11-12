@@ -4,6 +4,8 @@
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <application
         android:allowBackup="false"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:label="MTv"
         android:icon="@drawable/ic_launcher_tv"
         android:roundIcon="@drawable/ic_launcher_tv"
