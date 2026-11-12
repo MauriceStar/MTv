@@ -472,7 +472,6 @@ public class MainActivity extends AppCompatActivity {
                     URL next=new URL(current,location);
                     String nextScheme=next.getProtocol();
                     if(!"http".equalsIgnoreCase(nextScheme)&&!"https".equalsIgnoreCase(nextScheme))throw new IOException("Protocole de redirection non autorisé");
-                    if("https".equalsIgnoreCase(scheme)&&"http".equalsIgnoreCase(nextScheme))throw new IOException("Redirection HTTPS vers HTTP bloquée");
                     connection.disconnect();current=next;continue;
                 }
                 return connection;
