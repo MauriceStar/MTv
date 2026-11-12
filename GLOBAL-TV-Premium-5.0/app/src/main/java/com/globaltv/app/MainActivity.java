@@ -86,6 +86,7 @@ public class MainActivity extends AppCompatActivity {
     private final Map<String,String> epgNext=new ConcurrentHashMap<>();
     private SharedPreferences prefs;
     private static final String PREFS_KEY_ALIAS="GLOBAL_TV_LOCAL_DATA_V1";
+    private boolean secureStorageReadFailed=false;
     private String epgUrl="";
     private final LinkedHashSet<String> playlistSources=new LinkedHashSet<>();
     private String lastPlayedUrl="";
@@ -172,7 +173,7 @@ public class MainActivity extends AppCompatActivity {
         if(stored==null)return fallback;
         if(stored.startsWith("enc:v1:")){
             try{return decryptLocalValue(stored,preferenceKey);}
-            catch(Exception error){android.util.Log.e("GLOBALTV","Impossible de déchiffrer "+preferenceKey,error);return fallback;}
+            catch(Exception error){secureStorageReadFailed=true;android.util.Log.e("GLOBALTV","Impossible de déchiffrer "+preferenceKey,error);return fallback;}
         }
         try{
             String encrypted=encryptLocalValue(stored,preferenceKey);
@@ -181,6 +182,7 @@ public class MainActivity extends AppCompatActivity {
         return stored;
     }
     private boolean putSecureString(String preferenceKey,String value){
+        if(secureStorageReadFailed)return false;
         try{return prefs.edit().putString(preferenceKey,encryptLocalValue(value==null?"":value,preferenceKey)).commit();}
         catch(Exception error){android.util.Log.e("GLOBALTV","Écriture chiffrée impossible pour "+preferenceKey,error);return false;}
     }
@@ -190,23 +192,24 @@ public class MainActivity extends AppCompatActivity {
         HashSet<String> result=new HashSet<>(),encoded=new HashSet<>();
         boolean changed=false,failed=false;
         javax.crypto.SecretKey secretKey;
-        try{secretKey=getLocalEncryptionKey();}catch(Exception error){android.util.Log.e("GLOBALTV","Clé de chiffrement indisponible",error);return new HashSet<>(stored);}
+        try{secretKey=getLocalEncryptionKey();}catch(Exception error){secureStorageReadFailed=true;android.util.Log.e("GLOBALTV","Clé de chiffrement indisponible",error);return new HashSet<>();}
         for(String value:stored){
             if(value!=null&&value.startsWith("enc:v1:")){
                 try{result.add(decryptLocalValue(value,preferenceKey,secretKey));encoded.add(value);}
-                catch(Exception error){failed=true;android.util.Log.e("GLOBALTV","Élément chiffré illisible dans "+preferenceKey,error);}
+                catch(Exception error){failed=true;secureStorageReadFailed=true;android.util.Log.e("GLOBALTV","Élément chiffré illisible dans "+preferenceKey,error);}
             }else{
                 result.add(value);
                 try{encoded.add(encryptLocalValue(value,preferenceKey,secretKey));changed=true;}
                 catch(Exception error){android.util.Log.e("GLOBALTV","Migration de liste impossible pour "+preferenceKey,error);return result;}
             }
         }
-        if(failed)return result;
+        if(failed){secureStorageReadFailed=true;return result;}
         if(changed&&!prefs.edit().putStringSet(preferenceKey,encoded).commit())
             android.util.Log.e("GLOBALTV","Échec de validation de la migration "+preferenceKey);
         return result;
     }
     private boolean putSecureStringSet(String preferenceKey,Set<String> values){
+        if(secureStorageReadFailed)return false;
         try{
             javax.crypto.SecretKey secretKey=getLocalEncryptionKey();
             HashSet<String> encoded=new HashSet<>();
@@ -226,7 +229,7 @@ public class MainActivity extends AppCompatActivity {
         if(b!=null){section=b.getString("session_section","ACCUEIL");activeFilter=b.getString("session_filter","Tout");String savedPlayerUrl=b.getString("session_player_url","");try{restorePlaybackUrl=savedPlayerUrl.startsWith("enc:v1:")?decryptLocalValue(savedPlayerUrl,"session_player_url"):savedPlayerUrl;}catch(Exception secureError){restorePlaybackUrl="";android.util.Log.e("GLOBALTV","État de lecture chiffré illisible",secureError);}restorePlaybackName=b.getString("session_player_name","Reprise");restorePlaybackPosition=b.getLong("session_player_position",0L);restorePlaybackWasPlaying=b.getBoolean("session_player_playing",true);restorePlayerFullscreen=b.getBoolean("session_player_fullscreen",false);pendingWebViewState=null;}
         activeProfile=prefs.getString("active_profile",PROFILE_ADULT);
         configureMemoryBudget();
-        migrateSensitivePreferences();favorites.addAll(getSecureStringSet("favorites",new HashSet<>()));for(String group:prefs.getStringSet("favorite_groups",new HashSet<>()))favoriteGroups.put(group,new LinkedHashSet<>(getSecureStringSet("favorite_group_"+key(group),new HashSet<>())));playlistSources.addAll(getSecureStringSet("m3u_sources",new LinkedHashSet<>()));
+        migrateSensitivePreferences();if(secureStorageReadFailed)Toast.makeText(this,"Certaines données protégées sont momentanément illisibles. Elles n’ont pas été supprimées.",Toast.LENGTH_LONG).show();favorites.addAll(getSecureStringSet("favorites",new HashSet<>()));for(String group:prefs.getStringSet("favorite_groups",new HashSet<>()))favoriteGroups.put(group,new LinkedHashSet<>(getSecureStringSet("favorite_group_"+key(group),new HashSet<>())));playlistSources.addAll(getSecureStringSet("m3u_sources",new LinkedHashSet<>()));
         playlistSources.add(DEFAULT_PLAYLIST);
         playlistSources.addAll(Arrays.asList(BUILT_IN_PLAYLISTS));
         putSecureStringSet("m3u_sources",new LinkedHashSet<>(playlistSources));
