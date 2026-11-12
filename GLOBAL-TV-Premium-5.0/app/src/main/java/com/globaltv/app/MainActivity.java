@@ -65,6 +65,7 @@ public class MainActivity extends AppCompatActivity {
     private Runnable pendingSearch;
     private volatile boolean destroyed=false;
     private volatile int catalogRequestId=0;
+    private volatile int epgRequestId=0;
     private String parentalAuthorizedTarget="";
     private boolean resumePlaybackOnStart=false;
     private BrandSplash brandSplash;
@@ -1136,6 +1137,7 @@ private void showPinEditor(){
         };
     }
     private void loadEpg(String url){
+        final int request=++epgRequestId;
         status.setText("Chargement du guide TV…");
         executeIo(()->{
             Map<String,String> now=new HashMap<>(),next=new HashMap<>();
@@ -1154,16 +1156,18 @@ private void showPinEditor(){
                         String channel=null;
                         long start=0L,stop=0L,nowMs=System.currentTimeMillis();
                         int event=parser.getEventType();
-                        while(event!=XmlPullParser.END_DOCUMENT){
+                        while(event!=XmlPullParser.END_DOCUMENT&&request==epgRequestId&&!destroyed){
                             if(event==XmlPullParser.START_TAG&&"programme".equals(parser.getName())){
                                 channel=parser.getAttributeValue(null,"channel");
+                                if(channel!=null&&channel.length()>256)channel=channel.substring(0,256);
                                 start=parseXmlTvTime(parser.getAttributeValue(null,"start"));
                                 stop=parseXmlTvTime(parser.getAttributeValue(null,"stop"));
                             }else if(event==XmlPullParser.START_TAG&&"title".equals(parser.getName())&&channel!=null){
                                 String title=parser.nextText();
                                 if(title!=null&&!title.isEmpty()){
-                                    if(start<=nowMs&&stop>nowMs)now.put(channel,title);
-                                    else if(start>nowMs&&!next.containsKey(channel))next.put(channel,title);
+                                    if(title.length()>512)title=title.substring(0,512);
+                                    if(start<=nowMs&&stop>nowMs&&(!now.containsKey(channel)||now.size()<5000))now.put(channel,title);
+                                    else if(start>nowMs&&!next.containsKey(channel)&&next.size()<5000)next.put(channel,title);
                                 }
                             }
                             event=parser.next();
@@ -1171,10 +1175,12 @@ private void showPinEditor(){
                     }
                 }finally{connection.disconnect();}
             }catch(Exception e){err=e.getMessage();}
+            if(request!=epgRequestId||destroyed)return;
             final String error=err;
             epgNow.clear();epgNow.putAll(now);
             epgNext.clear();epgNext.putAll(next);
             postUi(()->{
+                if(request!=epgRequestId)return;
                 status.setText(error==null?now.size()+" programmes en cours • "+next.size()+" à suivre • Guide TV XMLTV":"Erreur EPG : "+error);
                 renderList();
             });
@@ -1237,6 +1243,7 @@ private void showPinEditor(){
     @Override protected void onDestroy(){
         destroyed=true;
         catalogRequestId++;
+        epgRequestId++;
         unregisterNetworkMonitor();
         if(pendingSearch!=null){mainHandler.removeCallbacks(pendingSearch);pendingSearch=null;}
         if(networkRecoveryRunnable!=null){mainHandler.removeCallbacks(networkRecoveryRunnable);networkRecoveryRunnable=null;}
