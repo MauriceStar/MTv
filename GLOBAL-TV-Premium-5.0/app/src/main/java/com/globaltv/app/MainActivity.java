@@ -125,7 +125,7 @@ public class MainActivity extends AppCompatActivity {
         prefs.edit().putStringSet("m3u_sources",new LinkedHashSet<>(playlistSources)).apply();
         epgUrl=prefs.getString("epg_url","");mtvPlaylistUrl=prefs.getString("mtv_playlist_url","");lastPlayedUrl=prefs.getString("last_url","");buildUi();if(b!=null){if(search!=null)search.setText(b.getString("session_search",""));String savedWebUrl=b.getString("session_web_url","");if(!savedWebUrl.isEmpty()&&isWebSection(section))showSiteWebView(savedWebUrl);
             if(!restorePlaybackUrl.isEmpty()){if(restorePlaybackPosition>0L)prefs.edit().putLong("position_"+key(restorePlaybackUrl),restorePlaybackPosition).apply();MediaEntry restored=new MediaEntry(restorePlaybackName,restorePlaybackUrl,"Reprise","", "live");startPlayer(restored);if(!restorePlaybackWasPlaying&&player!=null)player.pause();if(restorePlayerFullscreen&&playerView!=null)togglePlayerExpanded();}}
-        showBrandSplash();loadAllPlaylists();if(!epgUrl.isEmpty())loadEpg(epgUrl);}
+        if(b==null)showBrandSplash();loadAllPlaylists();if(!epgUrl.isEmpty())loadEpg(epgUrl);}
     // Adapte le nombre de cartes rendues à la classe mémoire réelle de l'appareil.
     // Le catalogue reste complet en mémoire (plafonné), seule la vue est limitée.
     private void configureMemoryBudget(){
@@ -873,7 +873,7 @@ private void showPinEditor(){
         super.onSaveInstanceState(outState);
         outState.putString("session_section",section);outState.putString("session_filter",activeFilter);outState.putString("session_search",search==null?"":search.getText().toString());
         if(catalogScroll!=null)outState.putInt("session_catalog_scroll",catalogScroll.getScrollY());
-        if(player!=null&&currentEntry!=null){long position=player.getCurrentPosition();outState.putString("session_player_url",currentEntry.url);outState.putString("session_player_name",currentEntry.name==null?"Reprise":currentEntry.name);outState.putLong("session_player_position",position);outState.putBoolean("session_player_playing",player.getPlayWhenReady());outState.putBoolean("session_player_fullscreen",playerFullscreen);if(position>0L)prefs.edit().putLong("position_"+key(currentEntry.url),position).apply();}
+        if(player!=null&&currentEntry!=null){long position=player.getCurrentPosition();outState.putString("session_player_url",currentEntry.url);outState.putString("session_player_name",currentEntry.name==null?"Reprise":currentEntry.name);outState.putLong("session_player_position",position);outState.putBoolean("session_player_playing",player.getPlayWhenReady()||resumePlaybackOnStart);outState.putBoolean("session_player_fullscreen",playerFullscreen);if(position>0L)prefs.edit().putLong("position_"+key(currentEntry.url),position).apply();}
         if(isWebSection(section)&&mtvWebView!=null&&mtvWebView.getVisibility()==View.VISIBLE){outState.putString("session_web_url",activeWebUrl);Bundle webState=new Bundle();mtvWebView.saveState(webState);outState.putBundle("session_web_state",webState);}
     }
     @Override protected void onStart(){super.onStart();if(resumePlaybackOnStart&&player!=null){resumePlaybackOnStart=false;player.play();}}
