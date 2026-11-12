@@ -1235,10 +1235,17 @@ private void showPinEditor(){
     @Override protected void onStart(){super.onStart();registerNetworkMonitor();if(resumePlaybackOnStart&&player!=null){resumePlaybackOnStart=false;player.play();}if(player!=null&&player.getPlaybackState()==Player.STATE_BUFFERING)startBufferingWatchdog(player,currentEntry);}
     @Override protected void onStop(){unregisterNetworkMonitor();stopBufferingWatchdog(null);super.onStop();if(player!=null){resumePlaybackOnStart=player.getPlayWhenReady();savePlaybackPosition();player.pause();}}
     @Override protected void onDestroy(){
-        destroyed=true;if(pendingSearch!=null)mainHandler.removeCallbacks(pendingSearch);
+        destroyed=true;
+        catalogRequestId++;
+        unregisterNetworkMonitor();
+        if(pendingSearch!=null){mainHandler.removeCallbacks(pendingSearch);pendingSearch=null;}
+        if(networkRecoveryRunnable!=null){mainHandler.removeCallbacks(networkRecoveryRunnable);networkRecoveryRunnable=null;}
+        stopBufferingWatchdog(null);
+        if(splashTimeoutRunnable!=null){mainHandler.removeCallbacks(splashTimeoutRunnable);splashTimeoutRunnable=null;}
+        if(brandSplash!=null){BrandSplash splash=brandSplash;brandSplash=null;splash.setProgressComplete();if(splash.getParent() instanceof ViewGroup)((ViewGroup)splash.getParent()).removeView(splash);}
         if(webCustomView!=null)hideWebCustomView();
-        for(WebView popup:new HashSet<>(webPopupViews)){try{popup.stopLoading();popup.destroy();}catch(Exception ignored){}}webPopupViews.clear();
+        for(WebView popup:new HashSet<>(webPopupViews)){try{popup.stopLoading();if(popup.getParent() instanceof ViewGroup)((ViewGroup)popup.getParent()).removeView(popup);popup.destroy();}catch(Exception ignored){}}webPopupViews.clear();
         if(mtvWebView!=null){try{mtvWebView.stopLoading();mtvWebView.loadUrl("about:blank");mtvWebView.clearHistory();if(mtvWebView.getParent() instanceof ViewGroup)((ViewGroup)mtvWebView.getParent()).removeView(mtvWebView);mtvWebView.destroy();}catch(Exception ignored){}mtvWebView=null;}
-        savePlaybackPosition();releasePlayer();io.shutdownNow();super.onDestroy();
+        savePlaybackPosition();releasePlayer();io.shutdownNow();mainHandler.removeCallbacksAndMessages(null);super.onDestroy();
     }
 }
