@@ -838,11 +838,12 @@ private void loadAllPlaylists(){
             settings.setDatabaseEnabled(true);settings.setLoadsImagesAutomatically(true);
             settings.setJavaScriptCanOpenWindowsAutomatically(false);settings.setSupportMultipleWindows(true);
             settings.setLoadWithOverviewMode(true);settings.setUseWideViewPort(true);
-            settings.setMediaPlaybackRequiresUserGesture(false);
+            settings.setMediaPlaybackRequiresUserGesture(false);settings.setMixedContentMode(android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW);
             mtvWebView.setWebViewClient(new WebViewClient(){
                 @Override public boolean shouldOverrideUrlLoading(WebView view,android.webkit.WebResourceRequest request){return request==null||!isAllowedWebNavigation(request.getUrl().toString());}
                 @SuppressWarnings("deprecation")
                 @Override public boolean shouldOverrideUrlLoading(WebView view,String url){return !isAllowedWebNavigation(url);}
+                @Override public void onReceivedSslError(WebView view,android.webkit.SslErrorHandler handler,android.net.http.SslError error){handler.cancel();}
                 @Override public void onPageStarted(WebView view,String url,android.graphics.Bitmap favicon){super.onPageStarted(view,url,favicon);if(url!=null&&!url.equals("about:blank"))activeWebUrl=url;}
                 @Override public void onPageFinished(WebView view,String loaded){super.onPageFinished(view,loaded);View focused=getCurrentFocus();View menu=null;if(webContainer!=null&&webContainer.getChildCount()>0&&webContainer.getChildAt(0) instanceof ViewGroup){ViewGroup nav=(ViewGroup)webContainer.getChildAt(0);if(nav.getChildCount()>0)menu=nav.getChildAt(0);}if(view==mtvWebView&&isWebSection(section)&&view.getVisibility()==View.VISIBLE&&focused!=menu)view.requestFocus();}
                 @Override public void onReceivedError(WebView view,android.webkit.WebResourceRequest request,android.webkit.WebResourceError error){super.onReceivedError(view,request,error);if(request.isForMainFrame())postUi(()->Toast.makeText(MainActivity.this,"Erreur de chargement de la page Web.",Toast.LENGTH_LONG).show());}
@@ -869,7 +870,7 @@ private void loadAllPlaylists(){
                 @Override public boolean onCreateWindow(WebView view,boolean isDialog,boolean isUserGesture,android.os.Message resultMsg){
                     // Refuse les fenêtres déclenchées automatiquement par un script sans action utilisateur.
                     if(!isUserGesture||resultMsg==null||!(resultMsg.obj instanceof WebView.WebViewTransport))return false;
-                    WebView popup=new WebView(MainActivity.this);popup.getSettings().setJavaScriptEnabled(true);popup.getSettings().setDomStorageEnabled(true);popup.getSettings().setAllowFileAccess(false);popup.getSettings().setAllowContentAccess(false);popup.getSettings().setAllowFileAccessFromFileURLs(false);popup.getSettings().setAllowUniversalAccessFromFileURLs(false);if(Build.VERSION.SDK_INT>=26)popup.getSettings().setSafeBrowsingEnabled(true);
+                    WebView popup=new WebView(MainActivity.this);popup.getSettings().setJavaScriptEnabled(true);popup.getSettings().setDomStorageEnabled(true);popup.getSettings().setAllowFileAccess(false);popup.getSettings().setAllowContentAccess(false);popup.getSettings().setAllowFileAccessFromFileURLs(false);popup.getSettings().setAllowUniversalAccessFromFileURLs(false);popup.getSettings().setMixedContentMode(android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW);if(Build.VERSION.SDK_INT>=26)popup.getSettings().setSafeBrowsingEnabled(true);
                      popup.setWebViewClient(new WebViewClient(){
                          @Override public boolean shouldOverrideUrlLoading(WebView child,android.webkit.WebResourceRequest request){return request==null||!isAllowedWebNavigation(request.getUrl().toString());}
                          @SuppressWarnings("deprecation")
