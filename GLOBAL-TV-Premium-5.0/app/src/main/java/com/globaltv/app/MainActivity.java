@@ -1095,6 +1095,8 @@ private void loadAllPlaylists(){
         String mimeType=null;
         if(normalized.endsWith(".m3u8"))mimeType=androidx.media3.common.MimeTypes.APPLICATION_M3U8;
         else if(normalized.endsWith(".mpd"))mimeType=androidx.media3.common.MimeTypes.APPLICATION_MPD;
+        else if(normalized.endsWith(".ismc")||normalized.contains(".ism/manifest"))
+            mimeType=androidx.media3.common.MimeTypes.APPLICATION_SS;
         MediaItem.Builder builder=new MediaItem.Builder().setUri(uri).setMediaId(entry.url);
         if(mimeType!=null)builder.setMimeType(mimeType);
         return builder.build();
