@@ -811,12 +811,26 @@ private void loadAllPlaylists(){
      private boolean isEducationEntry(MediaEntry e){return matchesMediaKeywords(e,new String[]{"education","éducation","educational","éducatif","educatif","school","école","ecole","learning","apprentissage","formation","science","savoir","knowledge","université","universite"});}
     private void startBufferingWatchdog(ExoPlayer activePlayer,MediaEntry fallback){
         stopBufferingWatchdog(null);
-        if(destroyed||!activePlayer.getPlayWhenReady())return;
+        if(activePlayer==null||destroyed||player!=activePlayer)return;
+        try{
+            if(!activePlayer.getPlayWhenReady())return;
+        }catch(RuntimeException releasedPlayer){
+            android.util.Log.w("GLOBALTV","Watchdog ignoré : lecteur déjà libéré",releasedPlayer);
+            return;
+        }
         bufferingWatchdogPlayer=activePlayer;
         bufferingWatchdog=()->{
-            if(player==activePlayer&&activePlayer.getPlaybackState()==Player.STATE_BUFFERING&&activePlayer.getPlayWhenReady()){
-                bufferingWatchdog=null;bufferingWatchdogPlayer=null;
-                handlePlayerFailure(activePlayer,fallback);
+            if(destroyed||player!=activePlayer){stopBufferingWatchdog(activePlayer);return;}
+            try{
+                if(activePlayer.getPlaybackState()==Player.STATE_BUFFERING&&activePlayer.getPlayWhenReady()){
+                    bufferingWatchdog=null;bufferingWatchdogPlayer=null;
+                    handlePlayerFailure(activePlayer,fallback);
+                }else{
+                    stopBufferingWatchdog(activePlayer);
+                }
+            }catch(RuntimeException releasedPlayer){
+                android.util.Log.w("GLOBALTV","Watchdog arrêté après libération du lecteur",releasedPlayer);
+                stopBufferingWatchdog(activePlayer);
             }
         };
         mainHandler.postDelayed(bufferingWatchdog,45000L);
