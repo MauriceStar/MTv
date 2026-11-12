@@ -56,6 +56,10 @@ public class MainActivity extends AppCompatActivity {
     private Runnable pendingSearch;
     private volatile boolean destroyed=false;
     private int catalogRequestId=0;
+    private BrandSplash brandSplash;
+    private long splashStartedAt=0L;
+    private boolean splashLoadFinished=false;
+    private Runnable splashTimeoutRunnable;
     private static final int MAX_CATALOG_ITEMS=20000;
     private int maxRenderItems=120;
     private String activeProfile="Adulte";
@@ -128,29 +132,32 @@ public class MainActivity extends AppCompatActivity {
     // Splash MTv : le nom s'illumine dans le téléviseur, puis la parabole rejoint le logo.
     private void showBrandSplash(){
         ViewGroup decor=(ViewGroup)getWindow().getDecorView();
+        splashLoadFinished=false;
+        splashStartedAt=android.os.SystemClock.uptimeMillis();
         BrandSplash splash=new BrandSplash(this);
+        brandSplash=splash;
         decor.addView(splash,new ViewGroup.LayoutParams(-1,-1));
         splash.start();
+        splashTimeoutRunnable=()->{if(brandSplash==null||destroyed)return;if(!splashLoadFinished){catalogRequestId++;splashLoadFinished=true;if(status!=null)status.setText("Délai de connexion dépassé. Vérifie Internet ou tes sources.");renderList();brandSplash.setMessage("CONNEXION LENTE • VÉRIFIE TES SOURCES");}finishBrandSplash();};
+        mainHandler.postDelayed(splashTimeoutRunnable,120000L);
     }
+    private void onStartupPlaylistLoadFinished(boolean success,String message){if(brandSplash==null)return;splashLoadFinished=true;brandSplash.setMessage(message);long elapsed=android.os.SystemClock.uptimeMillis()-splashStartedAt;long remaining=Math.max(0L,15000L-elapsed);mainHandler.postDelayed(()->{if(splashLoadFinished)finishBrandSplash();},remaining);}
+    private void finishBrandSplash(){if(brandSplash==null)return;if(splashTimeoutRunnable!=null)mainHandler.removeCallbacks(splashTimeoutRunnable);BrandSplash splash=brandSplash;brandSplash=null;splash.animate().alpha(0f).setDuration(500L).withEndAction(()->{if(splash.getParent() instanceof ViewGroup)((ViewGroup)splash.getParent()).removeView(splash);}).start();}
     private final class BrandSplash extends View {
         private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
         private float progress=0f;
         private ValueAnimator animator;
+        private String message="PRÉPARATION DES CHAÎNES TV";
+        void setMessage(String value){message=value==null?"CHARGEMENT DES PLAYLISTS":value;invalidate();}
         BrandSplash(Context context){super(context);setLayerType(View.LAYER_TYPE_SOFTWARE,null);}
         void start(){
-            animator=ValueAnimator.ofFloat(0f,1f);animator.setDuration(2450L);
-            animator.addUpdateListener(a->{progress=(Float)a.getAnimatedValue();invalidate();});
-            animator.addListener(new android.animation.AnimatorListenerAdapter(){
-                @Override public void onAnimationEnd(android.animation.Animator a){
-                    if(getParent() instanceof ViewGroup)((ViewGroup)getParent()).removeView(BrandSplash.this);
-                }
-            });animator.start();
+            animator=ValueAnimator.ofFloat(0f,1f);animator.setDuration(15000L);animator.setRepeatCount(ValueAnimator.INFINITE);animator.setRepeatMode(ValueAnimator.RESTART);animator.addUpdateListener(a->{progress=(Float)a.getAnimatedValue();invalidate();});animator.start();
         }
         private void style(int color,float width,Paint.Style fill){
             p.setColor(color);p.setStrokeWidth(width);p.setStyle(fill);p.setStrokeCap(Paint.Cap.ROUND);p.setStrokeJoin(Paint.Join.ROUND);p.setShader(null);p.clearShadowLayer();
         }
         @Override protected void onDraw(Canvas canvas){
-            super.onDraw(canvas);float w=getWidth(),h=getHeight(),s=Math.min(w/420f,h/760f);
+            super.onDraw(canvas);float w=getWidth(),h=getHeight(),s=Math.max(w/420f,h/760f);
             canvas.save();canvas.translate((w-420*s)/2f,(h-760*s)/2f);canvas.scale(s,s);
             p.setShader(new android.graphics.RadialGradient(210,350,520,new int[]{0xFF142B55,0xFF080D19,0xFF050914},null,android.graphics.Shader.TileMode.CLAMP));
             canvas.drawRect(0,0,420,760,p);p.setShader(null);
@@ -182,6 +189,7 @@ public class MainActivity extends AppCompatActivity {
             }
             if(progress>.84f){style(0xFFFFC928,2,Paint.Style.STROKE);canvas.drawCircle(205,350,125+(progress-.84f)*55,p);}
             canvas.restore();
+            p.setShader(null);p.setTypeface(Typeface.create("sans-serif-medium",Typeface.BOLD));p.setTextAlign(Paint.Align.CENTER);p.setTextSize(Math.max(13f,dp(13)));p.setColor(0xFFE7F2FF);p.setAlpha(225);canvas.drawText(message,w/2f,h*.84f,p);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(Math.max(2f,dp(2)));p.setColor(0xFF27C8F2);canvas.drawArc(w/2f-dp(15),h*.89f-dp(15),w/2f+dp(15),h*.89f+dp(15),progress*360f,245f,false,p);p.setStyle(Paint.Style.FILL);p.setAlpha(255);
         }
         @Override protected void onDetachedFromWindow(){if(animator!=null&&animator.isRunning())animator.cancel();super.onDetachedFromWindow();}
     }
@@ -285,7 +293,7 @@ public class MainActivity extends AppCompatActivity {
                 return out.toString("UTF-8");
             }}finally{c.disconnect();}}
     private void loadPlaylist(String url){if(url!=null&&(url.startsWith("http://")||url.startsWith("https://"))){playlistSources.add(url);prefs.edit().putStringSet("m3u_sources",new HashSet<>(playlistSources)).apply();}loadAllPlaylists();}
-    private void loadAllPlaylists(){final int request=++catalogRequestId;ArrayList<String> urls=new ArrayList<>(playlistSources);if(urls.isEmpty())urls.add(DEFAULT_PLAYLIST);status.setText("Chargement de "+urls.size()+" source(s) M3U…");executeIo(()->{ArrayList<MediaEntry> merged=new ArrayList<>();ArrayList<String> errors=new ArrayList<>();for(String address:urls){if(merged.size()>=MAX_CATALOG_ITEMS)break;try{String data=get(address);BufferedReader r=new BufferedReader(new StringReader(data));String line,name=null,group="Autres",logo="",tvgId="";int count=0;while((line=r.readLine())!=null&&merged.size()<MAX_CATALOG_ITEMS){line=line.trim();if(line.startsWith("#EXTINF:")){name=line.substring(line.lastIndexOf(',')+1).trim();group="Autres";logo="";tvgId="";int g=line.indexOf("group-title=\"");if(g>=0){int e=line.indexOf('"',g+13);if(e>g)group=line.substring(g+13,e);}int tid=line.indexOf("tvg-id=\"");if(tid>=0){int te=line.indexOf('"',tid+8);if(te>tid)tvgId=line.substring(tid+8,te);}int l=line.indexOf("tvg-logo=\"");if(l>=0){int e=line.indexOf('"',l+10);if(e>l)logo=line.substring(l+10,e);}}else if(!line.isEmpty()&&!line.startsWith("#")&&name!=null){if(line.startsWith("https://")||line.startsWith("http://")){MediaEntry entry=new MediaEntry(name,line,group,logo,"m3u");entry.tvgId=tvgId;merged.add(entry);count++;}name=null;tvgId="";}}}catch(Exception ex){errors.add(Uri.parse(address).getHost()+": "+ex.getMessage());}}final int loaded=merged.size();postUi(()->{if(request!=catalogRequestId)return;if(loaded==0&&!errors.isEmpty()){status.setText("Erreur M3U : "+errors.get(0));return;}all.clear();all.addAll(merged);sourceMode="M3U";sourceLabel.setText("SOURCES : "+urls.size()+" M3U");status.setText(loaded+" chaînes/contenus chargés • "+urls.size()+" source(s) M3U"+(errors.isEmpty()?"":" • "+errors.size()+" erreur(s)"));renderList();});});}
+    private void loadAllPlaylists(){final int request=++catalogRequestId;ArrayList<String> urls=new ArrayList<>(playlistSources);if(urls.isEmpty())urls.add(DEFAULT_PLAYLIST);status.setText("Chargement de "+urls.size()+" source(s) M3U…");executeIo(()->{ArrayList<MediaEntry> merged=new ArrayList<>();ArrayList<String> errors=new ArrayList<>();for(String address:urls){if(merged.size()>=MAX_CATALOG_ITEMS)break;try{String data=get(address);BufferedReader r=new BufferedReader(new StringReader(data));String line,name=null,group="Autres",logo="",tvgId="";int count=0;while((line=r.readLine())!=null&&merged.size()<MAX_CATALOG_ITEMS){line=line.trim();if(line.startsWith("#EXTINF:")){name=line.substring(line.lastIndexOf(',')+1).trim();group="Autres";logo="";tvgId="";int g=line.indexOf("group-title=\"");if(g>=0){int e=line.indexOf('"',g+13);if(e>g)group=line.substring(g+13,e);}int tid=line.indexOf("tvg-id=\"");if(tid>=0){int te=line.indexOf('"',tid+8);if(te>tid)tvgId=line.substring(tid+8,te);}int l=line.indexOf("tvg-logo=\"");if(l>=0){int e=line.indexOf('"',l+10);if(e>l)logo=line.substring(l+10,e);}}else if(!line.isEmpty()&&!line.startsWith("#")&&name!=null){if(line.startsWith("https://")||line.startsWith("http://")){MediaEntry entry=new MediaEntry(name,line,group,logo,"m3u");entry.tvgId=tvgId;merged.add(entry);count++;}name=null;tvgId="";}}}catch(Exception ex){errors.add(Uri.parse(address).getHost()+": "+ex.getMessage());}}final int loaded=merged.size();postUi(()->{if(request!=catalogRequestId)return;all.clear();all.addAll(merged);sourceMode="M3U";sourceLabel.setText("SOURCES : "+urls.size()+" M3U");if(loaded==0){String problem=errors.isEmpty()?"Aucune chaîne reçue. Vérifie tes sources.":"Erreur M3U : "+errors.get(0);status.setText(problem);renderList();onStartupPlaylistLoadFinished(false,"AUCUNE PLAYLIST DISPONIBLE • VÉRIFIE TES SOURCES");return;}status.setText(loaded+" chaînes/contenus chargés • "+urls.size()+" source(s) M3U"+(errors.isEmpty()?"":" • "+errors.size()+" erreur(s)"));renderList();onStartupPlaylistLoadFinished(true,loaded+" CHAÎNES CHARGÉES • PRÊT À REGARDER");});});}
 
     private String api(String action,String extra){String base=xtreamBase;if(!base.endsWith("/"))base+="/";return base+"player_api.php?username="+enc(xtreamUser)+"&password="+enc(xtreamPass)+"&action="+action+(extra==null?"":extra);}
     private String enc(String s){try{return java.net.URLEncoder.encode(s,"UTF-8");}catch(Exception e){return s;}}
