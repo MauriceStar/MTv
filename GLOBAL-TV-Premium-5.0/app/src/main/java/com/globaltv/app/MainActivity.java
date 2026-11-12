@@ -566,7 +566,7 @@ private void loadAllPlaylists(){
                         if(firstFailure){Toast.makeText(MainActivity.this,"Connexion interrompue. Nouvelle tentative…",Toast.LENGTH_SHORT).show();activePlayer.prepare();activePlayer.play();return;}
                         int failedIndex=activePlayer.getCurrentMediaItemIndex();
                         if(failedIndex>=0&&failedIndex<activePlayer.getMediaItemCount())activePlayer.removeMediaItem(failedIndex);
-                        if(activePlayer.getMediaItemCount()>0){Toast.makeText(MainActivity.this,"Flux indisponible. Passage au suivant…",Toast.LENGTH_SHORT).show();int nextIndex=Math.min(failedIndex,activePlayer.getMediaItemCount()-1);activePlayer.seekTo(nextIndex,0L);activePlayer.prepare();activePlayer.play();}
+                        if(activePlayer.getMediaItemCount()>0){Toast.makeText(MainActivity.this,"Flux indisponible. Passage au suivant…",Toast.LENGTH_SHORT).show();int nextIndex=failedIndex>=0&&failedIndex<activePlayer.getMediaItemCount()?failedIndex:0;activePlayer.seekTo(nextIndex,0L);activePlayer.prepare();activePlayer.play();}
                         else{status.setText("Lecture impossible : "+(currentEntry==null?c.name:currentEntry.name));Toast.makeText(MainActivity.this,"Aucun autre flux disponible dans cette liste.",Toast.LENGTH_LONG).show();}
                     });
                 }
