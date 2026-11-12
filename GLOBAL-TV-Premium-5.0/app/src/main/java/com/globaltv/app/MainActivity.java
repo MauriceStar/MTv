@@ -138,20 +138,33 @@ public class MainActivity extends AppCompatActivity {
         brandSplash=splash;
         decor.addView(splash,new ViewGroup.LayoutParams(-1,-1));
         splash.start();
-        splashTimeoutRunnable=()->{if(brandSplash==null||destroyed)return;if(!splashLoadFinished){catalogRequestId++;splashLoadFinished=true;if(status!=null)status.setText("Délai de connexion dépassé. Vérifie Internet ou tes sources.");renderList();brandSplash.setMessage("CONNEXION LENTE • VÉRIFIE TES SOURCES");}finishBrandSplash();};
+        splashTimeoutRunnable=()->{if(brandSplash==null||destroyed)return;if(!splashLoadFinished){catalogRequestId++;splashLoadFinished=true;if(status!=null)status.setText("Délai de connexion dépassé. Vérifie Internet ou tes sources.");renderList();brandSplash.setMessage("CONNEXION LENTE • VÉRIFIE TES SOURCES");brandSplash.setProgressComplete();}finishBrandSplash();};
         mainHandler.postDelayed(splashTimeoutRunnable,120000L);
     }
-    private void onStartupPlaylistLoadFinished(boolean success,String message){if(brandSplash==null)return;splashLoadFinished=true;brandSplash.setMessage(message);long elapsed=android.os.SystemClock.uptimeMillis()-splashStartedAt;long remaining=Math.max(0L,15000L-elapsed);mainHandler.postDelayed(()->{if(splashLoadFinished)finishBrandSplash();},remaining);}
+    private void onStartupPlaylistLoadFinished(boolean success,String message){if(brandSplash==null)return;splashLoadFinished=true;brandSplash.setMessage(message);brandSplash.setProgressComplete();long elapsed=android.os.SystemClock.uptimeMillis()-splashStartedAt;long remaining=Math.max(0L,15000L-elapsed);mainHandler.postDelayed(()->{if(splashLoadFinished)finishBrandSplash();},remaining);}
     private void finishBrandSplash(){if(brandSplash==null)return;if(splashTimeoutRunnable!=null)mainHandler.removeCallbacks(splashTimeoutRunnable);BrandSplash splash=brandSplash;brandSplash=null;splash.animate().alpha(0f).setDuration(500L).withEndAction(()->{if(splash.getParent() instanceof ViewGroup)((ViewGroup)splash.getParent()).removeView(splash);}).start();}
     private final class BrandSplash extends FrameLayout {
-        private final ImageView artwork;
         private final TextView messageView;
         private final ProgressBar progressBar;
+        private boolean completed = false;
+        private final long startedAt = android.os.SystemClock.uptimeMillis();
+        private final Runnable progressTicker = new Runnable() {
+            @Override public void run() {
+                if (completed || brandSplash != BrandSplash.this) return;
+                long elapsed = android.os.SystemClock.uptimeMillis() - startedAt;
+                progressBar.setProgress((int)Math.min(900L, elapsed * 900L / 15000L));
+                postDelayed(this, 100L);
+            }
+        };
 
-        void start() { /* Static artwork; progress animation is handled by the native ProgressBar. */ }
-
+        void start() { post(progressTicker); }
         void setMessage(String value) {
             messageView.setText(value == null ? "CHARGEMENT DU CATALOGUE…" : value);
+        }
+        void setProgressComplete() {
+            completed = true;
+            removeCallbacks(progressTicker);
+            progressBar.setProgress(1000, true);
         }
 
         BrandSplash(Context context) {
@@ -160,26 +173,26 @@ public class MainActivity extends AppCompatActivity {
             setFocusable(true);
             setClickable(true);
 
-            artwork = new ImageView(context);
+            ImageView backdrop = new ImageView(context);
+            backdrop.setImageResource(R.drawable.splash_mtv);
+            backdrop.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            backdrop.setAlpha(0.82f);
+            addView(backdrop, new FrameLayout.LayoutParams(-1, -1));
+
+            ImageView artwork = new ImageView(context);
             artwork.setImageResource(R.drawable.splash_mtv);
             artwork.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            artwork.setAdjustViewBounds(false);
-            artwork.setBackgroundColor(Color.BLACK);
-            addView(artwork, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                Gravity.CENTER
-            ));
+            addView(artwork, new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
 
             LinearLayout loading = new LinearLayout(context);
             loading.setOrientation(LinearLayout.VERTICAL);
             loading.setGravity(Gravity.CENTER_HORIZONTAL);
-            loading.setPadding(dp(18), dp(10), dp(18), dp(8));
+            loading.setPadding(dp(22), dp(12), dp(22), dp(12));
             GradientDrawable panel = new GradientDrawable(
                 GradientDrawable.Orientation.TOP_BOTTOM,
-                new int[]{0x00101830, 0xB8000716, 0xE6000614}
+                new int[]{0x00101830, 0xD9000716, 0xF0000614}
             );
-            panel.setCornerRadius(dp(12));
+            panel.setCornerRadius(dp(14));
             loading.setBackground(panel);
 
             messageView = new TextView(context);
@@ -189,29 +202,26 @@ public class MainActivity extends AppCompatActivity {
             messageView.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
             messageView.setGravity(Gravity.CENTER);
             messageView.setShadowLayer(dp(4), 0, dp(1), Color.BLACK);
-            loading.addView(messageView, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            ));
+            loading.addView(messageView, new LinearLayout.LayoutParams(-1, -2));
 
             progressBar = new ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal);
-            progressBar.setIndeterminate(true);
+            progressBar.setIndeterminate(false);
+            progressBar.setMax(1000);
+            progressBar.setProgress(0);
             if (android.os.Build.VERSION.SDK_INT >= 21) {
-                progressBar.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(0xFFFFC52B));
                 progressBar.setProgressTintList(android.content.res.ColorStateList.valueOf(0xFFFFC52B));
+                progressBar.setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(0x66FFFFFF));
             }
-            LinearLayout.LayoutParams barParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(7)
-            );
-            barParams.topMargin = dp(10);
+            LinearLayout.LayoutParams barParams = new LinearLayout.LayoutParams(-1, dp(9));
+            barParams.topMargin = dp(12);
             loading.addView(progressBar, barParams);
 
             FrameLayout.LayoutParams loadingParams = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL
+                -1, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL
             );
-            loadingParams.leftMargin = dp(18);
-            loadingParams.rightMargin = dp(18);
-            loadingParams.bottomMargin = dp(20);
+            loadingParams.leftMargin = dp(22);
+            loadingParams.rightMargin = dp(22);
+            loadingParams.bottomMargin = dp(18);
             addView(loading, loadingParams);
         }
     }
