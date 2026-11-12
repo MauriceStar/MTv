@@ -117,8 +117,6 @@ public class MainActivity extends AppCompatActivity {
     private final Set<String> failedInCurrentRun=new HashSet<>();
     private ExoPlayer playbackRecoveryPlayer;
     private Runnable playbackRecoveryRunnable;
-    private final Set<String> approvedInsecureStreamHosts=new HashSet<>();
-    private final Set<String> approvedInsecureWebHosts=new HashSet<>();
     private Runnable bufferingWatchdog;
     private ExoPlayer bufferingWatchdogPlayer;
     private Runnable playbackPositionSaver;
@@ -1285,21 +1283,7 @@ private void loadAllPlaylists(){
             return uri.getHost()!=null&&("http".equalsIgnoreCase(scheme)||"https".equalsIgnoreCase(scheme));
         }catch(Exception ignored){return false;}
     }
-    private boolean shouldBlockWebNavigation(WebView view,String rawUrl){
-        if(!isAllowedWebNavigation(rawUrl))return true;
-        Uri uri=Uri.parse(rawUrl);
-        if(!"http".equalsIgnoreCase(uri.getScheme()))return false;
-        String host=uri.getHost();
-        if(host==null||host.isEmpty())return true;
-        String approvedHost=host.toLowerCase(Locale.ROOT);
-        if(approvedInsecureWebHosts.contains(approvedHost))return false;
-        confirmInsecureHttp(rawUrl,()->{
-            if(isFinishing()||destroyed)return;
-            approvedInsecureWebHosts.add(approvedHost);
-            if(view==mtvWebView||webPopupViews.contains(view))view.loadUrl(rawUrl);
-        });
-        return true;
-    }
+    private boolean shouldBlockWebNavigation(WebView view,String rawUrl){return !isAllowedWebNavigation(rawUrl);}
     private boolean isWebSection(String target){return "MTV".equals(target)||"WITV".equals(target)||"FRSTV".equals(target)||"FSLIVE".equals(target)||"EPI XTV".equals(target)||"DUDETV".equals(target)||"BRAFLIX".equals(target);}
     private String webUrlFor(String target){if("WITV".equals(target))return "https://wiflix.mov/";if("FRSTV".equals(target))return "https://french-stream.net/";if("FSLIVE".equals(target))return "https://fstv.one/";if("EPI XTV".equals(target))return "https://www.xnxx.com/";if("DUDETV".equals(target))return "https://theporndude.com/";if("BRAFLIX".equals(target))return "https://braflix.uk/";return "https://oxax.tv/";}
     private void showMtvWebView(){showSiteWebView("https://oxax.tv/");}
@@ -1553,16 +1537,7 @@ private void showPinEditor(){
     }
     private void showCreateFavoriteGroup(){EditText name=field("Nom de la liste");new AlertDialog.Builder(this).setTitle("Créer une liste de favoris").setView(name).setNegativeButton("Annuler",null).setPositiveButton("Créer",(d,w)->{String n=name.getText().toString().trim();if(n.isEmpty())return;if(favoriteGroups.containsKey(n)){Toast.makeText(this,"Cette liste existe déjà",Toast.LENGTH_SHORT).show();return;}favoriteGroups.put(n,new LinkedHashSet<>());prefs.edit().putStringSet("favorite_groups",new HashSet<>(favoriteGroups.keySet())).apply();activeFilter=n;updateChips();renderList();}).show();}
     private void showAssignFavoriteGroup(MediaEntry entry){if(favoriteGroups.isEmpty()){Toast.makeText(this,"Crée d’abord une liste de favoris.",Toast.LENGTH_SHORT).show();return;}String[] names=favoriteGroups.keySet().toArray(new String[0]);new AlertDialog.Builder(this).setTitle("Ajouter à une liste").setItems(names,(d,i)->{Set<String> urls=favoriteGroups.get(names[i]);urls.add(entry.url);putSecureStringSet("favorite_group_"+key(names[i]),new HashSet<>(urls));Toast.makeText(this,"Ajouté à "+names[i],Toast.LENGTH_SHORT).show();}).setNegativeButton("Annuler",null).show();}
-    private boolean isInsecureStreamHostApproved(String address){
-        try{
-            Uri uri=Uri.parse(address);
-            String host=uri.getHost();
-            return "http".equalsIgnoreCase(uri.getScheme())&&host!=null&&approvedInsecureStreamHosts.contains(host.toLowerCase(Locale.ROOT));
-        }catch(Exception ignored){return false;}
-    }
-    private void confirmInsecureHttp(String address,Runnable proceed){confirmInsecureHttp(address,proceed,()->{});}
-    private void confirmInsecureHttp(String address,Runnable proceed,Runnable cancel){try{if("http".equalsIgnoreCase(Uri.parse(address).getScheme())){new AlertDialog.Builder(this).setTitle("Connexion HTTP non chiffrée").setMessage("Cette adresse utilise HTTP : l’adresse, les identifiants éventuels et les données échangées peuvent être interceptés sur le réseau. Préfère HTTPS si ton fournisseur le propose. Continuer malgré tout ?").setNegativeButton("Annuler",(d,w)->cancel.run()).setPositiveButton("Continuer",(d,w)->proceed.run()).setOnCancelListener(d->cancel.run()).show();return;}}catch(Exception ignored){}proceed.run();}
-    private void showEpgDialog(){EditText input=field("URL du fichier XMLTV (HTTPS conseillé)");input.setText(epgUrl);new AlertDialog.Builder(this).setTitle("Guide TV XMLTV").setMessage("Ajoute l’URL XMLTV de ton fournisseur ou une source autorisée. Les chaînes doivent avoir un tvg-id correspondant.").setView(input).setNegativeButton("Annuler",null).setPositiveButton("Charger",(d,w)->{String u=input.getText().toString().trim();if(u.startsWith("https://")||u.startsWith("http://")){confirmInsecureHttp(u,()->{if(!putSecureString("epg_url",u)){Toast.makeText(this,"Impossible de protéger cette adresse sur cet appareil.",Toast.LENGTH_LONG).show();return;}epgUrl=u;loadEpg(u);});}else Toast.makeText(this,"URL HTTP/HTTPS requise",Toast.LENGTH_LONG).show();}).show();}
+    private void showEpgDialog(){EditText input=field("URL du fichier XMLTV (HTTP ou HTTPS)");input.setText(epgUrl);new AlertDialog.Builder(this).setTitle("Guide TV XMLTV").setMessage("Ajoute l’URL XMLTV de ta source. Les chaînes doivent avoir un tvg-id correspondant.").setView(input).setNegativeButton("Annuler",null).setPositiveButton("Charger",(d,w)->{String u=input.getText().toString().trim();if(u.startsWith("https://")||u.startsWith("http://")){if(!putSecureString("epg_url",u)){Toast.makeText(this,"Impossible d’enregistrer cette adresse sur cet appareil.",Toast.LENGTH_LONG).show();return;}epgUrl=u;loadEpg(u);}else Toast.makeText(this,"Adresse HTTP/HTTPS requise",Toast.LENGTH_LONG).show();}).show();}
     // Limite la taille des flux XML externes pour eviter une consommation memoire excessive.
     private static final class LimitedInputStream extends FilterInputStream {
         private final long maxBytes;
