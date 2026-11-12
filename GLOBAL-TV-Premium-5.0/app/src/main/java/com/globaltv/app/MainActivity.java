@@ -126,7 +126,7 @@ public class MainActivity extends AppCompatActivity {
         playlistSources.add(DEFAULT_PLAYLIST);
         playlistSources.addAll(Arrays.asList(BUILT_IN_PLAYLISTS));
         prefs.edit().putStringSet("m3u_sources",new LinkedHashSet<>(playlistSources)).apply();
-        epgUrl=prefs.getString("epg_url","");mtvPlaylistUrl=prefs.getString("mtv_playlist_url","");lastPlayedUrl=prefs.getString("last_url","");buildUi();if(b!=null){if(search!=null)search.setText(b.getString("session_search",""));String savedWebUrl=b.getString("session_web_url","");if(isWebSection(section))showSiteWebView(savedWebUrl.isEmpty()?webUrlFor(section):savedWebUrl);
+        epgUrl=prefs.getString("epg_url","");mtvPlaylistUrl=prefs.getString("mtv_playlist_url","");lastPlayedUrl="";prefs.edit().remove("last_url").apply();buildUi();if(b!=null){if(search!=null)search.setText(b.getString("session_search",""));String savedWebUrl=b.getString("session_web_url","");if(isWebSection(section))showSiteWebView(savedWebUrl.isEmpty()?webUrlFor(section):savedWebUrl);
             if(!restorePlaybackUrl.isEmpty()){if(restorePlaybackPosition>0L)prefs.edit().putLong("position_"+key(restorePlaybackUrl),restorePlaybackPosition).apply();MediaEntry restored=new MediaEntry(restorePlaybackName,restorePlaybackUrl,"Reprise","", "live");startPlayer(restored);if(!restorePlaybackWasPlaying&&player!=null)player.pause();if(restorePlayerFullscreen&&playerView!=null)togglePlayerExpanded();}}
         if(b==null)showBrandSplash();loadAllPlaylists();if(!epgUrl.isEmpty())loadEpg(epgUrl);}
     // Adapte le nombre de cartes rendues à la classe mémoire réelle de l'appareil.
@@ -573,7 +573,7 @@ private void loadAllPlaylists(){
             else playerArea.addView(catalogScroll,new LinearLayout.LayoutParams(-1,0,1f));
             final ExoPlayer activePlayer=player;
             lastPlayedUrl=c.url;long resumePosition=historyPosition(c);pendingResumePosition=0L;
-            historyKeysCache.add("history_"+key(c.url));prefs.edit().putString("last_url",c.url).putString("history_"+key(c.url),c.name==null?"":c.name).apply();
+            historyKeysCache.add("history_"+key(c.url));prefs.edit().putString("history_"+key(c.url),c.name==null?"":c.name).apply();
             List<MediaEntry> queue=playableQueue(c);ArrayList<MediaItem> mediaItems=new ArrayList<>();int startIndex=0;
             for(int i=0;i<queue.size();i++){
                 MediaEntry entry=queue.get(i);
@@ -596,7 +596,7 @@ private void loadAllPlaylists(){
                     String uri=item.localConfiguration==null?"":item.localConfiguration.uri.toString();
                     for(MediaEntry entry:queue)if(entry.url.equals(uri)){
                         currentEntry=entry;lastPlayedUrl=entry.url;
-                        historyKeysCache.add("history_"+key(entry.url));prefs.edit().putString("last_url",entry.url).putString("history_"+key(entry.url),entry.name==null?"":entry.name).apply();
+                        historyKeysCache.add("history_"+key(entry.url));prefs.edit().putString("history_"+key(entry.url),entry.name==null?"":entry.name).apply();
                         break;
                     }
                 }
