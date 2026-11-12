@@ -22,6 +22,9 @@ import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.security.MessageDigest;
+import java.security.SecureRandom;
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.PBEKeySpec;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import org.json.*;
@@ -655,7 +658,7 @@ private void loadAllPlaylists(){
                         EditText pin=field("Code PIN parental"); pin.setInputType(2);
                         new AlertDialog.Builder(this).setTitle("Accès profil Adulte").setView(pin)
                             .setNegativeButton("Annuler",null).setPositiveButton("Valider",(d,w)->{
-                                if(pinHash.equals(hash(pin.getText().toString()))){
+                                if(verifyPin(pinHash,pin.getText().toString())){
                                     activeProfile=PROFILE_ADULT;
                                     prefs.edit().putString("active_profile",activeProfile).apply();
                                     renderList();
@@ -681,7 +684,7 @@ private void loadAllPlaylists(){
             mtvWebView.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
             mtvWebView.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
             android.webkit.WebSettings settings=mtvWebView.getSettings();
-            settings.setJavaScriptEnabled(true);settings.setDomStorageEnabled(true);
+            settings.setJavaScriptEnabled(true);settings.setDomStorageEnabled(true);settings.setAllowFileAccess(false);settings.setAllowContentAccess(false);settings.setAllowFileAccessFromFileURLs(false);settings.setAllowUniversalAccessFromFileURLs(false);if(Build.VERSION.SDK_INT>=26)settings.setSafeBrowsingEnabled(true);
             settings.setDatabaseEnabled(true);settings.setLoadsImagesAutomatically(true);
             settings.setJavaScriptCanOpenWindowsAutomatically(true);settings.setSupportMultipleWindows(true);
             settings.setLoadWithOverviewMode(true);settings.setUseWideViewPort(true);
@@ -712,7 +715,7 @@ private void loadAllPlaylists(){
                 @Override public void onHideCustomView(){hideWebCustomView();}
                 @Override public void onShowCustomView(View view,int requestedOrientation,CustomViewCallback callback){showWebCustomView(view,callback);}
                 @Override public boolean onCreateWindow(WebView view,boolean isDialog,boolean isUserGesture,android.os.Message resultMsg){
-                    WebView popup=new WebView(MainActivity.this);popup.getSettings().setJavaScriptEnabled(true);popup.getSettings().setDomStorageEnabled(true);
+                    WebView popup=new WebView(MainActivity.this);popup.getSettings().setJavaScriptEnabled(true);popup.getSettings().setDomStorageEnabled(true);popup.getSettings().setAllowFileAccess(false);popup.getSettings().setAllowContentAccess(false);popup.getSettings().setAllowFileAccessFromFileURLs(false);popup.getSettings().setAllowUniversalAccessFromFileURLs(false);if(Build.VERSION.SDK_INT>=26)popup.getSettings().setSafeBrowsingEnabled(true);
                      popup.setWebViewClient(new WebViewClient(){
                          @Override public void onPageStarted(WebView child,String url,android.graphics.Bitmap favicon){super.onPageStarted(child,url,favicon);if(url!=null&&!url.equals("about:blank")&&mtvWebView!=null){activeWebUrl=url;mtvWebView.loadUrl(url);child.postDelayed(()->{webPopupViews.remove(child);try{child.stopLoading();if(child.getParent() instanceof ViewGroup)((ViewGroup)child.getParent()).removeView(child);child.destroy();}catch(Exception ignored){}},500L);}}
                          @Override public boolean onRenderProcessGone(WebView child,android.webkit.RenderProcessGoneDetail detail){webPopupViews.remove(child);try{child.stopLoading();if(child.getParent() instanceof ViewGroup)((ViewGroup)child.getParent()).removeView(child);child.destroy();}catch(Exception ignored){}return true;}
@@ -818,7 +821,7 @@ private void loadAllPlaylists(){
     private void requestParentalAccess(String target){
  String expected=prefs.getString("parental_pin_hash","");EditText pin=field("Code PIN parental");pin.setInputType(2);
  new AlertDialog.Builder(this).setTitle("Contrôle parental").setMessage("Entre le code PIN pour accéder à cette rubrique.").setView(pin).setNegativeButton("Annuler",null).setPositiveButton("Valider",(d,w)->{
-  if(expected.equals(hash(pin.getText().toString()))){parentalAuthorizedTarget=target;navigateTo(target);}else Toast.makeText(this,"Code PIN incorrect",Toast.LENGTH_LONG).show();
+  if(verifyPin(expected,pin.getText().toString())){parentalAuthorizedTarget=target;navigateTo(target);}else Toast.makeText(this,"Code PIN incorrect",Toast.LENGTH_LONG).show();
  }).show();
 }
     private void showPinDialog(){
@@ -826,15 +829,18 @@ private void loadAllPlaylists(){
  if(existing.isEmpty()){showPinEditor();return;}
  EditText current=field("Code PIN actuel");current.setInputType(2);
  new AlertDialog.Builder(this).setTitle("Vérification du code parental").setMessage("Entre le code actuel avant de le modifier ou de le désactiver.").setView(current).setNegativeButton("Annuler",null).setPositiveButton("Continuer",(d,w)->{
-  if(existing.equals(hash(current.getText().toString())))showPinEditor();else Toast.makeText(this,"Code PIN incorrect",Toast.LENGTH_LONG).show();
+  if(verifyPin(existing,current.getText().toString()))showPinEditor();else Toast.makeText(this,"Code PIN incorrect",Toast.LENGTH_LONG).show();
  }).show();
 }
 private void showPinEditor(){
  EditText pin=field("Nouveau code PIN (4 à 8 chiffres)");pin.setInputType(2);
  new AlertDialog.Builder(this).setTitle("Contrôle parental").setMessage("Laisse vide pour désactiver le contrôle parental.").setView(pin).setNegativeButton("Annuler",null).setPositiveButton("Enregistrer",(d,w)->{
-  String v=pin.getText().toString();if(v.isEmpty())prefs.edit().remove("parental_pin_hash").apply();else if(v.matches("\\d{4,8}"))prefs.edit().putString("parental_pin_hash",hash(v)).apply();else Toast.makeText(this,"Utilise 4 à 8 chiffres",Toast.LENGTH_LONG).show();
+  String v=pin.getText().toString();if(v.isEmpty())prefs.edit().remove("parental_pin_hash").apply();else if(v.matches("\\d{4,8}")){String secureHash=createPinHash(v);if(secureHash!=null)prefs.edit().putString("parental_pin_hash",secureHash).apply();else Toast.makeText(this,"Impossible de sécuriser le code PIN sur cet appareil.",Toast.LENGTH_LONG).show();}else Toast.makeText(this,"Utilise 4 à 8 chiffres",Toast.LENGTH_LONG).show();
  }).show();
 }
+    private byte[] derivePinKey(String pin,byte[] salt,int iterations){PBEKeySpec spec=null;try{spec=new PBEKeySpec(pin.toCharArray(),salt,iterations,256);return SecretKeyFactory.getInstance("PBKDF2WithHmacSHA1").generateSecret(spec).getEncoded();}catch(Exception e){return null;}finally{if(spec!=null)spec.clearPassword();}}
+    private String createPinHash(String pin){try{byte[] salt=new byte[16];new SecureRandom().nextBytes(salt);int iterations=120000;byte[] derived=derivePinKey(pin,salt,iterations);if(derived==null)return null;return "pbkdf2_sha1$"+iterations+"$"+android.util.Base64.encodeToString(salt,android.util.Base64.NO_WRAP)+"$"+android.util.Base64.encodeToString(derived,android.util.Base64.NO_WRAP);}catch(Exception e){return null;}}
+    private boolean verifyPin(String stored,String pin){if(stored==null||stored.isEmpty())return false;if(stored.startsWith("pbkdf2_sha1$")){try{String[] parts=stored.split("\\$");if(parts.length!=4)return false;int iterations=Integer.parseInt(parts[1]);if(iterations<100000||iterations>500000)return false;byte[] salt=android.util.Base64.decode(parts[2],android.util.Base64.NO_WRAP);byte[] expected=android.util.Base64.decode(parts[3],android.util.Base64.NO_WRAP);byte[] actual=derivePinKey(pin,salt,iterations);return actual!=null&&MessageDigest.isEqual(expected,actual);}catch(Exception e){return false;}}if(stored.length()==64&&stored.equals(hash(pin))){String upgraded=createPinHash(pin);if(upgraded!=null)prefs.edit().putString("parental_pin_hash",upgraded).apply();return true;}return false;}
     private String hash(String value){try{byte[] b=MessageDigest.getInstance("SHA-256").digest(value.getBytes("UTF-8"));StringBuilder out=new StringBuilder();for(byte x:b)out.append(String.format(Locale.US,"%02x",x));return out.toString();}catch(Exception e){return value;}}
     private String key(String value){return hash(value).substring(0,24);}
     private void savePlaybackPosition(){if(player!=null&&!lastPlayedUrl.isEmpty()){long pos=player.getCurrentPosition();if(pos>0)prefs.edit().putLong("position_"+key(lastPlayedUrl),pos).apply();}}
