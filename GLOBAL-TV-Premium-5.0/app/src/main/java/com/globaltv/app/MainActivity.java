@@ -601,7 +601,10 @@ private void loadAllPlaylists(){
         return accountStatus;
     }
     private void loadXtream(){
- final int request=++catalogRequestId;seriesRequestId++;status.setText("Connexion au serveur Xtream Codes…");
+ final int request=++catalogRequestId;seriesRequestId++;
+ // Ne jamais laisser le catalogue de la source précédente visible pendant une nouvelle session Xtream.
+ renderOffset=0;all.clear();sourceMode="XTREAM";sourceLabel.setText("SOURCE : XTREAM");
+ status.setText("Connexion au serveur Xtream Codes…");renderList();
  executeIo(()->{
   ArrayList<MediaEntry> parsed=new ArrayList<>();ArrayList<String> endpointErrors=new ArrayList<>();String err=null;
   try{
