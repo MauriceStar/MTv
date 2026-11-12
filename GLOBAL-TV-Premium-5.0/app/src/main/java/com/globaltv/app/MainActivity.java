@@ -904,7 +904,65 @@ private void showPinEditor(){
             return count;
         }
     }
-    private void loadEpg(String url){status.setText("Chargement du guide TV…");executeIo(()->{Map<String,String> now=new HashMap<>(),next=new HashMap<>();String err=null;try{HttpURLConnection c=open(url);try{if(c.getResponseCode()<200||c.getResponseCode()>=300)throw new IOException("HTTP "+c.getResponseCode());XmlPullParser x=XmlPullParserFactory.newInstance().newPullParser();try{x.setFeature(XmlPullParser.FEATURE_PROCESS_DOCDECL,false);}catch(Exception ignored){}try(InputStream epgStream=new LimitedInputStream(c.getInputStream(),32L*1024L*1024L)){x.setInput(epgStream,"UTF-8");String channel=null;long start=0,stop=0,nowMs=System.currentTimeMillis();int event=x.getEventType(),eventCount=0;while(event!=XmlPullParser.END_DOCUMENT){if(++eventCount>500000)throw new IOException("Guide TV trop complexe");if(event==XmlPullParser.START_TAG&&"programme".equals(x.getName())){channel=x.getAttributeValue(null,"channel");start=parseXmlTvTime(x.getAttributeValue(null,"start"));stop=parseXmlTvTime(x.getAttributeValue(null,"stop"));}else if(event==XmlPullParser.START_TAG&&"title".equals(x.getName())&&channel!=null){String title=x.nextText();if(title!=null&&!title.isEmpty()){if(start<=nowMs&&stop>nowMs&&now.size()<10000)now.put(channel,title);else if(start>nowMs&&!next.containsKey(channel)&&next.size()<10000)next.put(channel,title);}}event=x.next();}}finally{c.disconnect();}}catch(Exception e){err=e.getMessage();}final String error=err;epgNow.clear();epgNow.putAll(now);epgNext.clear();epgNext.putAll(next);postUi(()->{status.setText(error==null?now.size()+" programmes en cours • "+next.size()+" à suivre • Guide TV XMLTV":"Erreur EPG : "+error);renderList();});});}
+    private InputStream limitEpgStream(InputStream source,long maxBytes){
+        return new FilterInputStream(source){
+            private long total=0L;
+            @Override public int read()throws IOException{
+                int value=super.read();
+                if(value!=-1&&++total>maxBytes)throw new IOException("Guide TV trop volumineux (limite 64 Mo)");
+                return value;
+            }
+            @Override public int read(byte[] buffer,int offset,int length)throws IOException{
+                int count=super.read(buffer,offset,length);
+                if(count>0){total+=count;if(total>maxBytes)throw new IOException("Guide TV trop volumineux (limite 64 Mo)");}
+                return count;
+            }
+        };
+    }
+    private void loadEpg(String url){
+        status.setText("Chargement du guide TV…");
+        executeIo(()->{
+            Map<String,String> now=new HashMap<>(),next=new HashMap<>();
+            String err=null;
+            try{
+                HttpURLConnection connection=open(url);
+                try{
+                    int code=connection.getResponseCode();
+                    if(code<200||code>=300)throw new IOException("HTTP "+code);
+                    InputStream raw=connection.getInputStream();
+                    if(raw==null)throw new IOException("Réponse EPG vide");
+                    try(InputStream input=limitEpgStream(raw,64L*1024L*1024L)){
+                        XmlPullParser parser=XmlPullParserFactory.newInstance().newPullParser();
+                        parser.setInput(input,"UTF-8");
+                        String channel=null;
+                        long start=0L,stop=0L,nowMs=System.currentTimeMillis();
+                        int event=parser.getEventType();
+                        while(event!=XmlPullParser.END_DOCUMENT){
+                            if(event==XmlPullParser.START_TAG&&"programme".equals(parser.getName())){
+                                channel=parser.getAttributeValue(null,"channel");
+                                start=parseXmlTvTime(parser.getAttributeValue(null,"start"));
+                                stop=parseXmlTvTime(parser.getAttributeValue(null,"stop"));
+                            }else if(event==XmlPullParser.START_TAG&&"title".equals(parser.getName())&&channel!=null){
+                                String title=parser.nextText();
+                                if(title!=null&&!title.isEmpty()){
+                                    if(start<=nowMs&&stop>nowMs)now.put(channel,title);
+                                    else if(start>nowMs&&!next.containsKey(channel))next.put(channel,title);
+                                }
+                            }
+                            event=parser.next();
+                        }
+                    }
+                }finally{connection.disconnect();}
+            }catch(Exception e){err=e.getMessage();}
+            final String error=err;
+            epgNow.clear();epgNow.putAll(now);
+            epgNext.clear();epgNext.putAll(next);
+            postUi(()->{
+                status.setText(error==null?now.size()+" programmes en cours • "+next.size()+" à suivre • Guide TV XMLTV":"Erreur EPG : "+error);
+                renderList();
+            });
+        });
+    }
     private long parseXmlTvTime(String value){if(value==null)return 0;try{String v=value.trim();SimpleDateFormat f=new SimpleDateFormat("yyyyMMddHHmmss Z",Locale.US);if(v.length()==14)v+=" +0000";else if(v.length()>14&&v.charAt(14)!=' ')v=v.substring(0,14)+" "+v.substring(14);Date d=f.parse(v);return d==null?0:d.getTime();}catch(Exception e){return 0;}}
     private void showM3uDialog(){EditText input=new EditText(this);input.setSingleLine(true);input.setHint("https://exemple.com/playlist.m3u");input.setTextColor(Color.WHITE);input.setHintTextColor(MUTED);input.setText("");new AlertDialog.Builder(this).setTitle("Ajouter une playlist M3U").setMessage("Ajoute une nouvelle source. Les chaînes des playlists seront réunies dans le même catalogue.").setView(input).setNegativeButton("Annuler",null).setPositiveButton("Ajouter et charger",(d,w)->{String u=input.getText().toString().trim();if(u.startsWith("https://")||u.startsWith("http://")){confirmInsecureHttp(u,()->{section="TV EN DIRECT";refreshAllNavStyles();loadPlaylist(u);});}else Toast.makeText(this,"Adresse HTTP/HTTPS requise",Toast.LENGTH_LONG).show();}).show();}
     private void showPlaylistManager(){ArrayList<String> urls=new ArrayList<>(playlistSources);if(urls.isEmpty()){new AlertDialog.Builder(this).setTitle("Sources M3U").setMessage("Aucune source enregistrée.").setPositiveButton("Ajouter", (d,w)->showM3uDialog()).show();return;}String[] labels=new String[urls.size()];for(int i=0;i<urls.size();i++)labels[i]=(i+1)+". "+Uri.parse(urls.get(i)).getHost()+" — "+urls.get(i);new AlertDialog.Builder(this).setTitle("Sources M3U • "+urls.size()).setItems(labels,(d,which)->new AlertDialog.Builder(this).setTitle("Gérer cette source").setMessage(urls.get(which)).setNegativeButton("Fermer",null).setNeutralButton("Supprimer",(a,b)->{playlistSources.remove(urls.get(which));prefs.edit().putStringSet("m3u_sources",new HashSet<>(playlistSources)).apply();loadAllPlaylists();}).setPositiveButton("Recharger",(a,b)->loadPlaylist(urls.get(which))).show()).setPositiveButton("Ajouter une source",(d,w)->showM3uDialog()).setNegativeButton("Fermer",null).show();}
