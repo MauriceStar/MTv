@@ -747,6 +747,7 @@ private void loadAllPlaylists(){
         webFullscreenContainer.addView(view,new FrameLayout.LayoutParams(-1,-1));
         View decor=getWindow().getDecorView();
         if(decor instanceof ViewGroup)((ViewGroup)decor).addView(webFullscreenContainer,new ViewGroup.LayoutParams(-1,-1));
+        view.requestFocus();
         applyImmersiveMode();
     }
     private void hideWebCustomView(){
