@@ -80,6 +80,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int MAX_CATALOG_ITEMS=20000;
     private int maxRenderItems=120;
     private int renderOffset=0;
+    private int pendingCatalogScrollY=-1;
     private String activeProfile="Adulte";
     private static final String PROFILE_ADULT="Adulte", PROFILE_CHILD="Enfant";
     private final ArrayList<MediaEntry> all=new ArrayList<>();
@@ -239,7 +240,7 @@ public class MainActivity extends AppCompatActivity {
             getSecureStringSet("favorite_group_"+key(group),new HashSet<>());
     }
     @Override public void onCreate(Bundle b){super.onCreate(b);installBackNavigation();WindowCompat.setDecorFitsSystemWindows(getWindow(),false);applyImmersiveMode();getWindow().setStatusBarColor(BG);getWindow().setNavigationBarColor(BG);prefs=getPreferences(0);
-        if(b!=null){section=b.getString("session_section","ACCUEIL");activeFilter=b.getString("session_filter","Tout");String savedPlayerUrl=b.getString("session_player_url","");try{restorePlaybackUrl=savedPlayerUrl.startsWith("enc:v1:")?decryptLocalValue(savedPlayerUrl,"session_player_url"):savedPlayerUrl;}catch(Exception secureError){restorePlaybackUrl="";android.util.Log.e("GLOBALTV","État de lecture chiffré illisible",secureError);}restorePlaybackName=b.getString("session_player_name","Reprise");restorePlaybackPosition=b.getLong("session_player_position",0L);restorePlaybackWasPlaying=b.getBoolean("session_player_playing",true);restorePlayerFullscreen=b.getBoolean("session_player_fullscreen",false);pendingWebViewState=null;}
+        if(b!=null){pendingCatalogScrollY=Math.max(0,b.getInt("session_catalog_scroll",0));section=b.getString("session_section","ACCUEIL");activeFilter=b.getString("session_filter","Tout");String savedPlayerUrl=b.getString("session_player_url","");try{restorePlaybackUrl=savedPlayerUrl.startsWith("enc:v1:")?decryptLocalValue(savedPlayerUrl,"session_player_url"):savedPlayerUrl;}catch(Exception secureError){restorePlaybackUrl="";android.util.Log.e("GLOBALTV","État de lecture chiffré illisible",secureError);}restorePlaybackName=b.getString("session_player_name","Reprise");restorePlaybackPosition=b.getLong("session_player_position",0L);restorePlaybackWasPlaying=b.getBoolean("session_player_playing",true);restorePlayerFullscreen=b.getBoolean("session_player_fullscreen",false);pendingWebViewState=null;}
         activeProfile=prefs.getString("active_profile",PROFILE_ADULT);
         configureMemoryBudget();
         migrateSensitivePreferences();if(secureStorageReadFailed)Toast.makeText(this,"Certaines données protégées sont momentanément illisibles. Elles n’ont pas été supprimées.",Toast.LENGTH_LONG).show();favorites.addAll(getSecureStringSet("favorites",new HashSet<>()));for(String group:prefs.getStringSet("favorite_groups",new HashSet<>()))favoriteGroups.put(group,new LinkedHashSet<>(getSecureStringSet("favorite_group_"+key(group),new HashSet<>())));playlistSources.addAll(getSecureStringSet("m3u_sources",new LinkedHashSet<>()));
@@ -738,7 +739,7 @@ private void loadAllPlaylists(){
             try{for(String prefKey:prefs.getAll().keySet())if(prefKey.startsWith("history_"))historyKeysCache.add(prefKey);}catch(Exception ignored){}
         }
         String q=search==null?"":search.getText().toString().toLowerCase(Locale.ROOT);
-        if(section.equals("ACCUEIL")&&q.trim().isEmpty()){renderHome();return;}
+        if(section.equals("ACCUEIL")&&q.trim().isEmpty()){renderHome();restorePendingCatalogScroll();return;}
         int shown=0,matched=0;
         boolean hasMore=false;
         List<MediaEntry> activeItems=section.equals("MTV")?mtvItems:all;
@@ -790,6 +791,14 @@ private void loadAllPlaylists(){
             TextView empty=text(section.equals("MTV")?(mtvPlaylistUrl.isEmpty()?"Configure une playlist M3U autorisée pour MTV dans Paramètres.":"Aucune chaîne MTV disponible dans cette source."):(all.isEmpty()?"Aucun contenu chargé. Configure une source M3U ou Xtream dans Paramètres.":"Aucun résultat dans cette rubrique."),14,MUTED,false);
             empty.setPadding(dp(12),dp(30),dp(12),dp(20));list.addView(empty);
         }
+    }
+        restorePendingCatalogScroll();
+    }
+    private void restorePendingCatalogScroll(){
+        if(pendingCatalogScrollY<0||catalogScroll==null)return;
+        final int savedY=pendingCatalogScrollY;
+        pendingCatalogScrollY=-1;
+        catalogScroll.post(()->{if(!destroyed&&catalogScroll!=null)catalogScroll.scrollTo(0,savedY);});
     }
     private void play(MediaEntry c){failedInCurrentRun.clear();startPlayer(c);}
     private List<MediaEntry> playableQueue(MediaEntry selected){
