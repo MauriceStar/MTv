@@ -1084,6 +1084,22 @@ private void loadAllPlaylists(){
         });
     }
 
+    // Force le bon moteur Media3 lorsque l'extension du manifeste est connue.
+    // De nombreux fournisseurs ajoutent des jetons en query string : Uri.getPath()
+    // permet de détecter .m3u8/.mpd sans confondre ces paramètres avec l'extension.
+    private MediaItem buildMediaItem(MediaEntry entry){
+        Uri uri=Uri.parse(entry.url);
+        String path=uri.getPath();
+        String normalized=path==null?"":path.toLowerCase(Locale.ROOT);
+        while(normalized.endsWith("/"))normalized=normalized.substring(0,normalized.length()-1);
+        String mimeType=null;
+        if(normalized.endsWith(".m3u8"))mimeType=androidx.media3.common.MimeTypes.APPLICATION_M3U8;
+        else if(normalized.endsWith(".mpd"))mimeType=androidx.media3.common.MimeTypes.APPLICATION_MPD;
+        MediaItem.Builder builder=new MediaItem.Builder().setUri(uri).setMediaId(entry.url);
+        if(mimeType!=null)builder.setMimeType(mimeType);
+        return builder.build();
+    }
+
     private void startPlayer(MediaEntry c){
         if(c==null||c.url==null||!(c.url.startsWith("https://")||c.url.startsWith("http://"))){
             Toast.makeText(this,"Adresse du flux invalide",Toast.LENGTH_LONG).show();return;
@@ -1123,7 +1139,7 @@ private void loadAllPlaylists(){
             List<MediaEntry> queue=playableQueue(c);ConcatenatingMediaSource playlistSource=new ConcatenatingMediaSource();int startIndex=0;
             for(int i=0;i<queue.size();i++){
                 MediaEntry entry=queue.get(i);
-                MediaItem mediaItem=new MediaItem.Builder().setUri(Uri.parse(entry.url)).setMediaId(entry.url).build();
+                MediaItem mediaItem=buildMediaItem(entry);
                 DefaultHttpDataSource.Factory httpFactory=new DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(true);
                 if(!entry.httpHeaders.isEmpty())httpFactory.setDefaultRequestProperties(new HashMap<>(entry.httpHeaders));
                 MediaSource mediaSource=new DefaultMediaSourceFactory(httpFactory).createMediaSource(mediaItem);
