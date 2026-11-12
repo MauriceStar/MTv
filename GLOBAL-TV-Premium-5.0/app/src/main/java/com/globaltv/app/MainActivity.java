@@ -337,21 +337,26 @@ public class MainActivity extends AppCompatActivity {
             String scheme=current.getProtocol();
             if(!"http".equalsIgnoreCase(scheme)&&!"https".equalsIgnoreCase(scheme))throw new IOException("Protocole réseau non pris en charge");
             HttpURLConnection connection=(HttpURLConnection)current.openConnection();
-            connection.setConnectTimeout(10000);connection.setReadTimeout(20000);
-            connection.setRequestProperty("User-Agent","GLOBAL-TV-Android/5.0");
-            connection.setRequestProperty("Accept","*/*");
-            connection.setInstanceFollowRedirects(false);
-            int code=connection.getResponseCode();
-            if(code==301||code==302||code==303||code==307||code==308){
-                String location=connection.getHeaderField("Location");
-                if(location==null||location.trim().isEmpty()){connection.disconnect();throw new IOException("Redirection sans destination");}
-                URL next=new URL(current,location);
-                String nextScheme=next.getProtocol();
-                if(!"http".equalsIgnoreCase(nextScheme)&&!"https".equalsIgnoreCase(nextScheme)){connection.disconnect();throw new IOException("Protocole de redirection non autorisé");}
-                if("https".equalsIgnoreCase(scheme)&&"http".equalsIgnoreCase(nextScheme)){connection.disconnect();throw new IOException("Redirection HTTPS vers HTTP bloquée");}
-                connection.disconnect();current=next;continue;
+            try{
+                connection.setConnectTimeout(10000);connection.setReadTimeout(20000);
+                connection.setRequestProperty("User-Agent","GLOBAL-TV-Android/5.0");
+                connection.setRequestProperty("Accept","*/*");
+                connection.setInstanceFollowRedirects(false);
+                int code=connection.getResponseCode();
+                if(code==301||code==302||code==303||code==307||code==308){
+                    String location=connection.getHeaderField("Location");
+                    if(location==null||location.trim().isEmpty())throw new IOException("Redirection sans destination");
+                    URL next=new URL(current,location);
+                    String nextScheme=next.getProtocol();
+                    if(!"http".equalsIgnoreCase(nextScheme)&&!"https".equalsIgnoreCase(nextScheme))throw new IOException("Protocole de redirection non autorisé");
+                    if("https".equalsIgnoreCase(scheme)&&"http".equalsIgnoreCase(nextScheme))throw new IOException("Redirection HTTPS vers HTTP bloquée");
+                    connection.disconnect();current=next;continue;
+                }
+                return connection;
+            }catch(Exception e){
+                connection.disconnect();
+                throw e;
             }
-            return connection;
         }
         throw new IOException("Trop de redirections réseau");
     }
@@ -933,6 +938,7 @@ private void showPinEditor(){
                     if(raw==null)throw new IOException("Réponse EPG vide");
                     try(InputStream input=limitEpgStream(raw,64L*1024L*1024L)){
                         XmlPullParser parser=XmlPullParserFactory.newInstance().newPullParser();
+                        parser.setFeature(XmlPullParser.FEATURE_PROCESS_DOCDECL,false);
                         parser.setInput(input,"UTF-8");
                         String channel=null;
                         long start=0L,stop=0L,nowMs=System.currentTimeMillis();
