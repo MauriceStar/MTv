@@ -968,7 +968,7 @@ private void loadAllPlaylists(){
                 }
             });
             activePlayer.setAudioAttributes(new androidx.media3.common.AudioAttributes.Builder().setUsage(androidx.media3.common.C.USAGE_MEDIA).setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MOVIE).build(),true);
-            activePlayer.setMediaSource(playlistSource,startIndex,resumePosition);activePlayer.prepare();activePlayer.play();
+            activePlayer.setMediaSource(playlistSource);activePlayer.seekTo(startIndex,resumePosition);activePlayer.prepare();activePlayer.play();
             status.setText("Lecture : "+c.name);
             applyRestoredPlayerState();
         }catch(Exception e){releasePlayer();Toast.makeText(this,"Impossible de lancer ce flux",Toast.LENGTH_LONG).show();}
