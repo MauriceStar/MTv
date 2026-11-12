@@ -111,6 +111,7 @@ public class MainActivity extends AppCompatActivity {
     private MediaEntry currentEntry;
     private final Set<String> failedInCurrentRun=new HashSet<>();
     private final Set<String> approvedInsecureStreamHosts=new HashSet<>();
+    private final Set<String> approvedInsecureWebHosts=new HashSet<>();
     private Runnable bufferingWatchdog;
     private ExoPlayer bufferingWatchdogPlayer;
     private android.net.ConnectivityManager connectivityManager;
@@ -1033,6 +1034,21 @@ private void loadAllPlaylists(){
             return uri.getHost()!=null&&("http".equalsIgnoreCase(scheme)||"https".equalsIgnoreCase(scheme));
         }catch(Exception ignored){return false;}
     }
+    private boolean shouldBlockWebNavigation(WebView view,String rawUrl){
+        if(!isAllowedWebNavigation(rawUrl))return true;
+        Uri uri=Uri.parse(rawUrl);
+        if(!"http".equalsIgnoreCase(uri.getScheme()))return false;
+        String host=uri.getHost();
+        if(host==null||host.isEmpty())return true;
+        String approvedHost=host.toLowerCase(Locale.ROOT);
+        if(approvedInsecureWebHosts.contains(approvedHost))return false;
+        confirmInsecureHttp(rawUrl,()->{
+            if(isFinishing()||destroyed)return;
+            approvedInsecureWebHosts.add(approvedHost);
+            if(view==mtvWebView||webPopupViews.contains(view))view.loadUrl(rawUrl);
+        });
+        return true;
+    }
     private boolean isWebSection(String target){return "MTV".equals(target)||"WITV".equals(target)||"FRSTV".equals(target)||"FSLIVE".equals(target)||"EPI XTV".equals(target)||"DUDETV".equals(target)||"BRAFLIX".equals(target);}
     private String webUrlFor(String target){if("WITV".equals(target))return "https://wiflix.mov/";if("FRSTV".equals(target))return "https://french-stream.net/";if("FSLIVE".equals(target))return "https://fstv.one/";if("EPI XTV".equals(target))return "https://www.xnxx.com/";if("DUDETV".equals(target))return "https://theporndude.com/";if("BRAFLIX".equals(target))return "https://braflix.uk/";return "https://oxax.tv/";}
     private void showMtvWebView(){showSiteWebView("https://oxax.tv/");}
@@ -1050,9 +1066,9 @@ private void loadAllPlaylists(){
             settings.setLoadWithOverviewMode(true);settings.setUseWideViewPort(true);
             settings.setMediaPlaybackRequiresUserGesture(false);settings.setMixedContentMode(android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW);
             mtvWebView.setWebViewClient(new WebViewClient(){
-                @Override public boolean shouldOverrideUrlLoading(WebView view,android.webkit.WebResourceRequest request){return request==null||!isAllowedWebNavigation(request.getUrl().toString());}
+                @Override public boolean shouldOverrideUrlLoading(WebView view,android.webkit.WebResourceRequest request){return request==null||shouldBlockWebNavigation(view,request.getUrl().toString());}
                 @SuppressWarnings("deprecation")
-                @Override public boolean shouldOverrideUrlLoading(WebView view,String url){return !isAllowedWebNavigation(url);}
+                @Override public boolean shouldOverrideUrlLoading(WebView view,String url){return shouldBlockWebNavigation(view,url);}
                 @Override public void onReceivedSslError(WebView view,android.webkit.SslErrorHandler handler,android.net.http.SslError error){handler.cancel();}
                 @Override public void onPageStarted(WebView view,String url,android.graphics.Bitmap favicon){super.onPageStarted(view,url,favicon);if(url!=null&&!url.equals("about:blank"))activeWebUrl=url;}
                 @Override public void onPageFinished(WebView view,String loaded){super.onPageFinished(view,loaded);View focused=getCurrentFocus();View menu=null;if(webContainer!=null&&webContainer.getChildCount()>0&&webContainer.getChildAt(0) instanceof ViewGroup){ViewGroup nav=(ViewGroup)webContainer.getChildAt(0);if(nav.getChildCount()>0)menu=nav.getChildAt(0);}if(view==mtvWebView&&isWebSection(section)&&view.getVisibility()==View.VISIBLE&&focused!=menu)view.requestFocus();}
@@ -1082,9 +1098,9 @@ private void loadAllPlaylists(){
                     if(!isUserGesture||resultMsg==null||!(resultMsg.obj instanceof WebView.WebViewTransport))return false;
                     WebView popup=new WebView(MainActivity.this);popup.getSettings().setJavaScriptEnabled(true);popup.getSettings().setDomStorageEnabled(true);popup.getSettings().setAllowFileAccess(false);popup.getSettings().setAllowContentAccess(false);popup.getSettings().setAllowFileAccessFromFileURLs(false);popup.getSettings().setAllowUniversalAccessFromFileURLs(false);popup.getSettings().setMixedContentMode(android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW);if(Build.VERSION.SDK_INT>=26)popup.getSettings().setSafeBrowsingEnabled(true);
                      popup.setWebViewClient(new WebViewClient(){
-                         @Override public boolean shouldOverrideUrlLoading(WebView child,android.webkit.WebResourceRequest request){return request==null||!isAllowedWebNavigation(request.getUrl().toString());}
+                         @Override public boolean shouldOverrideUrlLoading(WebView child,android.webkit.WebResourceRequest request){return request==null||shouldBlockWebNavigation(child,request.getUrl().toString());}
                          @SuppressWarnings("deprecation")
-                         @Override public boolean shouldOverrideUrlLoading(WebView child,String url){return !isAllowedWebNavigation(url);}
+                         @Override public boolean shouldOverrideUrlLoading(WebView child,String url){return shouldBlockWebNavigation(child,url);}
                          @Override public void onPageStarted(WebView child,String url,android.graphics.Bitmap favicon){super.onPageStarted(child,url,favicon);if(url!=null&&!url.equals("about:blank")&&mtvWebView!=null){activeWebUrl=url;mtvWebView.loadUrl(url);child.postDelayed(()->{webPopupViews.remove(child);try{child.stopLoading();if(child.getParent() instanceof ViewGroup)((ViewGroup)child.getParent()).removeView(child);child.destroy();}catch(Exception ignored){}},500L);}}
                          @Override public boolean onRenderProcessGone(WebView child,android.webkit.RenderProcessGoneDetail detail){webPopupViews.remove(child);try{child.stopLoading();if(child.getParent() instanceof ViewGroup)((ViewGroup)child.getParent()).removeView(child);child.destroy();}catch(Exception ignored){}return true;}
                      });
@@ -1107,7 +1123,7 @@ private void loadAllPlaylists(){
         if(webContainer.getParent()==null)content.addView(webContainer,Math.min(3,content.getChildCount()),new LinearLayout.LayoutParams(-1,0,1));
         webContainer.setVisibility(View.VISIBLE);mtvWebView.setVisibility(View.VISIBLE);mtvWebView.setFocusable(true);mtvWebView.setFocusableInTouchMode(true);
         mtvWebView.bringToFront();mtvWebView.requestFocus();
-        if(pendingWebViewState!=null){Bundle saved=pendingWebViewState;pendingWebViewState=null;if(mtvWebView.restoreState(saved)==null)mtvWebView.loadUrl(url);}else if(mtvWebView.getUrl()==null||!mtvWebView.getUrl().equals(url))mtvWebView.loadUrl(url);
+        if(pendingWebViewState!=null){Bundle saved=pendingWebViewState;pendingWebViewState=null;if(mtvWebView.restoreState(saved)==null){if(!shouldBlockWebNavigation(mtvWebView,url))mtvWebView.loadUrl(url);}}else if(mtvWebView.getUrl()==null||!mtvWebView.getUrl().equals(url)){if(!shouldBlockWebNavigation(mtvWebView,url))mtvWebView.loadUrl(url);}
     }
     private void showWebCustomView(View view,WebChromeClient.CustomViewCallback callback){
         if(webCustomView!=null){if(callback!=null)callback.onCustomViewHidden();return;}
