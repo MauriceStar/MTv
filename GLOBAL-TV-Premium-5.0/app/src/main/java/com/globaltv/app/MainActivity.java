@@ -113,6 +113,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean playerFullscreen=false;
     private View playerFullscreenTop,playerFullscreenChips,playerFullscreenStatus,playerFullscreenFooter;
     private MediaEntry currentEntry;
+    private AlertDialog seriesDialog;
     private final Set<String> failedInCurrentRun=new HashSet<>();
     private final Set<String> approvedInsecureStreamHosts=new HashSet<>();
     private final Set<String> approvedInsecureWebHosts=new HashSet<>();
@@ -420,7 +421,7 @@ public class MainActivity extends AppCompatActivity {
  // Ferme toute vidéo HTML5 plein écran avant de changer de rubrique.
  if(webCustomView!=null)hideWebCustomView();
  if(playerFullscreen)togglePlayerExpanded();
- seriesRequestId++;
+ seriesRequestId++;dismissSeriesDialog();
  section=target;renderOffset=0;refreshAllNavStyles();activeFilter="Tout";
  if(pendingSearch!=null){mainHandler.removeCallbacks(pendingSearch);pendingSearch=null;}
  search.setText("");search.setHint("⌕  Rechercher…");updateChips();TextView targetNav=navViews.get(target);if(targetNav!=null)search.setNextFocusLeftId(targetNav.getId());
@@ -601,7 +602,7 @@ private void loadAllPlaylists(){
         return accountStatus;
     }
     private void loadXtream(){
- final int request=++catalogRequestId;seriesRequestId++;
+ final int request=++catalogRequestId;seriesRequestId++;dismissSeriesDialog();
  // Ne jamais laisser le catalogue de la source précédente visible pendant une nouvelle session Xtream.
  renderOffset=0;all.clear();sourceMode="XTREAM";sourceLabel.setText("SOURCE : XTREAM");
  status.setText("Connexion au serveur Xtream Codes…");renderList();
@@ -1073,39 +1074,69 @@ private void loadAllPlaylists(){
         if(controller!=null){controller.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);controller.hide(WindowInsetsCompat.Type.systemBars());}
     }
 
-    private void showSeries(MediaEntry s){
- if(!sourceMode.equals("XTREAM")){Toast.makeText(this,"Les épisodes doivent être fournis par une source VOD compatible.",Toast.LENGTH_LONG).show();return;}
- final int request=++seriesRequestId;status.setText("Chargement des saisons…");
- executeIo(()->{
-  String err=null;ArrayList<MediaEntry> eps=new ArrayList<>();
-  try{
-   String response=get(api("get_series_info","&series_id="+enc(s.id)));
-   if(request!=seriesRequestId||destroyed)return;
-   JSONObject data=new JSONObject(response);JSONObject seasons=data.optJSONObject("episodes");
-   if(seasons==null)throw new IOException("Réponse des saisons Xtream invalide ou indisponible");
-    {
-    Iterator<String> keys=seasons.keys();
-    while(keys.hasNext()&&eps.size()<2000&&request==seriesRequestId&&!destroyed){
-     String k=keys.next();JSONArray a=seasons.optJSONArray(k);if(a==null)continue;
-     for(int i=0;i<a.length()&&eps.size()<2000&&request==seriesRequestId&&!destroyed;i++){
-      JSONObject o=a.optJSONObject(i);if(o==null)continue;String id=o.optString("id","");if(!isSafeXtreamId(id))continue;
-      String ext=o.optString("container_extension","mp4");if(!ext.matches("[A-Za-z0-9]{1,8}"))ext="mp4";
-      String u=xtreamBase+(xtreamBase.endsWith("/")?"":"/")+"series/"+enc(xtreamUser)+"/"+enc(xtreamPass)+"/"+id+"."+ext;
-      eps.add(new MediaEntry(o.optString("title","Épisode "+(i+1)),u,"Saison "+k,"","episode"));
-     }
+    private void dismissSeriesDialog(){
+        if(seriesDialog!=null){
+            AlertDialog old=seriesDialog;seriesDialog=null;
+            if(old.isShowing())old.dismiss();
+        }
     }
-   }
-  }catch(Exception e){if(request!=seriesRequestId||destroyed)return;err=e.getMessage();}
-  if(request!=seriesRequestId||destroyed)return;
-  final String error=err;
-  postUi(()->{
-   if(request!=seriesRequestId)return;
-   if(error!=null||eps.isEmpty()){Toast.makeText(this,error==null?"Aucun épisode disponible":("Séries : "+error),Toast.LENGTH_LONG).show();return;}
-   String[] names=new String[eps.size()];for(int i=0;i<eps.size();i++)names[i]=eps.get(i).group+" — "+eps.get(i).name;
-   new AlertDialog.Builder(this).setTitle(s.name).setItems(names,(d,w)->play(eps.get(w))).setNegativeButton("Fermer",null).show();
-  });
- });
-}
+    private void showSeries(MediaEntry s){
+        if(!sourceMode.equals("XTREAM")){
+            Toast.makeText(this,"Les épisodes doivent être fournis par une source VOD compatible.",Toast.LENGTH_LONG).show();return;
+        }
+        if(s==null||!isSafeXtreamId(s.id)){
+            Toast.makeText(this,"Identifiant de série invalide.",Toast.LENGTH_LONG).show();return;
+        }
+        final int request=++seriesRequestId;
+        final String sessionBase=xtreamBase,sessionUser=xtreamUser,sessionPass=xtreamPass;
+        dismissSeriesDialog();
+        status.setText("Chargement des saisons…");
+        executeIo(()->{
+            String err=null;ArrayList<MediaEntry> eps=new ArrayList<>();
+            try{
+                String base=sessionBase+(sessionBase.endsWith("/")?"":"/");
+                String response=get(base+"player_api.php?username="+enc(sessionUser)+"&password="+enc(sessionPass)+"&action=get_series_info&series_id="+enc(s.id));
+                if(request!=seriesRequestId||destroyed)return;
+                JSONObject data=new JSONObject(response);
+                JSONObject seasons=data.optJSONObject("episodes");
+                if(seasons==null)throw new IOException("Réponse des saisons Xtream invalide ou indisponible");
+                Iterator<String> keys=seasons.keys();
+                while(keys.hasNext()&&eps.size()<2000&&request==seriesRequestId&&!destroyed){
+                    String season=keys.next();JSONArray episodes=seasons.optJSONArray(season);
+                    if(episodes==null)continue;
+                    for(int i=0;i<episodes.length()&&eps.size()<2000&&request==seriesRequestId&&!destroyed;i++){
+                        JSONObject episode=episodes.optJSONObject(i);if(episode==null)continue;
+                        String id=episode.optString("id","");
+                        if(!isSafeXtreamId(id))continue;
+                        String ext=episode.optString("container_extension","mp4");
+                        if(!ext.matches("[A-Za-z0-9]{1,8}"))ext="mp4";
+                        String url=base+"series/"+enc(sessionUser)+"/"+enc(sessionPass)+"/"+id+"."+ext;
+                        eps.add(new MediaEntry(episode.optString("title","Épisode "+(i+1)),url,"Saison "+season,"","episode"));
+                    }
+                }
+            }catch(Exception e){if(request!=seriesRequestId||destroyed)return;err=e.getMessage();}
+            if(request!=seriesRequestId||destroyed)return;
+            final String error=err;
+            postUi(()->{
+                if(request!=seriesRequestId||destroyed||!sourceMode.equals("XTREAM")||
+                    !sessionBase.equals(xtreamBase)||!sessionUser.equals(xtreamUser)||!sessionPass.equals(xtreamPass))return;
+                if(error!=null||eps.isEmpty()){
+                    Toast.makeText(this,error==null?"Aucun épisode disponible":("Séries : "+error),Toast.LENGTH_LONG).show();return;
+                }
+                String[] names=new String[eps.size()];
+                for(int i=0;i<eps.size();i++)names[i]=eps.get(i).group+" — "+eps.get(i).name;
+                AlertDialog dialog=new AlertDialog.Builder(this).setTitle(s.name)
+                    .setItems(names,(d,w)->{
+                        if(request==seriesRequestId&&sourceMode.equals("XTREAM")&&
+                            sessionBase.equals(xtreamBase)&&sessionUser.equals(xtreamUser)&&sessionPass.equals(xtreamPass))
+                            play(eps.get(w));
+                    }).setNegativeButton("Fermer",null).create();
+                seriesDialog=dialog;
+                dialog.setOnDismissListener(d->{if(seriesDialog==dialog)seriesDialog=null;});
+                dialog.show();
+            });
+        });
+    }
 
     private boolean isAdultEntry(MediaEntry item){
         if(item==null)return false;
