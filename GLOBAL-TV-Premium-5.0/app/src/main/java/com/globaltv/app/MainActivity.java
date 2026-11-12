@@ -69,6 +69,7 @@ public class MainActivity extends AppCompatActivity {
     private Runnable pendingSearch;
     private volatile boolean destroyed=false;
     private volatile int catalogRequestId=0;
+    private Future<?> catalogLoadFuture;
     private volatile int epgRequestId=0;
     private volatile int seriesRequestId=0;
     private String parentalAuthorizedTarget="";
@@ -436,6 +437,15 @@ public class MainActivity extends AppCompatActivity {
     private void updateChips(){if(chips==null)return;chips.removeAllViews();String[] opts;if(section.equals("TV EN DIRECT"))opts=new String[]{"Tout","France","Afrique","USA","Canada","Germany","Espagne","Angleterre","Sports","News","Music","Kids","Réligion","Documentaire"};else if(section.equals("FAVORIS")){ArrayList<String> values=new ArrayList<>();values.add("Tout");values.addAll(favoriteGroups.keySet());values.add("＋ Créer une liste");opts=values.toArray(new String[0]);}else if(section.equals("HISTORIQUE")||section.equals("GUIDE TV")||section.equals("MUSIQUE")||section.equals("INFOS")||section.equals("SPORTS")||section.equals("DIVERTISSEMENT")||section.equals("MAGAZINE")||section.equals("JEUNESSE")||section.equals("ÉDUCATION"))opts=new String[]{"Tout"};else opts=new String[]{"Tout","Action","Comédie","Drame","Aventure","Fantasy","Science-fiction","Animation"};int previousId=View.NO_ID;for(String value:opts){final String filter=value;TextView c=text(value,12,activeFilter.equals(value)?Color.WHITE:0xFFB8C4D8,true);c.setGravity(Gravity.CENTER);c.setPadding(dp(15),0,dp(15),0);c.setBackground(bg(activeFilter.equals(value)?ACCENT:CARD,18));c.setFocusable(true);c.setFocusableInTouchMode(true);c.setClickable(true);c.setId(View.generateViewId());c.setNextFocusUpId(search.getId());if(previousId!=View.NO_ID)c.setNextFocusLeftId(previousId);if(previousId!=View.NO_ID)chips.getChildAt(chips.getChildCount()-1).setNextFocusRightId(c.getId());previousId=c.getId();c.setOnFocusChangeListener((v,focus)->{if(focus){if(filter.equals(activeFilter)){GradientDrawable d=bg(ACCENT,18);d.setStroke(dp(2),FOCUS_GOLD);v.setBackground(d);((TextView)v).setTextColor(Color.WHITE);}else{GradientDrawable d=bg(FOCUS_GOLD,18);d.setStroke(dp(2),FOCUS_RED);v.setBackground(d);((TextView)v).setTextColor(0xFF17111A);}Rect rect=new Rect();v.getDrawingRect(rect);chipScroll.requestChildRectangleOnScreen(v,rect,true);}else{v.setBackground(bg(filter.equals(activeFilter)?ACCENT:CARD,18));((TextView)v).setTextColor(filter.equals(activeFilter)?Color.WHITE:0xFFB8C4D8);}});c.setOnKeyListener((v,keyCode,event)->{if(event.getAction()!=KeyEvent.ACTION_DOWN)return false;if(keyCode==KeyEvent.KEYCODE_DPAD_CENTER||keyCode==KeyEvent.KEYCODE_ENTER){v.performClick();return true;}if(keyCode==KeyEvent.KEYCODE_DPAD_RIGHT||keyCode==KeyEvent.KEYCODE_DPAD_LEFT){int idx=chips.indexOfChild(v),next=idx+(keyCode==KeyEvent.KEYCODE_DPAD_RIGHT?1:-1);if(next>=0&&next<chips.getChildCount()){chips.getChildAt(next).requestFocus();return true;}}if(keyCode==KeyEvent.KEYCODE_DPAD_DOWN){if(list.getChildCount()>0){list.getChildAt(0).requestFocus();return true;}}return false;});LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-2,dp(38));p.rightMargin=dp(8);chips.addView(c,p);c.setOnClickListener(v->{if(section.equals("FAVORIS")&&filter.equals("＋ Créer une liste")){showCreateFavoriteGroup();return;}activeFilter=filter;renderOffset=0;updateChips();renderList();for(int i=0;i<chips.getChildCount();i++){View selected=chips.getChildAt(i);if(selected instanceof TextView&&filter.equals(((TextView)selected).getText().toString())){selected.requestFocus();break;}}});}search.setNextFocusDownId(chips.getChildAt(0).getId());}
 
 
+    private void submitCatalogIo(Runnable task){
+        Future<?> previous=catalogLoadFuture;
+        if(previous!=null&&!previous.isDone())previous.cancel(true);
+        try{catalogLoadFuture=io.submit(task);}
+        catch(RejectedExecutionException ex){
+            catalogLoadFuture=null;
+            if(!destroyed)postUi(()->Toast.makeText(this,"Chargement occupé. Réessaie dans un instant.",Toast.LENGTH_LONG).show());
+        }
+    }
     private void executeIo(Runnable task){
         if(destroyed)return;
         try{io.execute(task);}catch(RejectedExecutionException ex){
@@ -487,7 +497,7 @@ public class MainActivity extends AppCompatActivity {
     private String get(String address)throws Exception{HttpURLConnection c=open(address);try{int code=c.getResponseCode();InputStream in=code>=200&&code<300?c.getInputStream():c.getErrorStream();if(code<200||code>=300)throw new IOException("Serveur HTTP "+code);if(in==null)throw new IOException("Réponse vide du serveur");
             try(InputStream stream=in;ByteArrayOutputStream out=new ByteArrayOutputStream()){
                 byte[] b=new byte[8192];int n,total=0;
-                while((n=stream.read(b))!=-1){total+=n;if(total>15*1024*1024)throw new IOException("Réponse trop volumineuse (limite 15 Mo)");out.write(b,0,n);}
+                while((n=stream.read(b))!=-1){if(Thread.currentThread().isInterrupted())throw new InterruptedIOException("Chargement annulé");total+=n;if(total>15*1024*1024)throw new IOException("Réponse trop volumineuse (limite 15 Mo)");out.write(b,0,n);}
                 return out.toString("UTF-8");
             }}finally{c.disconnect();}}
     private void loadPlaylist(String url){if(url!=null&&(url.startsWith("http://")||url.startsWith("https://"))){playlistSources.add(url);putSecureStringSet("m3u_sources",new HashSet<>(playlistSources));}loadAllPlaylists();}
@@ -558,7 +568,7 @@ public class MainActivity extends AppCompatActivity {
   int count=0;
   try(BufferedReader reader=new BufferedReader(new InputStreamReader(limitM3uStream(input,64L*1024L*1024L),"UTF-8"))){
    String line,name=null,group="Autres",logo="",tvgId="";Map<String,String> streamHeaders=new HashMap<>();
-   while((line=reader.readLine())!=null&&merged.size()<MAX_CATALOG_ITEMS&&request==catalogRequestId&&!destroyed){
+   while((line=reader.readLine())!=null&&merged.size()<MAX_CATALOG_ITEMS&&request==catalogRequestId&&!destroyed&&!Thread.currentThread().isInterrupted()){
     if(line.length()>1024*1024)throw new IOException("Ligne M3U trop longue (limite 1 Mo)");
     line=line.trim();if(line.startsWith("\uFEFF"))line=line.substring(1);
     if(line.startsWith("#EXTINF:")){streamHeaders.clear();
@@ -580,7 +590,7 @@ public class MainActivity extends AppCompatActivity {
 private void loadAllPlaylists(){
  final int request=++catalogRequestId;ArrayList<String> urls=new ArrayList<>(playlistSources);if(urls.isEmpty())urls.add(DEFAULT_PLAYLIST);
  status.setText("Chargement de "+urls.size()+" source(s) M3U…");
- executeIo(()->{
+ submitCatalogIo(()->{
   ArrayList<MediaEntry> merged=new ArrayList<>();ArrayList<String> errors=new ArrayList<>();
   for(String address:urls){
    if(merged.size()>=MAX_CATALOG_ITEMS||request!=catalogRequestId||destroyed)break;
@@ -615,7 +625,7 @@ private void loadAllPlaylists(){
  final int request=++catalogRequestId;seriesRequestId++;dismissSeriesDialog();
  // Conserver le catalogue actuel jusqu’à validation complète de la nouvelle source Xtream.
  status.setText("Connexion au serveur Xtream Codes…");
- executeIo(()->{
+ submitCatalogIo(()->{
   ArrayList<MediaEntry> parsed=new ArrayList<>();ArrayList<String> endpointErrors=new ArrayList<>();String err=null;
   try{
    if(request!=catalogRequestId||destroyed)return;
