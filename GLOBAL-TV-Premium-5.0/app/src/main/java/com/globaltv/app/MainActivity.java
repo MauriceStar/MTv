@@ -141,8 +141,11 @@ public class MainActivity extends AppCompatActivity {
         return generator.generateKey();
     }
     private String encryptLocalValue(String value,String preferenceKey) throws Exception {
+        return encryptLocalValue(value,preferenceKey,getLocalEncryptionKey());
+    }
+    private String encryptLocalValue(String value,String preferenceKey,javax.crypto.SecretKey secretKey) throws Exception {
         javax.crypto.Cipher cipher=javax.crypto.Cipher.getInstance("AES/GCM/NoPadding");
-        cipher.init(javax.crypto.Cipher.ENCRYPT_MODE,getLocalEncryptionKey());
+        cipher.init(javax.crypto.Cipher.ENCRYPT_MODE,secretKey);
         cipher.updateAAD(preferenceKey.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         byte[] encrypted=cipher.doFinal(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         byte[] packed=new byte[cipher.getIV().length+encrypted.length];
@@ -151,13 +154,16 @@ public class MainActivity extends AppCompatActivity {
         return "enc:v1:"+android.util.Base64.encodeToString(packed,android.util.Base64.NO_WRAP);
     }
     private String decryptLocalValue(String value,String preferenceKey) throws Exception {
+        return decryptLocalValue(value,preferenceKey,getLocalEncryptionKey());
+    }
+    private String decryptLocalValue(String value,String preferenceKey,javax.crypto.SecretKey secretKey) throws Exception {
         if(value==null||!value.startsWith("enc:v1:"))return value;
         byte[] packed=android.util.Base64.decode(value.substring(7),android.util.Base64.NO_WRAP);
         if(packed.length<29)throw new java.security.GeneralSecurityException("Donnée chiffrée invalide");
         byte[] iv=java.util.Arrays.copyOfRange(packed,0,12);
         byte[] encrypted=java.util.Arrays.copyOfRange(packed,12,packed.length);
         javax.crypto.Cipher cipher=javax.crypto.Cipher.getInstance("AES/GCM/NoPadding");
-        cipher.init(javax.crypto.Cipher.DECRYPT_MODE,getLocalEncryptionKey(),new javax.crypto.spec.GCMParameterSpec(128,iv));
+        cipher.init(javax.crypto.Cipher.DECRYPT_MODE,secretKey,new javax.crypto.spec.GCMParameterSpec(128,iv));
         cipher.updateAAD(preferenceKey.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         return new String(cipher.doFinal(encrypted),java.nio.charset.StandardCharsets.UTF_8);
     }
@@ -183,13 +189,15 @@ public class MainActivity extends AppCompatActivity {
         if(stored==null)return new HashSet<>(fallback);
         HashSet<String> result=new HashSet<>(),encoded=new HashSet<>();
         boolean changed=false,failed=false;
+        javax.crypto.SecretKey secretKey;
+        try{secretKey=getLocalEncryptionKey();}catch(Exception error){android.util.Log.e("GLOBALTV","Clé de chiffrement indisponible",error);return new HashSet<>(stored);}
         for(String value:stored){
             if(value!=null&&value.startsWith("enc:v1:")){
-                try{result.add(decryptLocalValue(value,preferenceKey));encoded.add(value);}
+                try{result.add(decryptLocalValue(value,preferenceKey,secretKey));encoded.add(value);}
                 catch(Exception error){failed=true;android.util.Log.e("GLOBALTV","Élément chiffré illisible dans "+preferenceKey,error);}
             }else{
                 result.add(value);
-                try{encoded.add(encryptLocalValue(value,preferenceKey));changed=true;}
+                try{encoded.add(encryptLocalValue(value,preferenceKey,secretKey));changed=true;}
                 catch(Exception error){android.util.Log.e("GLOBALTV","Migration de liste impossible pour "+preferenceKey,error);return result;}
             }
         }
@@ -200,8 +208,9 @@ public class MainActivity extends AppCompatActivity {
     }
     private boolean putSecureStringSet(String preferenceKey,Set<String> values){
         try{
+            javax.crypto.SecretKey secretKey=getLocalEncryptionKey();
             HashSet<String> encoded=new HashSet<>();
-            for(String value:values)encoded.add(encryptLocalValue(value,preferenceKey));
+            for(String value:values)encoded.add(encryptLocalValue(value,preferenceKey,secretKey));
             return prefs.edit().putStringSet(preferenceKey,encoded).commit();
         }catch(Exception error){android.util.Log.e("GLOBALTV","Écriture de liste chiffrée impossible pour "+preferenceKey,error);return false;}
     }
