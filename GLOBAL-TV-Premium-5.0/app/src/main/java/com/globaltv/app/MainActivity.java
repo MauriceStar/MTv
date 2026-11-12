@@ -909,6 +909,11 @@ private void loadAllPlaylists(){
         postUi(()->{
             if(player!=activePlayer)return;
             stopBufferingWatchdog(activePlayer);
+            if(retryable&&!hasInternetConnection()){
+                networkUnavailable=true;
+                status.setText("Connexion Internet interrompue. La lecture reprendra automatiquement au retour du réseau.");
+                return;
+            }
             if(firstFailure){
                 Toast.makeText(MainActivity.this,"Connexion interrompue. Nouvelle tentative…",Toast.LENGTH_SHORT).show();
                 activePlayer.prepare();activePlayer.play();return;
