@@ -110,6 +110,7 @@ public class MainActivity extends AppCompatActivity {
     private View playerFullscreenTop,playerFullscreenChips,playerFullscreenStatus,playerFullscreenFooter;
     private MediaEntry currentEntry;
     private final Set<String> failedInCurrentRun=new HashSet<>();
+    private final Set<String> approvedInsecureStreamHosts=new HashSet<>();
     private Runnable bufferingWatchdog;
     private ExoPlayer bufferingWatchdogPlayer;
     private android.net.ConnectivityManager connectivityManager;
@@ -688,6 +689,7 @@ private void loadAllPlaylists(){
         String query=search==null?"":search.getText().toString().toLowerCase(Locale.ROOT);
         for(MediaEntry entry:source){
             if(entry==null||entry.url==null||!(entry.url.startsWith("http://")||entry.url.startsWith("https://")))continue;
+            if(entry.url.startsWith("http://")&&!isInsecureStreamHostApproved(entry.url))continue;
             if(PROFILE_CHILD.equals(activeProfile)&&isAdultEntry(entry))continue;
             if(!matchSectionFor(entry))continue;
             String searchable=((entry.name==null?"":entry.name)+" "+(entry.group==null?"":entry.group)).toLowerCase(Locale.ROOT);
@@ -819,6 +821,15 @@ private void loadAllPlaylists(){
     }
 
     private void startPlayer(MediaEntry c){
+        if(c!=null&&c.url!=null&&c.url.startsWith("http://")&&!isInsecureStreamHostApproved(c.url)){
+            confirmInsecureHttp(c.url,()->{
+                if(isFinishing()||destroyed)return;
+                String host=Uri.parse(c.url).getHost();
+                if(host!=null)approvedInsecureStreamHosts.add(host.toLowerCase(Locale.ROOT));
+                startPlayer(c);
+            });
+            return;
+        }
         if(c==null||c.url==null||!(c.url.startsWith("https://")||c.url.startsWith("http://"))){
             Toast.makeText(this,"Adresse du flux invalide",Toast.LENGTH_LONG).show();return;
         }
@@ -1193,6 +1204,13 @@ private void showPinEditor(){
     private void savePlaybackPosition(){if(player!=null&&!lastPlayedUrl.isEmpty()){long pos=player.getCurrentPosition();if(pos>0)prefs.edit().putLong("position_"+key(lastPlayedUrl),pos).apply();}}
     private void showCreateFavoriteGroup(){EditText name=field("Nom de la liste");new AlertDialog.Builder(this).setTitle("Créer une liste de favoris").setView(name).setNegativeButton("Annuler",null).setPositiveButton("Créer",(d,w)->{String n=name.getText().toString().trim();if(n.isEmpty())return;if(favoriteGroups.containsKey(n)){Toast.makeText(this,"Cette liste existe déjà",Toast.LENGTH_SHORT).show();return;}favoriteGroups.put(n,new LinkedHashSet<>());prefs.edit().putStringSet("favorite_groups",new HashSet<>(favoriteGroups.keySet())).apply();activeFilter=n;updateChips();renderList();}).show();}
     private void showAssignFavoriteGroup(MediaEntry entry){if(favoriteGroups.isEmpty()){Toast.makeText(this,"Crée d’abord une liste de favoris.",Toast.LENGTH_SHORT).show();return;}String[] names=favoriteGroups.keySet().toArray(new String[0]);new AlertDialog.Builder(this).setTitle("Ajouter à une liste").setItems(names,(d,i)->{Set<String> urls=favoriteGroups.get(names[i]);urls.add(entry.url);putSecureStringSet("favorite_group_"+key(names[i]),new HashSet<>(urls));Toast.makeText(this,"Ajouté à "+names[i],Toast.LENGTH_SHORT).show();}).setNegativeButton("Annuler",null).show();}
+    private boolean isInsecureStreamHostApproved(String address){
+        try{
+            Uri uri=Uri.parse(address);
+            String host=uri.getHost();
+            return "http".equalsIgnoreCase(uri.getScheme())&&host!=null&&approvedInsecureStreamHosts.contains(host.toLowerCase(Locale.ROOT));
+        }catch(Exception ignored){return false;}
+    }
     private void confirmInsecureHttp(String address,Runnable proceed){try{if("http".equalsIgnoreCase(Uri.parse(address).getScheme())){new AlertDialog.Builder(this).setTitle("Connexion HTTP non chiffrée").setMessage("Cette adresse utilise HTTP : l’adresse, les identifiants éventuels et les données échangées peuvent être interceptés sur le réseau. Préfère HTTPS si ton fournisseur le propose. Continuer malgré tout ?").setNegativeButton("Annuler",null).setPositiveButton("Continuer",(d,w)->proceed.run()).show();return;}}catch(Exception ignored){}proceed.run();}
     private void showEpgDialog(){EditText input=field("URL du fichier XMLTV (HTTPS conseillé)");input.setText(epgUrl);new AlertDialog.Builder(this).setTitle("Guide TV XMLTV").setMessage("Ajoute l’URL XMLTV de ton fournisseur ou une source autorisée. Les chaînes doivent avoir un tvg-id correspondant.").setView(input).setNegativeButton("Annuler",null).setPositiveButton("Charger",(d,w)->{String u=input.getText().toString().trim();if(u.startsWith("https://")||u.startsWith("http://")){confirmInsecureHttp(u,()->{if(!putSecureString("epg_url",u)){Toast.makeText(this,"Impossible de protéger cette adresse sur cet appareil.",Toast.LENGTH_LONG).show();return;}epgUrl=u;loadEpg(u);});}else Toast.makeText(this,"URL HTTP/HTTPS requise",Toast.LENGTH_LONG).show();}).show();}
     // Limite la taille des flux XML externes pour eviter une consommation memoire excessive.
