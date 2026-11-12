@@ -501,6 +501,15 @@ public class MainActivity extends AppCompatActivity {
             }
         };
     }
+    private String resolveM3uEntryUrl(String playlistAddress,String entryAddress){
+        if(playlistAddress==null||entryAddress==null||entryAddress.trim().isEmpty())return null;
+        try{
+            URL resolved=new URL(new URL(playlistAddress),entryAddress.trim());
+            String protocol=resolved.getProtocol();
+            if(!("http".equalsIgnoreCase(protocol)||"https".equalsIgnoreCase(protocol))||resolved.getHost()==null||resolved.getHost().isEmpty())return null;
+            return resolved.toExternalForm();
+        }catch(Exception ignored){return null;}
+    }
     private void parseM3uHttpOption(String line,Map<String,String> headers){
         if(line==null||headers==null)return;
         try{
@@ -547,7 +556,8 @@ public class MainActivity extends AppCompatActivity {
      int l=line.indexOf("tvg-logo=\"");if(l>=0){int e=line.indexOf('"',l+10);if(e>l)logo=line.substring(l+10,e);}
     }else if(line.startsWith("#EXTVLCOPT:")||line.startsWith("#EXTHTTP:")){parseM3uHttpOption(line,streamHeaders);
     }else if(!line.isEmpty()&&!line.startsWith("#")&&name!=null){
-     if(line.startsWith("https://")||line.startsWith("http://")){MediaEntry entry=new MediaEntry(name,line,group,logo,"m3u");entry.tvgId=tvgId;entry.httpHeaders.putAll(streamHeaders);merged.add(entry);count++;}
+     String resolvedUrl=resolveM3uEntryUrl(connection.getURL().toString(),line);
+     if(resolvedUrl!=null){MediaEntry entry=new MediaEntry(name,resolvedUrl,group,logo,"m3u");entry.tvgId=tvgId;entry.httpHeaders.putAll(streamHeaders);merged.add(entry);count++;}
      name=null;tvgId="";
     }
    }
@@ -1269,8 +1279,9 @@ private void loadAllPlaylists(){
                         if(l>=0){int e=line.indexOf('"',l+10);if(e>l)logo=line.substring(l+10,e);}
                     }else if(line.startsWith("#EXTVLCOPT:")||line.startsWith("#EXTHTTP:")){parseM3uHttpOption(line,streamHeaders);
                     }else if(!line.isEmpty()&&!line.startsWith("#")&&name!=null){
-                        if(line.startsWith("https://")||line.startsWith("http://")){
-                            MediaEntry entry=new MediaEntry(name,line,group,logo,"m3u");entry.tvgId=tvgId;entry.httpHeaders.putAll(streamHeaders);parsed.add(entry);count++;
+                        String resolvedUrl=resolveM3uEntryUrl(url,line);
+                        if(resolvedUrl!=null){
+                            MediaEntry entry=new MediaEntry(name,resolvedUrl,group,logo,"m3u");entry.tvgId=tvgId;entry.httpHeaders.putAll(streamHeaders);parsed.add(entry);count++;
                         }name=null;
                     }
                 }
