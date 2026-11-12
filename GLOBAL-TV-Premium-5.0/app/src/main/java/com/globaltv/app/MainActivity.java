@@ -1078,7 +1078,7 @@ private void showPinEditor(){
     @Override protected void onResume(){super.onResume();if(mtvWebView!=null)mtvWebView.onResume();}
     @Override protected void onPause(){if(mtvWebView!=null)mtvWebView.onPause();super.onPause();}
     @Override protected void onStart(){super.onStart();if(resumePlaybackOnStart&&player!=null){resumePlaybackOnStart=false;player.play();}if(player!=null&&player.getPlaybackState()==Player.STATE_BUFFERING)startBufferingWatchdog(player,currentEntry);}
-    @Override protected void onStop(){stopBufferingWatchdog(null);super.onStop();if(player!=null){resumePlaybackOnStart=player.isPlaying();savePlaybackPosition();player.pause();}}
+    @Override protected void onStop(){stopBufferingWatchdog(null);super.onStop();if(player!=null){resumePlaybackOnStart=player.getPlayWhenReady();savePlaybackPosition();player.pause();}}
     @Override protected void onDestroy(){
         destroyed=true;if(pendingSearch!=null)mainHandler.removeCallbacks(pendingSearch);
         if(webCustomView!=null)hideWebCustomView();
