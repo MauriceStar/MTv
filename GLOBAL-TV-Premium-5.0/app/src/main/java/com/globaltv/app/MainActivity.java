@@ -707,7 +707,7 @@ private void loadAllPlaylists(){
             android.webkit.WebSettings settings=mtvWebView.getSettings();
             settings.setJavaScriptEnabled(true);settings.setDomStorageEnabled(true);settings.setAllowFileAccess(false);settings.setAllowContentAccess(false);settings.setAllowFileAccessFromFileURLs(false);settings.setAllowUniversalAccessFromFileURLs(false);if(Build.VERSION.SDK_INT>=26)settings.setSafeBrowsingEnabled(true);
             settings.setDatabaseEnabled(true);settings.setLoadsImagesAutomatically(true);
-            settings.setJavaScriptCanOpenWindowsAutomatically(true);settings.setSupportMultipleWindows(true);
+            settings.setJavaScriptCanOpenWindowsAutomatically(false);settings.setSupportMultipleWindows(true);
             settings.setLoadWithOverviewMode(true);settings.setUseWideViewPort(true);
             settings.setMediaPlaybackRequiresUserGesture(false);
             mtvWebView.setWebViewClient(new WebViewClient(){
@@ -736,6 +736,8 @@ private void loadAllPlaylists(){
                 @Override public void onHideCustomView(){hideWebCustomView();}
                 @Override public void onShowCustomView(View view,int requestedOrientation,CustomViewCallback callback){showWebCustomView(view,callback);}
                 @Override public boolean onCreateWindow(WebView view,boolean isDialog,boolean isUserGesture,android.os.Message resultMsg){
+                    // Refuse les fenêtres déclenchées automatiquement par un script sans action utilisateur.
+                    if(!isUserGesture||resultMsg==null||!(resultMsg.obj instanceof WebView.WebViewTransport))return false;
                     WebView popup=new WebView(MainActivity.this);popup.getSettings().setJavaScriptEnabled(true);popup.getSettings().setDomStorageEnabled(true);popup.getSettings().setAllowFileAccess(false);popup.getSettings().setAllowContentAccess(false);popup.getSettings().setAllowFileAccessFromFileURLs(false);popup.getSettings().setAllowUniversalAccessFromFileURLs(false);if(Build.VERSION.SDK_INT>=26)popup.getSettings().setSafeBrowsingEnabled(true);
                      popup.setWebViewClient(new WebViewClient(){
                          @Override public void onPageStarted(WebView child,String url,android.graphics.Bitmap favicon){super.onPageStarted(child,url,favicon);if(url!=null&&!url.equals("about:blank")&&mtvWebView!=null){activeWebUrl=url;mtvWebView.loadUrl(url);child.postDelayed(()->{webPopupViews.remove(child);try{child.stopLoading();if(child.getParent() instanceof ViewGroup)((ViewGroup)child.getParent()).removeView(child);child.destroy();}catch(Exception ignored){}},500L);}}
