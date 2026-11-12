@@ -704,8 +704,10 @@ private void loadAllPlaylists(){
         int shown=0,matched=0;
         boolean hasMore=false;
         List<MediaEntry> activeItems=section.equals("MTV")?mtvItems:all;
+        Set<String> displayedHistoryUrls=new HashSet<>();
         for(MediaEntry c:activeItems){
             if(!matchSection(c))continue;
+            if(section.equals("HISTORIQUE")&&!displayedHistoryUrls.add(c.url))continue;
             if(PROFILE_CHILD.equals(activeProfile)&&isAdultEntry(c))continue;
             String itemName=c.name==null?"":c.name;
             String itemGroup=c.group==null?"":c.group;
@@ -725,7 +727,7 @@ private void loadAllPlaylists(){
             String detail=itemGroup+"  •  "+(c.type.equals("live")||c.type.equals("m3u")?"En direct":c.type.equals("series")?"Série":"VOD");
             if(!c.tvgId.isEmpty()&&epgNow.containsKey(c.tvgId))detail+="  •  En cours : "+epgNow.get(c.tvgId);
             if(!c.tvgId.isEmpty()&&epgNext.containsKey(c.tvgId))detail+="  •  Ensuite : "+epgNext.get(c.tvgId);
-            if(section.equals("HISTORIQUE")){long pos=historyPosition(c);detail+="  •  Reprendre à "+(pos/60000)+" min";}
+            if(section.equals("HISTORIQUE")){long pos=historyPosition(c);detail+=pos>0L?"  •  Reprendre à "+(pos/60000)+" min":"  •  Vu précédemment";}
             meta.addView(text(detail,10,MUTED,false));
             TextView fav=text(favorites.contains(c.url)?"♥":"♡",22,0xFFFF7199,true);fav.setGravity(Gravity.CENTER);fav.setId(View.generateViewId());fav.setFocusable(true);fav.setClickable(true);fav.setBackground(bg(CARD,8));fav.setOnFocusChangeListener((v,focus)->v.setBackground(bg(focus?ACCENT:CARD,8)));
             item.setNextFocusRightId(fav.getId());item.addView(fav,new LinearLayout.LayoutParams(dp(52),-1));fav.setNextFocusLeftId(item.getId());
