@@ -494,7 +494,7 @@ public class MainActivity extends AppCompatActivity {
         }
         throw new IOException("Trop de redirections réseau");
     }
-    private String get(String address)throws Exception{HttpURLConnection c=open(address);try{int code=c.getResponseCode();InputStream in=code>=200&&code<300?c.getInputStream():c.getErrorStream();if(code<200||code>=300)throw new IOException("Serveur HTTP "+code);if(in==null)throw new IOException("Réponse vide du serveur");
+    private String get(String address)throws Exception{HttpURLConnection c=open(address);try{int code=c.getResponseCode();if(code<200||code>=300){InputStream error=c.getErrorStream();if(error!=null)try{error.close();}catch(IOException ignored){}throw new IOException("Serveur HTTP "+code);}InputStream in=c.getInputStream();if(in==null)throw new IOException("Réponse vide du serveur");
             try(InputStream stream=in;ByteArrayOutputStream out=new ByteArrayOutputStream()){
                 byte[] b=new byte[8192];int n,total=0;
                 while((n=stream.read(b))!=-1){if(Thread.currentThread().isInterrupted())throw new InterruptedIOException("Chargement annulé");total+=n;if(total>15*1024*1024)throw new IOException("Réponse trop volumineuse (limite 15 Mo)");out.write(b,0,n);}
@@ -563,7 +563,7 @@ public class MainActivity extends AppCompatActivity {
     private int appendM3uPlaylist(String address,ArrayList<MediaEntry> merged,int request)throws Exception{
  HttpURLConnection connection=open(address);
  try{
-  int code=connection.getResponseCode();if(code<200||code>=300)throw new IOException("Serveur HTTP "+code);
+  int code=connection.getResponseCode();if(code<200||code>=300){InputStream error=connection.getErrorStream();if(error!=null)try{error.close();}catch(IOException ignored){}throw new IOException("Serveur HTTP "+code);}
   InputStream input=connection.getInputStream();if(input==null)throw new IOException("Réponse vide du serveur");
   int count=0;
   try(BufferedReader reader=new BufferedReader(new InputStreamReader(limitM3uStream(input,64L*1024L*1024L),"UTF-8"))){
@@ -1838,6 +1838,8 @@ private void showPinEditor(){
     @Override protected void onDestroy(){
         destroyed=true;
         catalogRequestId++;
+        Future<?> pendingCatalog=catalogLoadFuture;catalogLoadFuture=null;
+        if(pendingCatalog!=null)pendingCatalog.cancel(true);
         epgRequestId++;
         seriesRequestId++;
         unregisterNetworkMonitor();
