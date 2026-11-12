@@ -1082,13 +1082,16 @@ private void loadAllPlaylists(){
             }).show();
     }
     private void loadMtvPlaylist(String url){
+        final int request=++catalogRequestId;
         status.setText("Chargement de la source MTV…");
         executeIo(()->{
             ArrayList<MediaEntry> parsed=new ArrayList<>();String error=null;
             try{
-                String data=get(url);BufferedReader reader=new BufferedReader(new StringReader(data));
+                String data=get(url);if(request!=catalogRequestId||destroyed)return;
+                BufferedReader reader=new BufferedReader(new StringReader(data));
                 String line,name=null,group="MTV",logo="",tvgId="";int count=0;
-                while((line=reader.readLine())!=null&&count<MAX_CATALOG_ITEMS){
+                while((line=reader.readLine())!=null&&count<MAX_CATALOG_ITEMS&&request==catalogRequestId&&!destroyed){
+                    if(line.length()>1024*1024)throw new IOException("Ligne M3U trop longue (limite 1 Mo)");
                     line=line.trim();
                     if(line.startsWith("#EXTINF:")){
                         name=line.substring(line.lastIndexOf(',')+1).trim();group="MTV";logo="";tvgId="";
@@ -1105,8 +1108,10 @@ private void loadAllPlaylists(){
                     }
                 }
             }catch(Exception ex){error=ex.getMessage();}
+            if(request!=catalogRequestId||destroyed)return;
             final String err=error;
             postUi(()->{
+                if(request!=catalogRequestId)return;
                 if(err!=null){status.setText("Erreur source MTV : "+err);return;}
                 renderOffset=0;mtvItems.clear();mtvItems.addAll(parsed);
                 status.setText(parsed.size()+" éléments chargés • Source MTV dédiée");
