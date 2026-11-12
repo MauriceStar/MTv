@@ -410,6 +410,7 @@ public class MainActivity extends AppCompatActivity {
  if(isProtectedSection(target)&&!pinHash.isEmpty()&&!target.equals(parentalAuthorizedTarget)){requestParentalAccess(target);return;}
  if(target.equals(parentalAuthorizedTarget))parentalAuthorizedTarget="";
  if(playerFullscreen)togglePlayerExpanded();
+ seriesRequestId++;
  section=target;renderOffset=0;refreshAllNavStyles();activeFilter="Tout";
  if(pendingSearch!=null){mainHandler.removeCallbacks(pendingSearch);pendingSearch=null;}
  search.setText("");search.setHint("⌕  Rechercher…");updateChips();TextView targetNav=navViews.get(target);if(targetNav!=null)search.setNextFocusLeftId(targetNav.getId());
