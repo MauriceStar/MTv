@@ -1763,15 +1763,16 @@ private void showPinEditor(){
     @Override public void onTrimMemory(int level){
         super.onTrimMemory(level);
         if(level>=TRIM_MEMORY_RUNNING_LOW){
-            try{com.bumptech.glide.Glide.get(this).clearMemory();}catch(Exception ignored){}
-        }
-        if(level>=TRIM_MEMORY_BACKGROUND){
-            try{com.bumptech.glide.Glide.get(this).trimMemory(level);}catch(Exception ignored){}
+            // Glide applique sa politique de réduction du cache sans vider brutalement
+            // tout le cache mémoire pendant que l'interface est active.
+            try{com.bumptech.glide.Glide.get(this).trimMemory(level);}
+            catch(RuntimeException memoryError){android.util.Log.w("GLOBALTV","Réduction du cache images impossible",memoryError);}
         }
     }
     @Override public void onLowMemory(){
         super.onLowMemory();
-        try{com.bumptech.glide.Glide.get(this).clearMemory();}catch(Exception ignored){}
+        try{com.bumptech.glide.Glide.get(this).trimMemory(TRIM_MEMORY_COMPLETE);}
+        catch(RuntimeException memoryError){android.util.Log.w("GLOBALTV","Nettoyage du cache images impossible",memoryError);}
     }
     @Override protected void onSaveInstanceState(Bundle outState){
         super.onSaveInstanceState(outState);
