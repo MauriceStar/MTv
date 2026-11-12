@@ -181,7 +181,7 @@ public class MainActivity extends AppCompatActivity {
         void setProgressComplete() {
             completed = true;
             removeCallbacks(progressTicker);
-            progressBar.setProgress(1000, true);
+            progressBar.setProgress(1000);
         }
 
         BrandSplash(Context context) {
