@@ -192,7 +192,7 @@ public class MainActivity extends AppCompatActivity {
         HashSet<String> result=new HashSet<>(),encoded=new HashSet<>();
         boolean changed=false,failed=false;
         javax.crypto.SecretKey secretKey;
-        try{secretKey=getLocalEncryptionKey();}catch(Exception error){secureStorageReadFailed=true;android.util.Log.e("GLOBALTV","Clé de chiffrement indisponible",error);return new HashSet<>();}
+        try{secretKey=getLocalEncryptionKey();}catch(Exception error){secureStorageReadFailed=true;android.util.Log.e("GLOBALTV","Clé de chiffrement indisponible",error);boolean containsCiphertext=false;for(String item:stored)if(item!=null&&item.startsWith("enc:v1:"))containsCiphertext=true;return containsCiphertext?new HashSet<>():new HashSet<>(stored);}
         for(String value:stored){
             if(value!=null&&value.startsWith("enc:v1:")){
                 try{result.add(decryptLocalValue(value,preferenceKey,secretKey));encoded.add(value);}
@@ -200,7 +200,7 @@ public class MainActivity extends AppCompatActivity {
             }else{
                 result.add(value);
                 try{encoded.add(encryptLocalValue(value,preferenceKey,secretKey));changed=true;}
-                catch(Exception error){android.util.Log.e("GLOBALTV","Migration de liste impossible pour "+preferenceKey,error);return result;}
+                catch(Exception error){secureStorageReadFailed=true;android.util.Log.e("GLOBALTV","Migration de liste impossible pour "+preferenceKey,error);return result;}
             }
         }
         if(failed){secureStorageReadFailed=true;return result;}
