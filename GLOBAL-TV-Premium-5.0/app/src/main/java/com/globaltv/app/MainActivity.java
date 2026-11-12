@@ -123,7 +123,7 @@ public class MainActivity extends AppCompatActivity {
         playlistSources.add(DEFAULT_PLAYLIST);
         playlistSources.addAll(Arrays.asList(BUILT_IN_PLAYLISTS));
         prefs.edit().putStringSet("m3u_sources",new LinkedHashSet<>(playlistSources)).apply();
-        epgUrl=prefs.getString("epg_url","");mtvPlaylistUrl=prefs.getString("mtv_playlist_url","");lastPlayedUrl=prefs.getString("last_url","");buildUi();if(b!=null){if(search!=null)search.setText(b.getString("session_search",""));String savedWebUrl=b.getString("session_web_url","");if(!savedWebUrl.isEmpty()&&isWebSection(section))showSiteWebView(savedWebUrl);
+        epgUrl=prefs.getString("epg_url","");mtvPlaylistUrl=prefs.getString("mtv_playlist_url","");lastPlayedUrl=prefs.getString("last_url","");buildUi();if(b!=null){if(search!=null)search.setText(b.getString("session_search",""));String savedWebUrl=b.getString("session_web_url","");if(isWebSection(section))showSiteWebView(savedWebUrl.isEmpty()?webUrlFor(section):savedWebUrl);
             if(!restorePlaybackUrl.isEmpty()){if(restorePlaybackPosition>0L)prefs.edit().putLong("position_"+key(restorePlaybackUrl),restorePlaybackPosition).apply();MediaEntry restored=new MediaEntry(restorePlaybackName,restorePlaybackUrl,"Reprise","", "live");startPlayer(restored);if(!restorePlaybackWasPlaying&&player!=null)player.pause();if(restorePlayerFullscreen&&playerView!=null)togglePlayerExpanded();}}
         if(b==null)showBrandSplash();loadAllPlaylists();if(!epgUrl.isEmpty())loadEpg(epgUrl);}
     // Adapte le nombre de cartes rendues à la classe mémoire réelle de l'appareil.
