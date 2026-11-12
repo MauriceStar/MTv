@@ -1336,7 +1336,51 @@ private void showPinEditor(){
 }
     private byte[] derivePinKey(String pin,byte[] salt,int iterations){PBEKeySpec spec=null;try{spec=new PBEKeySpec(pin.toCharArray(),salt,iterations,256);return SecretKeyFactory.getInstance("PBKDF2WithHmacSHA1").generateSecret(spec).getEncoded();}catch(Exception e){return null;}finally{if(spec!=null)spec.clearPassword();}}
     private String createPinHash(String pin){try{byte[] salt=new byte[16];new SecureRandom().nextBytes(salt);int iterations=120000;byte[] derived=derivePinKey(pin,salt,iterations);if(derived==null)return null;return "pbkdf2_sha1$"+iterations+"$"+android.util.Base64.encodeToString(salt,android.util.Base64.NO_WRAP)+"$"+android.util.Base64.encodeToString(derived,android.util.Base64.NO_WRAP);}catch(Exception e){return null;}}
-    private boolean verifyPin(String stored,String pin){if(stored==null||stored.isEmpty())return false;if(stored.startsWith("pbkdf2_sha1$")){try{String[] parts=stored.split("\\$");if(parts.length!=4)return false;int iterations=Integer.parseInt(parts[1]);if(iterations<100000||iterations>500000)return false;byte[] salt=android.util.Base64.decode(parts[2],android.util.Base64.NO_WRAP);byte[] expected=android.util.Base64.decode(parts[3],android.util.Base64.NO_WRAP);byte[] actual=derivePinKey(pin,salt,iterations);return actual!=null&&MessageDigest.isEqual(expected,actual);}catch(Exception e){return false;}}if(stored.length()==64&&stored.equals(hash(pin))){String upgraded=createPinHash(pin);if(upgraded!=null)prefs.edit().putString("parental_pin_hash",upgraded).apply();return true;}return false;}
+    private boolean verifyPin(String stored,String pin){
+ if(stored==null||stored.isEmpty())return false;
+ long now=System.currentTimeMillis();
+ long lockoutUntil=prefs.getLong("parental_pin_lockout_until",0L);
+ if(lockoutUntil>now){
+  long remaining=(lockoutUntil-now+59999L)/60000L;
+  Toast.makeText(this,"Trop de tentatives. Réessaie dans "+remaining+" min.",Toast.LENGTH_LONG).show();
+  return false;
+ }
+ if(lockoutUntil>0L)prefs.edit().remove("parental_pin_lockout_until").putInt("parental_pin_failed_attempts",0).apply();
+ boolean valid=false;
+ if(stored.startsWith("pbkdf2_sha1$")){
+  try{
+   String[] parts=stored.split("\\$");
+   if(parts.length==4){
+    int iterations=Integer.parseInt(parts[1]);
+    if(iterations>=100000&&iterations<=500000){
+     byte[] salt=android.util.Base64.decode(parts[2],android.util.Base64.NO_WRAP);
+     byte[] expected=android.util.Base64.decode(parts[3],android.util.Base64.NO_WRAP);
+     byte[] actual=derivePinKey(pin,salt,iterations);
+     valid=actual!=null&&MessageDigest.isEqual(expected,actual);
+    }
+   }
+  }catch(Exception ignored){}
+ }else if(stored.length()==64&&stored.equals(hash(pin))){
+  valid=true;
+  String upgraded=createPinHash(pin);
+  if(upgraded!=null)prefs.edit().putString("parental_pin_hash",upgraded).apply();
+ }
+ if(valid){
+  prefs.edit().remove("parental_pin_lockout_until").putInt("parental_pin_failed_attempts",0).apply();
+  return true;
+ }
+ int failures=prefs.getInt("parental_pin_failed_attempts",0)+1;
+ SharedPreferences.Editor editor=prefs.edit().putInt("parental_pin_failed_attempts",failures);
+ if(failures>=5){
+  editor.putLong("parental_pin_lockout_until",now+5L*60L*1000L).putInt("parental_pin_failed_attempts",0);
+  editor.apply();
+  Toast.makeText(this,"5 tentatives incorrectes. Accès bloqué pendant 5 minutes.",Toast.LENGTH_LONG).show();
+ }else{
+  editor.apply();
+  Toast.makeText(this,"Code PIN incorrect ("+failures+"/5).",Toast.LENGTH_SHORT).show();
+ }
+ return false;
+}
     private String hash(String value){try{byte[] b=MessageDigest.getInstance("SHA-256").digest(value.getBytes("UTF-8"));StringBuilder out=new StringBuilder();for(byte x:b)out.append(String.format(Locale.US,"%02x",x));return out.toString();}catch(Exception e){return value;}}
     private String key(String value){return hash(value).substring(0,24);}
     private void savePlaybackPosition(){if(player!=null&&!lastPlayedUrl.isEmpty()){long pos=player.getCurrentPosition();if(pos>0)prefs.edit().putLong("position_"+key(lastPlayedUrl),pos).apply();}}
