@@ -848,19 +848,30 @@ private void loadAllPlaylists(){
         }catch(Exception ignored){networkCallbackRegistered=false;}
     }
     private void handleNetworkAvailable(){
-        if(!hasInternetConnection()){networkUnavailable=true;return;}
+        if(destroyed||!hasInternetConnection()){networkUnavailable=true;return;}
         if(!networkUnavailable)return;
         networkUnavailable=false;
         if(networkRecoveryRunnable!=null)mainHandler.removeCallbacks(networkRecoveryRunnable);
+        final ExoPlayer expectedPlayer=player;
+        if(expectedPlayer==null)return;
         networkRecoveryRunnable=()->{
             networkRecoveryRunnable=null;
-            ExoPlayer active=player;
-            if(active==null||destroyed||!active.getPlayWhenReady())return;
-            int state=active.getPlaybackState();
-            if(state==Player.STATE_BUFFERING||state==Player.STATE_IDLE){
-                active.prepare();
-                active.play();
-                if(active.getPlaybackState()==Player.STATE_BUFFERING)startBufferingWatchdog(active,currentEntry);
+            if(destroyed||player!=expectedPlayer)return;
+            try{
+                if(!expectedPlayer.getPlayWhenReady())return;
+                int state=expectedPlayer.getPlaybackState();
+                if(state==Player.STATE_BUFFERING||state==Player.STATE_IDLE){
+                    expectedPlayer.prepare();
+                    expectedPlayer.play();
+                    if(!destroyed&&player==expectedPlayer&&expectedPlayer.getPlaybackState()==Player.STATE_BUFFERING)
+                        startBufferingWatchdog(expectedPlayer,currentEntry);
+                }
+            }catch(RuntimeException recoveryError){
+                android.util.Log.e("GLOBALTV","Échec de la reprise après retour du réseau",recoveryError);
+                if(player==expectedPlayer){
+                    try{expectedPlayer.pause();}catch(RuntimeException ignored){}
+                    if(status!=null)status.setText("Réseau rétabli, mais le lecteur n’a pas pu reprendre. Relance la chaîne.");
+                }
             }
         };
         mainHandler.postDelayed(networkRecoveryRunnable,1500L);
