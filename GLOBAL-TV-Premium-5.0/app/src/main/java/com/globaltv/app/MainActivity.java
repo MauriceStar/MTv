@@ -417,6 +417,8 @@ public class MainActivity extends AppCompatActivity {
  String pinHash=prefs.getString("parental_pin_hash","");
  if(isProtectedSection(target)&&!pinHash.isEmpty()&&!target.equals(parentalAuthorizedTarget)){requestParentalAccess(target);return;}
  if(target.equals(parentalAuthorizedTarget))parentalAuthorizedTarget="";
+ // Ferme toute vidéo HTML5 plein écran avant de changer de rubrique.
+ if(webCustomView!=null)hideWebCustomView();
  if(playerFullscreen)togglePlayerExpanded();
  seriesRequestId++;
  section=target;renderOffset=0;refreshAllNavStyles();activeFilter="Tout";
