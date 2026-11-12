@@ -692,7 +692,17 @@ private void loadAllPlaylists(){
                 @Override public void onReceivedError(WebView view,android.webkit.WebResourceRequest request,android.webkit.WebResourceError error){super.onReceivedError(view,request,error);if(request.isForMainFrame())postUi(()->Toast.makeText(MainActivity.this,"Erreur de chargement de la page Web.",Toast.LENGTH_LONG).show());}
                 @Override public void onReceivedHttpError(WebView view,android.webkit.WebResourceRequest request,android.webkit.WebResourceResponse response){super.onReceivedHttpError(view,request,response);if(request.isForMainFrame()&&response.getStatusCode()>=400)postUi(()->Toast.makeText(MainActivity.this,"Erreur Web HTTP "+response.getStatusCode(),Toast.LENGTH_LONG).show());}
                 @Override public boolean onRenderProcessGone(WebView view,android.webkit.RenderProcessGoneDetail detail){
-                    if(view==mtvWebView){String reload=activeWebUrl;if(webContainer!=null&&webContainer.getParent()==content)content.removeView(webContainer);mtvWebView=null;webContainer=null;view.destroy();postUi(()->{Toast.makeText(MainActivity.this,"Le lecteur Web a redémarré.",Toast.LENGTH_LONG).show();if(isWebSection(section)&&reload!=null&&!reload.isEmpty())showSiteWebView(reload);});}
+                    if(view==mtvWebView){
+                        String reload=activeWebUrl;
+                        if(webCustomView!=null)hideWebCustomView();
+                        if(webContainer!=null&&webContainer.getParent()==content)content.removeView(webContainer);
+                        for(WebView popup:new HashSet<>(webPopupViews)){try{popup.stopLoading();if(popup.getParent() instanceof ViewGroup)((ViewGroup)popup.getParent()).removeView(popup);popup.destroy();}catch(Exception ignored){}}
+                        webPopupViews.clear();
+                        if(view.getParent() instanceof ViewGroup)((ViewGroup)view.getParent()).removeView(view);
+                        try{view.stopLoading();view.destroy();}catch(Exception ignored){}
+                        mtvWebView=null;webContainer=null;
+                        postUi(()->{Toast.makeText(MainActivity.this,"Le lecteur Web a redémarré.",Toast.LENGTH_LONG).show();if(isWebSection(section)&&reload!=null&&!reload.isEmpty())showSiteWebView(reload);});
+                    }
                     return true;
                 }
             });
@@ -702,7 +712,10 @@ private void loadAllPlaylists(){
                 @Override public void onShowCustomView(View view,int requestedOrientation,CustomViewCallback callback){showWebCustomView(view,callback);}
                 @Override public boolean onCreateWindow(WebView view,boolean isDialog,boolean isUserGesture,android.os.Message resultMsg){
                     WebView popup=new WebView(MainActivity.this);popup.getSettings().setJavaScriptEnabled(true);popup.getSettings().setDomStorageEnabled(true);
-                    popup.setWebViewClient(new WebViewClient(){@Override public void onPageStarted(WebView child,String url,android.graphics.Bitmap favicon){super.onPageStarted(child,url,favicon);if(url!=null&&!url.equals("about:blank")&&mtvWebView!=null){activeWebUrl=url;mtvWebView.loadUrl(url);child.postDelayed(()->{webPopupViews.remove(child);child.stopLoading();child.destroy();},500L);}}});
+                     popup.setWebViewClient(new WebViewClient(){
+                         @Override public void onPageStarted(WebView child,String url,android.graphics.Bitmap favicon){super.onPageStarted(child,url,favicon);if(url!=null&&!url.equals("about:blank")&&mtvWebView!=null){activeWebUrl=url;mtvWebView.loadUrl(url);child.postDelayed(()->{webPopupViews.remove(child);try{child.stopLoading();if(child.getParent() instanceof ViewGroup)((ViewGroup)child.getParent()).removeView(child);child.destroy();}catch(Exception ignored){}},500L);}}
+                         @Override public boolean onRenderProcessGone(WebView child,android.webkit.RenderProcessGoneDetail detail){webPopupViews.remove(child);try{child.stopLoading();if(child.getParent() instanceof ViewGroup)((ViewGroup)child.getParent()).removeView(child);child.destroy();}catch(Exception ignored){}return true;}
+                     });
                     webPopupViews.add(popup);android.webkit.WebView.WebViewTransport transport=(android.webkit.WebView.WebViewTransport)resultMsg.obj;transport.setWebView(popup);resultMsg.sendToTarget();return true;
                 }
                 @Override public void onCloseWindow(WebView window){if(window!=mtvWebView){webPopupViews.remove(window);window.stopLoading();window.destroy();}}
