@@ -1074,6 +1074,12 @@ private void loadAllPlaylists(){
         if(controller!=null){controller.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);controller.hide(WindowInsetsCompat.Type.systemBars());}
     }
 
+    private int seasonOrder(String value){
+        if(value==null)return Integer.MAX_VALUE;
+        try{return Integer.parseInt(value.trim());}
+        catch(Exception ignored){return Integer.MAX_VALUE;}
+    }
+
     private void dismissSeriesDialog(){
         if(seriesDialog!=null){
             AlertDialog old=seriesDialog;seriesDialog=null;
@@ -1100,12 +1106,32 @@ private void loadAllPlaylists(){
                 JSONObject data=new JSONObject(response);
                 JSONObject seasons=data.optJSONObject("episodes");
                 if(seasons==null)throw new IOException("Réponse des saisons Xtream invalide ou indisponible");
-                Iterator<String> keys=seasons.keys();
-                while(keys.hasNext()&&eps.size()<2000&&request==seriesRequestId&&!destroyed){
-                    String season=keys.next();JSONArray episodes=seasons.optJSONArray(season);
+                ArrayList<String> seasonKeys=new ArrayList<>();
+                Iterator<String> seasonIterator=seasons.keys();
+                while(seasonIterator.hasNext())seasonKeys.add(seasonIterator.next());
+                Collections.sort(seasonKeys,(a,b)->{
+                    int na=seasonOrder(a),nb=seasonOrder(b);
+                    if(na!=Integer.MAX_VALUE&&nb!=Integer.MAX_VALUE)return Integer.compare(na,nb);
+                    if(na!=Integer.MAX_VALUE)return -1;
+                    if(nb!=Integer.MAX_VALUE)return 1;
+                    return a.compareToIgnoreCase(b);
+                });
+                for(String season:seasonKeys){
+                    if(eps.size()>=2000||request!=seriesRequestId||destroyed)break;
+                    JSONArray episodes=seasons.optJSONArray(season);
                     if(episodes==null)continue;
-                    for(int i=0;i<episodes.length()&&eps.size()<2000&&request==seriesRequestId&&!destroyed;i++){
-                        JSONObject episode=episodes.optJSONObject(i);if(episode==null)continue;
+                    ArrayList<JSONObject> orderedEpisodes=new ArrayList<>();
+                    for(int i=0;i<episodes.length();i++){
+                        JSONObject episode=episodes.optJSONObject(i);
+                        if(episode!=null)orderedEpisodes.add(episode);
+                    }
+                    Collections.sort(orderedEpisodes,(a,b)->{
+                        int ea=a.optInt("episode_num",Integer.MAX_VALUE);
+                        int eb=b.optInt("episode_num",Integer.MAX_VALUE);
+                        return Integer.compare(ea,eb);
+                    });
+                    for(int i=0;i<orderedEpisodes.size()&&eps.size()<2000&&request==seriesRequestId&&!destroyed;i++){
+                        JSONObject episode=orderedEpisodes.get(i);
                         String id=episode.optString("id","");
                         if(!isSafeXtreamId(id))continue;
                         String ext=episode.optString("container_extension","mp4");
