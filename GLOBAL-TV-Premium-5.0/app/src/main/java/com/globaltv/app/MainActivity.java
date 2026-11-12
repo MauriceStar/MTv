@@ -1009,6 +1009,7 @@ private void loadAllPlaylists(){
                 @Override public void onPlaybackStateChanged(int playbackState){
                     if(playbackState==Player.STATE_BUFFERING)startBufferingWatchdog(activePlayer,c);
                     else stopBufferingWatchdog(activePlayer);
+                    if(playbackState==Player.STATE_ENDED){stopPlaybackPositionSaver();clearPlaybackPosition(currentEntry);}
                     if(playbackState==Player.STATE_READY){
                         MediaItem readyItem=activePlayer.getCurrentMediaItem();
                         if(readyItem!=null&&readyItem.localConfiguration!=null)
@@ -1016,6 +1017,7 @@ private void loadAllPlaylists(){
                     }
                 }
                 @Override public void onMediaItemTransition(MediaItem item,int reason){
+                    if(reason==Player.MEDIA_ITEM_TRANSITION_REASON_AUTO)clearPlaybackPosition(currentEntry);
                     String uri=item.localConfiguration==null?"":item.localConfiguration.uri.toString();
                     for(MediaEntry entry:queue)if(entry.url.equals(uri)){
                         currentEntry=entry;lastPlayedUrl=entry.url;
@@ -1476,6 +1478,7 @@ private void showPinEditor(){
 }
     private String hash(String value){try{byte[] b=MessageDigest.getInstance("SHA-256").digest(value.getBytes("UTF-8"));StringBuilder out=new StringBuilder();for(byte x:b)out.append(String.format(Locale.US,"%02x",x));return out.toString();}catch(Exception e){return value;}}
     private String key(String value){return hash(value).substring(0,24);}
+    private void clearPlaybackPosition(MediaEntry entry){if(entry==null||entry.url==null||entry.url.isEmpty()||prefs==null)return;try{prefs.edit().remove("position_"+key(entry.url)).apply();}catch(Exception ignored){}}
     private void savePlaybackPosition(){if(player!=null&&currentEntry!=null&&currentEntry.url!=null&&!currentEntry.url.isEmpty()){long pos=player.getCurrentPosition();if(pos>0)prefs.edit().putLong("position_"+key(currentEntry.url),pos).apply();}}
     private void stopPlaybackPositionSaver(){if(playbackPositionSaver!=null)mainHandler.removeCallbacks(playbackPositionSaver);playbackPositionSaver=null;}
     private void startPlaybackPositionSaver(ExoPlayer activePlayer){
