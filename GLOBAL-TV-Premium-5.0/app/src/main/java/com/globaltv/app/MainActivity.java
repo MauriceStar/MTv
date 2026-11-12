@@ -1238,7 +1238,7 @@ private void loadAllPlaylists(){
     private void showSiteWebView(String url){
         activeWebUrl=url;
         if(mtvWebView==null){
-            mtvWebView=new WebView(this);mtvWebView.setBackgroundColor(Color.BLACK);
+            mtvWebView=new WebView(this);mtvWebView.setId(View.generateViewId());mtvWebView.setBackgroundColor(Color.BLACK);
             mtvWebView.setFocusable(true);mtvWebView.setFocusableInTouchMode(true);
             mtvWebView.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
             mtvWebView.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
@@ -1298,10 +1298,10 @@ private void loadAllPlaylists(){
             webContainer=column();webContainer.setBackgroundColor(Color.BLACK);
             LinearLayout webNav=row();webNav.setPadding(dp(8),dp(4),dp(8),dp(4));
             TextView backMenu=text("☰  MENU PRINCIPAL",13,Color.WHITE,true);backMenu.setId(View.generateViewId());backMenu.setFocusable(true);backMenu.setFocusableInTouchMode(true);backMenu.setClickable(true);backMenu.setPadding(dp(16),dp(8),dp(16),dp(8));backMenu.setBackground(bg(ACCENT,10));
-            backMenu.setOnClickListener(v->navigateTo("ACCUEIL"));webNav.addView(backMenu,new LinearLayout.LayoutParams(-2,dp(42)));
+            backMenu.setOnClickListener(v->navigateTo("ACCUEIL"));backMenu.setOnKeyListener((v,keyCode,event)->{if(event.getAction()!=KeyEvent.ACTION_DOWN)return false;if(keyCode==KeyEvent.KEYCODE_DPAD_DOWN||keyCode==KeyEvent.KEYCODE_DPAD_RIGHT){mtvWebView.requestFocus();return true;}if(keyCode==KeyEvent.KEYCODE_DPAD_UP){TextView currentNav=navViews.get(section);if(currentNav!=null){currentNav.requestFocus();return true;}}return false;});webNav.addView(backMenu,new LinearLayout.LayoutParams(-2,dp(42)));
             webContainer.addView(webNav,new LinearLayout.LayoutParams(-1,dp(50)));
             webContainer.addView(mtvWebView,new LinearLayout.LayoutParams(-1,0,1));
-            mtvWebView.setNextFocusUpId(backMenu.getId());
+            mtvWebView.setNextFocusUpId(backMenu.getId());mtvWebView.setNextFocusDownId(View.NO_ID);backMenu.setNextFocusDownId(mtvWebView.getId());
         }
         if(webContainer.getParent()==null)content.addView(webContainer,Math.min(3,content.getChildCount()),new LinearLayout.LayoutParams(-1,0,1));
         webContainer.setVisibility(View.VISIBLE);mtvWebView.setVisibility(View.VISIBLE);mtvWebView.setFocusable(true);mtvWebView.setFocusableInTouchMode(true);
@@ -1632,7 +1632,7 @@ private void showPinEditor(){
         if(event.getAction()==KeyEvent.ACTION_DOWN&&webCustomView==null&&isWebSection(section)&&webContainer!=null&&webContainer.getVisibility()==View.VISIBLE&&event.getKeyCode()==KeyEvent.KEYCODE_DPAD_UP&&mtvWebView!=null&&mtvWebView.hasFocus()&&!mtvWebView.canScrollVertically(-1)){
             View menu=null;View webNav=webContainer.getChildAt(0);if(webNav instanceof ViewGroup)menu=((ViewGroup)webNav).getChildAt(0);if(menu!=null){menu.requestFocus();return true;}
         }
-        if(webCustomView==null&&isWebSection(section)&&mtvWebView!=null&&mtvWebView.getVisibility()==View.VISIBLE&&event.getAction()==KeyEvent.ACTION_DOWN&&event.getKeyCode()==KeyEvent.KEYCODE_DPAD_DOWN&&!mtvWebView.hasFocus())mtvWebView.requestFocus();
+        if(webCustomView==null&&isWebSection(section)&&mtvWebView!=null&&mtvWebView.getVisibility()==View.VISIBLE&&event.getAction()==KeyEvent.ACTION_DOWN&&event.getRepeatCount()==0&&event.getKeyCode()==KeyEvent.KEYCODE_DPAD_DOWN&&!mtvWebView.hasFocus()){View menu=null;if(webContainer!=null&&webContainer.getChildCount()>0&&webContainer.getChildAt(0) instanceof ViewGroup){ViewGroup nav=(ViewGroup)webContainer.getChildAt(0);if(nav.getChildCount()>0)menu=nav.getChildAt(0);}if(menu!=null&&menu.hasFocus()){mtvWebView.requestFocus();return true;}}
         return super.dispatchKeyEvent(event);
     }
     @Override public void onTrimMemory(int level){
