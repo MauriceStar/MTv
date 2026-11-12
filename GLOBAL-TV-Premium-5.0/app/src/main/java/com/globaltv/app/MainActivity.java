@@ -1065,11 +1065,6 @@ private void loadAllPlaylists(){
                     if(playbackState==Player.STATE_BUFFERING)startBufferingWatchdog(activePlayer,c);
                     else stopBufferingWatchdog(activePlayer);
                     if(playbackState==Player.STATE_ENDED){stopPlaybackPositionSaver();clearPlaybackPosition(currentEntry);}
-                    if(playbackState==Player.STATE_READY){
-                        MediaItem readyItem=activePlayer.getCurrentMediaItem();
-                        if(readyItem!=null&&readyItem.localConfiguration!=null)
-                            failedInCurrentRun.remove(readyItem.localConfiguration.uri.toString());
-                    }
                 }
                 @Override public void onMediaItemTransition(MediaItem item,int reason){
                     if(player!=activePlayer)return;
