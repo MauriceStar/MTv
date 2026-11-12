@@ -877,7 +877,7 @@ private void loadAllPlaylists(){
             int failedIndex=activePlayer.getCurrentMediaItemIndex();
             if(failedIndex>=0&&failedIndex<activePlayer.getMediaItemCount())activePlayer.removeMediaItem(failedIndex);
             if(activePlayer.getMediaItemCount()>0){
-                String message=retryable?"Flux indisponible après nouvelle tentative.":"";
+                String message=retryable?"Flux indisponible après nouvelle tentative.":playbackFailureMessage(error);
                 Toast.makeText(MainActivity.this,message+" Passage au suivant…",Toast.LENGTH_SHORT).show();
                 int nextIndex=failedIndex>=0&&failedIndex<activePlayer.getMediaItemCount()?failedIndex:0;
                 activePlayer.seekTo(nextIndex,0L);activePlayer.prepare();activePlayer.play();
