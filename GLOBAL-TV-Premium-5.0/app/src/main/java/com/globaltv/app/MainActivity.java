@@ -844,7 +844,7 @@ private void loadAllPlaylists(){
                 @SuppressWarnings("deprecation")
                 @Override public boolean shouldOverrideUrlLoading(WebView view,String url){return !isAllowedWebNavigation(url);}
                 @Override public void onPageStarted(WebView view,String url,android.graphics.Bitmap favicon){super.onPageStarted(view,url,favicon);if(url!=null&&!url.equals("about:blank"))activeWebUrl=url;}
-                @Override public void onPageFinished(WebView view,String loaded){super.onPageFinished(view,loaded);if(isWebSection(section)&&view.getVisibility()==View.VISIBLE)view.requestFocus();}
+                @Override public void onPageFinished(WebView view,String loaded){super.onPageFinished(view,loaded);View focused=getCurrentFocus();View menu=null;if(webContainer!=null&&webContainer.getChildCount()>0&&webContainer.getChildAt(0) instanceof ViewGroup){ViewGroup nav=(ViewGroup)webContainer.getChildAt(0);if(nav.getChildCount()>0)menu=nav.getChildAt(0);}if(view==mtvWebView&&isWebSection(section)&&view.getVisibility()==View.VISIBLE&&focused!=menu)view.requestFocus();}
                 @Override public void onReceivedError(WebView view,android.webkit.WebResourceRequest request,android.webkit.WebResourceError error){super.onReceivedError(view,request,error);if(request.isForMainFrame())postUi(()->Toast.makeText(MainActivity.this,"Erreur de chargement de la page Web.",Toast.LENGTH_LONG).show());}
                 @Override public void onReceivedHttpError(WebView view,android.webkit.WebResourceRequest request,android.webkit.WebResourceResponse response){super.onReceivedHttpError(view,request,response);if(request.isForMainFrame()&&response.getStatusCode()>=400)postUi(()->Toast.makeText(MainActivity.this,"Erreur Web HTTP "+response.getStatusCode(),Toast.LENGTH_LONG).show());}
                 @Override public boolean onRenderProcessGone(WebView view,android.webkit.RenderProcessGoneDetail detail){
@@ -1108,7 +1108,7 @@ private void showPinEditor(){
         if(event.getAction()==KeyEvent.ACTION_DOWN&&webCustomView==null&&isWebSection(section)&&webContainer!=null&&webContainer.getVisibility()==View.VISIBLE&&event.getKeyCode()==KeyEvent.KEYCODE_DPAD_UP&&mtvWebView!=null&&mtvWebView.hasFocus()&&!mtvWebView.canScrollVertically(-1)){
             View menu=null;View webNav=webContainer.getChildAt(0);if(webNav instanceof ViewGroup)menu=((ViewGroup)webNav).getChildAt(0);if(menu!=null){menu.requestFocus();return true;}
         }
-        if(webCustomView==null&&isWebSection(section)&&mtvWebView!=null&&mtvWebView.getVisibility()==View.VISIBLE&&event.getAction()==KeyEvent.ACTION_DOWN&&(event.getKeyCode()==KeyEvent.KEYCODE_DPAD_UP||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_DOWN||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_LEFT||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_RIGHT||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_CENTER||event.getKeyCode()==KeyEvent.KEYCODE_ENTER)&&!mtvWebView.hasFocus())mtvWebView.requestFocus();
+        if(webCustomView==null&&isWebSection(section)&&mtvWebView!=null&&mtvWebView.getVisibility()==View.VISIBLE&&event.getAction()==KeyEvent.ACTION_DOWN&&event.getKeyCode()==KeyEvent.KEYCODE_DPAD_DOWN&&!mtvWebView.hasFocus())mtvWebView.requestFocus();
         return super.dispatchKeyEvent(event);
     }
     @Override public void onTrimMemory(int level){
