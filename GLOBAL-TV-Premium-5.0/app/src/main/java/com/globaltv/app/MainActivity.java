@@ -85,6 +85,7 @@ public class MainActivity extends AppCompatActivity {
     private final LinkedHashMap<String,Set<String>> favoriteGroups=new LinkedHashMap<>();
     private final Map<String,String> epgNext=new ConcurrentHashMap<>();
     private SharedPreferences prefs;
+    private static final String PREFS_KEY_ALIAS="GLOBAL_TV_LOCAL_DATA_V1";
     private String epgUrl="";
     private final LinkedHashSet<String> playlistSources=new LinkedHashSet<>();
     private String lastPlayedUrl="";
@@ -126,15 +127,100 @@ public class MainActivity extends AppCompatActivity {
         String name,url,group,logo,type,id,container,tvgId;
         MediaEntry(String n,String u,String g,String l,String t){name=n;url=u;group=g;logo=l;type=t;id="";container="m3u8";tvgId="";}
     }
+    private javax.crypto.SecretKey getLocalEncryptionKey() throws Exception {
+        java.security.KeyStore store=java.security.KeyStore.getInstance("AndroidKeyStore");
+        store.load(null);
+        java.security.Key existing=store.getKey(PREFS_KEY_ALIAS,null);
+        if(existing instanceof javax.crypto.SecretKey)return (javax.crypto.SecretKey)existing;
+        javax.crypto.KeyGenerator generator=javax.crypto.KeyGenerator.getInstance("AES","AndroidKeyStore");
+        generator.init(new android.security.keystore.KeyGenParameterSpec.Builder(PREFS_KEY_ALIAS,
+            android.security.keystore.KeyProperties.PURPOSE_ENCRYPT|android.security.keystore.KeyProperties.PURPOSE_DECRYPT)
+            .setBlockModes(android.security.keystore.KeyProperties.BLOCK_MODE_GCM)
+            .setEncryptionPaddings(android.security.keystore.KeyProperties.ENCRYPTION_PADDING_NONE)
+            .setKeySize(256).setRandomizedEncryptionRequired(true).build());
+        return generator.generateKey();
+    }
+    private String encryptLocalValue(String value,String preferenceKey) throws Exception {
+        javax.crypto.Cipher cipher=javax.crypto.Cipher.getInstance("AES/GCM/NoPadding");
+        cipher.init(javax.crypto.Cipher.ENCRYPT_MODE,getLocalEncryptionKey());
+        cipher.updateAAD(preferenceKey.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        byte[] encrypted=cipher.doFinal(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        byte[] packed=new byte[cipher.getIV().length+encrypted.length];
+        System.arraycopy(cipher.getIV(),0,packed,0,cipher.getIV().length);
+        System.arraycopy(encrypted,0,packed,cipher.getIV().length,encrypted.length);
+        return "enc:v1:"+android.util.Base64.encodeToString(packed,android.util.Base64.NO_WRAP);
+    }
+    private String decryptLocalValue(String value,String preferenceKey) throws Exception {
+        if(value==null||!value.startsWith("enc:v1:"))return value;
+        byte[] packed=android.util.Base64.decode(value.substring(7),android.util.Base64.NO_WRAP);
+        if(packed.length<29)throw new java.security.GeneralSecurityException("Donnée chiffrée invalide");
+        byte[] iv=java.util.Arrays.copyOfRange(packed,0,12);
+        byte[] encrypted=java.util.Arrays.copyOfRange(packed,12,packed.length);
+        javax.crypto.Cipher cipher=javax.crypto.Cipher.getInstance("AES/GCM/NoPadding");
+        cipher.init(javax.crypto.Cipher.DECRYPT_MODE,getLocalEncryptionKey(),new javax.crypto.spec.GCMParameterSpec(128,iv));
+        cipher.updateAAD(preferenceKey.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        return new String(cipher.doFinal(encrypted),java.nio.charset.StandardCharsets.UTF_8);
+    }
+    private String getSecureString(String preferenceKey,String fallback){
+        String stored=prefs.getString(preferenceKey,null);
+        if(stored==null)return fallback;
+        if(stored.startsWith("enc:v1:")){
+            try{return decryptLocalValue(stored,preferenceKey);}
+            catch(Exception error){android.util.Log.e("GLOBALTV","Impossible de déchiffrer "+preferenceKey,error);return fallback;}
+        }
+        try{
+            String encrypted=encryptLocalValue(stored,preferenceKey);
+            if(prefs.edit().putString(preferenceKey,encrypted).commit())return stored;
+        }catch(Exception error){android.util.Log.e("GLOBALTV","Migration chiffrée impossible pour "+preferenceKey,error);}
+        return stored;
+    }
+    private boolean putSecureString(String preferenceKey,String value){
+        try{return prefs.edit().putString(preferenceKey,encryptLocalValue(value==null?"":value,preferenceKey)).commit();}
+        catch(Exception error){android.util.Log.e("GLOBALTV","Écriture chiffrée impossible pour "+preferenceKey,error);return false;}
+    }
+    private Set<String> getSecureStringSet(String preferenceKey,Set<String> fallback){
+        Set<String> stored=prefs.getStringSet(preferenceKey,null);
+        if(stored==null)return new HashSet<>(fallback);
+        HashSet<String> result=new HashSet<>(),encoded=new HashSet<>();
+        boolean changed=false;
+        for(String value:stored){
+            if(value!=null&&value.startsWith("enc:v1:")){
+                try{result.add(decryptLocalValue(value,preferenceKey));encoded.add(value);}
+                catch(Exception error){android.util.Log.e("GLOBALTV","Élément chiffré illisible dans "+preferenceKey,error);}
+            }else{
+                result.add(value);
+                try{encoded.add(encryptLocalValue(value,preferenceKey));changed=true;}
+                catch(Exception error){android.util.Log.e("GLOBALTV","Migration de liste impossible pour "+preferenceKey,error);return result;}
+            }
+        }
+        if(changed&&!prefs.edit().putStringSet(preferenceKey,encoded).commit())
+            android.util.Log.e("GLOBALTV","Échec de validation de la migration "+preferenceKey);
+        return result;
+    }
+    private boolean putSecureStringSet(String preferenceKey,Set<String> values){
+        try{
+            HashSet<String> encoded=new HashSet<>();
+            for(String value:values)encoded.add(encryptLocalValue(value,preferenceKey));
+            return prefs.edit().putStringSet(preferenceKey,encoded).commit();
+        }catch(Exception error){android.util.Log.e("GLOBALTV","Écriture de liste chiffrée impossible pour "+preferenceKey,error);return false;}
+    }
+    private void migrateSensitivePreferences(){
+        getSecureStringSet("favorites",new HashSet<>());
+        getSecureStringSet("m3u_sources",new HashSet<>());
+        getSecureString("epg_url","");
+        getSecureString("mtv_playlist_url","");
+        for(String group:prefs.getStringSet("favorite_groups",new HashSet<>()))
+            getSecureStringSet("favorite_group_"+key(group),new HashSet<>());
+    }
     @Override public void onCreate(Bundle b){super.onCreate(b);installBackNavigation();WindowCompat.setDecorFitsSystemWindows(getWindow(),false);applyImmersiveMode();getWindow().setStatusBarColor(BG);getWindow().setNavigationBarColor(BG);prefs=getPreferences(0);
         if(b!=null){section=b.getString("session_section","ACCUEIL");activeFilter=b.getString("session_filter","Tout");restorePlaybackUrl=b.getString("session_player_url","");restorePlaybackName=b.getString("session_player_name","Reprise");restorePlaybackPosition=b.getLong("session_player_position",0L);restorePlaybackWasPlaying=b.getBoolean("session_player_playing",true);restorePlayerFullscreen=b.getBoolean("session_player_fullscreen",false);pendingWebViewState=b.getBundle("session_web_state");}
         activeProfile=prefs.getString("active_profile",PROFILE_ADULT);
         configureMemoryBudget();
-        favorites.addAll(prefs.getStringSet("favorites",new HashSet<>()));for(String group:prefs.getStringSet("favorite_groups",new HashSet<>()))favoriteGroups.put(group,new LinkedHashSet<>(prefs.getStringSet("favorite_group_"+key(group),new HashSet<>())));playlistSources.addAll(prefs.getStringSet("m3u_sources",new LinkedHashSet<>()));
+        migrateSensitivePreferences();favorites.addAll(getSecureStringSet("favorites",new HashSet<>()));for(String group:prefs.getStringSet("favorite_groups",new HashSet<>()))favoriteGroups.put(group,new LinkedHashSet<>(getSecureStringSet("favorite_group_"+key(group),new HashSet<>())));playlistSources.addAll(getSecureStringSet("m3u_sources",new LinkedHashSet<>()));
         playlistSources.add(DEFAULT_PLAYLIST);
         playlistSources.addAll(Arrays.asList(BUILT_IN_PLAYLISTS));
-        prefs.edit().putStringSet("m3u_sources",new LinkedHashSet<>(playlistSources)).apply();
-        epgUrl=prefs.getString("epg_url","");mtvPlaylistUrl=prefs.getString("mtv_playlist_url","");lastPlayedUrl="";prefs.edit().remove("last_url").apply();buildUi();if(b!=null){if(search!=null)search.setText(b.getString("session_search",""));String savedWebUrl=b.getString("session_web_url","");if(isWebSection(section))showSiteWebView(savedWebUrl.isEmpty()?webUrlFor(section):savedWebUrl);
+        putSecureStringSet("m3u_sources",new LinkedHashSet<>(playlistSources));
+        epgUrl=getSecureString("epg_url","");mtvPlaylistUrl=getSecureString("mtv_playlist_url","");lastPlayedUrl="";prefs.edit().remove("last_url").apply();buildUi();if(b!=null){if(search!=null)search.setText(b.getString("session_search",""));String savedWebUrl=b.getString("session_web_url","");if(isWebSection(section))showSiteWebView(savedWebUrl.isEmpty()?webUrlFor(section):savedWebUrl);
             if(!restorePlaybackUrl.isEmpty()){if(restorePlaybackPosition>0L)prefs.edit().putLong("position_"+key(restorePlaybackUrl),restorePlaybackPosition).apply();MediaEntry restored=new MediaEntry(restorePlaybackName,restorePlaybackUrl,"Reprise","", "live");startPlayer(restored);if(!restorePlaybackWasPlaying&&player!=null)player.pause();if(restorePlayerFullscreen&&playerView!=null)togglePlayerExpanded();}}
         if(b==null)showBrandSplash();loadAllPlaylists();if(!epgUrl.isEmpty())loadEpg(epgUrl);}
     // Adapte le nombre de cartes rendues à la classe mémoire réelle de l'appareil.
@@ -373,7 +459,7 @@ public class MainActivity extends AppCompatActivity {
                 while((n=stream.read(b))!=-1){total+=n;if(total>15*1024*1024)throw new IOException("Réponse trop volumineuse (limite 15 Mo)");out.write(b,0,n);}
                 return out.toString("UTF-8");
             }}finally{c.disconnect();}}
-    private void loadPlaylist(String url){if(url!=null&&(url.startsWith("http://")||url.startsWith("https://"))){playlistSources.add(url);prefs.edit().putStringSet("m3u_sources",new HashSet<>(playlistSources)).apply();}loadAllPlaylists();}
+    private void loadPlaylist(String url){if(url!=null&&(url.startsWith("http://")||url.startsWith("https://"))){playlistSources.add(url);putSecureStringSet("m3u_sources",new HashSet<>(playlistSources));}loadAllPlaylists();}
     // Applique une vraie limite en octets avant le décodage UTF-8 de la playlist.
     private InputStream limitM3uStream(InputStream source,long maxBytes){
         return new FilterInputStream(source){
@@ -519,7 +605,7 @@ private void loadAllPlaylists(){
             item.setOnFocusChangeListener((view,hasFocus)->view.setBackground(bg(hasFocus?ACCENT:0xFF17233A,12)));LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(-1,dp(62));ip.bottomMargin=dp(8);list.addView(item,ip);if(chips!=null){for(int ci=0;ci<chips.getChildCount();ci++)chips.getChildAt(ci).setNextFocusDownId(item.getId());item.setNextFocusUpId(chips.getChildAt(0).getId());}
             ImageView artwork=new ImageView(this);artwork.setScaleType(ImageView.ScaleType.CENTER_CROP);artwork.setBackground(bg(CARD,8));item.addView(artwork,new LinearLayout.LayoutParams(dp(76),dp(52)));if(c.logo!=null&&!c.logo.isEmpty())com.bumptech.glide.Glide.with(this).load(c.logo).placeholder(bg(CARD,8)).error(bg(CARD,8)).into(artwork);else artwork.setImageDrawable(bg(CARD,8));
             LinearLayout meta=column();meta.setPadding(dp(12),0,0,0);item.addView(meta,new LinearLayout.LayoutParams(0,-1,1));meta.addView(text(itemName,14,Color.WHITE,true));String detail=itemGroup+"  •  "+(c.type.equals("live")||c.type.equals("m3u")?"En direct":c.type.equals("series")?"Série":"VOD");if(!c.tvgId.isEmpty()&&epgNow.containsKey(c.tvgId))detail+="  •  En cours : "+epgNow.get(c.tvgId);if(!c.tvgId.isEmpty()&&epgNext.containsKey(c.tvgId))detail+="  •  Ensuite : "+epgNext.get(c.tvgId);if(section.equals("HISTORIQUE")){long pos=historyPosition(c);detail+="  •  Reprendre à "+(pos/60000)+" min";}meta.addView(text(detail,10,MUTED,false));
-            TextView fav=text(favorites.contains(c.url)?"♥":"♡",22,0xFFFF7199,true);fav.setGravity(Gravity.CENTER);fav.setId(View.generateViewId());fav.setFocusable(true);fav.setClickable(true);fav.setBackground(bg(CARD,8));fav.setOnFocusChangeListener((v,focus)->v.setBackground(bg(focus?ACCENT:CARD,8)));item.setNextFocusRightId(fav.getId());item.addView(fav,new LinearLayout.LayoutParams(dp(52),-1));fav.setNextFocusLeftId(item.getId());fav.setOnClickListener(v->{if(!favorites.add(c.url))favorites.remove(c.url);getPreferences(0).edit().putStringSet("favorites",new HashSet<>(favorites)).apply();fav.setText(favorites.contains(c.url)?"♥":"♡");renderList();});fav.setOnLongClickListener(v->{showAssignFavoriteGroup(c);return true;});item.setOnClickListener(v->{if(c.type.equals("series"))showSeries(c);else play(c);});shown++;if(shown>=maxRenderItems)break;}
+            TextView fav=text(favorites.contains(c.url)?"♥":"♡",22,0xFFFF7199,true);fav.setGravity(Gravity.CENTER);fav.setId(View.generateViewId());fav.setFocusable(true);fav.setClickable(true);fav.setBackground(bg(CARD,8));fav.setOnFocusChangeListener((v,focus)->v.setBackground(bg(focus?ACCENT:CARD,8)));item.setNextFocusRightId(fav.getId());item.addView(fav,new LinearLayout.LayoutParams(dp(52),-1));fav.setNextFocusLeftId(item.getId());fav.setOnClickListener(v->{if(!favorites.add(c.url))favorites.remove(c.url);putSecureStringSet("favorites",new HashSet<>(favorites));fav.setText(favorites.contains(c.url)?"♥":"♡");renderList();});fav.setOnLongClickListener(v->{showAssignFavoriteGroup(c);return true;});item.setOnClickListener(v->{if(c.type.equals("series"))showSeries(c);else play(c);});shown++;if(shown>=maxRenderItems)break;}
         if(shown>=maxRenderItems){
             TextView more=text("Afficher les chaînes / contenus suivants…",13,Color.WHITE,true);
             more.setGravity(Gravity.CENTER);more.setFocusable(true);more.setClickable(true);more.setPadding(dp(12),dp(10),dp(12),dp(10));more.setBackground(bg(ACCENT,10));
@@ -935,9 +1021,8 @@ private void loadAllPlaylists(){
                 if(!(value.startsWith("https://")||value.startsWith("http://"))){
                     Toast.makeText(this,"URL HTTP(S) requise",Toast.LENGTH_LONG).show();return;
                 }
-                mtvPlaylistUrl=value;
-                prefs.edit().putString("mtv_playlist_url",value).apply();
-                loadMtvPlaylist(value);
+                if(!putSecureString("mtv_playlist_url",value)){Toast.makeText(this,"Impossible de protéger cette adresse sur cet appareil.",Toast.LENGTH_LONG).show();return;}
+                mtvPlaylistUrl=value;loadMtvPlaylist(value);
             }).show();
     }
     private void loadMtvPlaylist(String url){
@@ -1003,9 +1088,9 @@ private void showPinEditor(){
     private String key(String value){return hash(value).substring(0,24);}
     private void savePlaybackPosition(){if(player!=null&&!lastPlayedUrl.isEmpty()){long pos=player.getCurrentPosition();if(pos>0)prefs.edit().putLong("position_"+key(lastPlayedUrl),pos).apply();}}
     private void showCreateFavoriteGroup(){EditText name=field("Nom de la liste");new AlertDialog.Builder(this).setTitle("Créer une liste de favoris").setView(name).setNegativeButton("Annuler",null).setPositiveButton("Créer",(d,w)->{String n=name.getText().toString().trim();if(n.isEmpty())return;if(favoriteGroups.containsKey(n)){Toast.makeText(this,"Cette liste existe déjà",Toast.LENGTH_SHORT).show();return;}favoriteGroups.put(n,new LinkedHashSet<>());prefs.edit().putStringSet("favorite_groups",new HashSet<>(favoriteGroups.keySet())).apply();activeFilter=n;updateChips();renderList();}).show();}
-    private void showAssignFavoriteGroup(MediaEntry entry){if(favoriteGroups.isEmpty()){Toast.makeText(this,"Crée d’abord une liste de favoris.",Toast.LENGTH_SHORT).show();return;}String[] names=favoriteGroups.keySet().toArray(new String[0]);new AlertDialog.Builder(this).setTitle("Ajouter à une liste").setItems(names,(d,i)->{Set<String> urls=favoriteGroups.get(names[i]);urls.add(entry.url);prefs.edit().putStringSet("favorite_group_"+key(names[i]),new HashSet<>(urls)).apply();Toast.makeText(this,"Ajouté à "+names[i],Toast.LENGTH_SHORT).show();}).setNegativeButton("Annuler",null).show();}
+    private void showAssignFavoriteGroup(MediaEntry entry){if(favoriteGroups.isEmpty()){Toast.makeText(this,"Crée d’abord une liste de favoris.",Toast.LENGTH_SHORT).show();return;}String[] names=favoriteGroups.keySet().toArray(new String[0]);new AlertDialog.Builder(this).setTitle("Ajouter à une liste").setItems(names,(d,i)->{Set<String> urls=favoriteGroups.get(names[i]);urls.add(entry.url);putSecureStringSet("favorite_group_"+key(names[i]),new HashSet<>(urls));Toast.makeText(this,"Ajouté à "+names[i],Toast.LENGTH_SHORT).show();}).setNegativeButton("Annuler",null).show();}
     private void confirmInsecureHttp(String address,Runnable proceed){try{if("http".equalsIgnoreCase(Uri.parse(address).getScheme())){new AlertDialog.Builder(this).setTitle("Connexion HTTP non chiffrée").setMessage("Cette adresse utilise HTTP : l’adresse, les identifiants éventuels et les données échangées peuvent être interceptés sur le réseau. Préfère HTTPS si ton fournisseur le propose. Continuer malgré tout ?").setNegativeButton("Annuler",null).setPositiveButton("Continuer",(d,w)->proceed.run()).show();return;}}catch(Exception ignored){}proceed.run();}
-    private void showEpgDialog(){EditText input=field("URL du fichier XMLTV (HTTPS conseillé)");input.setText(epgUrl);new AlertDialog.Builder(this).setTitle("Guide TV XMLTV").setMessage("Ajoute l’URL XMLTV de ton fournisseur ou une source autorisée. Les chaînes doivent avoir un tvg-id correspondant.").setView(input).setNegativeButton("Annuler",null).setPositiveButton("Charger",(d,w)->{String u=input.getText().toString().trim();if(u.startsWith("https://")||u.startsWith("http://")){confirmInsecureHttp(u,()->{epgUrl=u;prefs.edit().putString("epg_url",u).apply();loadEpg(u);});}else Toast.makeText(this,"URL HTTP/HTTPS requise",Toast.LENGTH_LONG).show();}).show();}
+    private void showEpgDialog(){EditText input=field("URL du fichier XMLTV (HTTPS conseillé)");input.setText(epgUrl);new AlertDialog.Builder(this).setTitle("Guide TV XMLTV").setMessage("Ajoute l’URL XMLTV de ton fournisseur ou une source autorisée. Les chaînes doivent avoir un tvg-id correspondant.").setView(input).setNegativeButton("Annuler",null).setPositiveButton("Charger",(d,w)->{String u=input.getText().toString().trim();if(u.startsWith("https://")||u.startsWith("http://")){confirmInsecureHttp(u,()->{if(!putSecureString("epg_url",u)){Toast.makeText(this,"Impossible de protéger cette adresse sur cet appareil.",Toast.LENGTH_LONG).show();return;}epgUrl=u;loadEpg(u);});}else Toast.makeText(this,"URL HTTP/HTTPS requise",Toast.LENGTH_LONG).show();}).show();}
     // Limite la taille des flux XML externes pour eviter une consommation memoire excessive.
     private static final class LimitedInputStream extends FilterInputStream {
         private final long maxBytes;
