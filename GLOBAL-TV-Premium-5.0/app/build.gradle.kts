@@ -2,11 +2,11 @@ plugins { id("com.android.application") }
 
 android {
     namespace = "com.globaltv.app"
-    compileSdk = 35
+    compileSdk = 36
     defaultConfig {
         applicationId = "com.globaltv.app"
         minSdk = 23
-        targetSdk = 28
+        targetSdk = 36
         versionCode = 6
         versionName = "5.0.0"
     }
