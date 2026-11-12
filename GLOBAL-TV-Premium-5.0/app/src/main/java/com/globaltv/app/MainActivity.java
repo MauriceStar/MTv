@@ -39,6 +39,10 @@ import androidx.media3.common.MediaItem;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.common.Player;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.datasource.DefaultHttpDataSource;
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
+import androidx.media3.exoplayer.source.ConcatenatingMediaSource;
+import androidx.media3.exoplayer.source.MediaSource;
 import androidx.media3.ui.PlayerView;
 import androidx.media3.ui.AspectRatioFrameLayout;
 import android.webkit.WebView;
@@ -132,6 +136,7 @@ public class MainActivity extends AppCompatActivity {
 
     static class MediaEntry {
         String name,url,group,logo,type,id,container,tvgId;
+        Map<String,String> httpHeaders=new HashMap<>();
         MediaEntry(String n,String u,String g,String l,String t){name=n;url=u;group=g;logo=l;type=t;id="";container="m3u8";tvgId="";}
     }
     private javax.crypto.SecretKey getLocalEncryptionKey() throws Exception {
@@ -496,24 +501,45 @@ public class MainActivity extends AppCompatActivity {
             }
         };
     }
-    private int appendM3uPlaylist(String address,ArrayList<MediaEntry> merged,int request)throws Exception{
+    private void parseM3uHttpOption(String line,Map<String,String> headers){
+    if(line==null||headers==null)return;
+    try{
+        if(line.startsWith("#EXTVLCOPT:")){
+            String option=line.substring(11).trim();int split=option.indexOf('=');if(split<=0)return;
+            String key=option.substring(0,split).trim().toLowerCase(Locale.ROOT);String value=option.substring(split+1).trim();
+            if(key.equals("http-user-agent"))putM3uHeader(headers,"User-Agent",value);
+            else if(key.equals("http-referrer")||key.equals("http-referer"))putM3uHeader(headers,"Referer",value);
+        }else if(line.startsWith("#EXTHTTP:")){
+            JSONObject json=new JSONObject(line.substring(9).trim());java.util.Iterator<String> keys=json.keys();
+            while(keys.hasNext()){String key=keys.next();String lower=key.toLowerCase(Locale.ROOT);
+                if(lower.equals("user-agent"))putM3uHeader(headers,"User-Agent",json.optString(key,""));
+                else if(lower.equals("referer")||lower.equals("referrer"))putM3uHeader(headers,"Referer",json.optString(key,""));}
+        }
+    }catch(Exception ignored){}
+}
+private void putM3uHeader(Map<String,String> headers,String name,String value){
+    if(value==null||value.isEmpty()||value.length()>2048||value.indexOf('\\r')>=0||value.indexOf('\\n')>=0)return;
+    headers.put(name,value);
+}
+private int appendM3uPlaylist(String address,ArrayList<MediaEntry> merged,int request)throws Exception{
  HttpURLConnection connection=open(address);
  try{
   int code=connection.getResponseCode();if(code<200||code>=300)throw new IOException("Serveur HTTP "+code);
   InputStream input=connection.getInputStream();if(input==null)throw new IOException("Réponse vide du serveur");
   int count=0;
   try(BufferedReader reader=new BufferedReader(new InputStreamReader(limitM3uStream(input,64L*1024L*1024L),"UTF-8"))){
-   String line,name=null,group="Autres",logo="",tvgId="";
+   String line,name=null,group="Autres",logo="",tvgId="";Map<String,String> streamHeaders=new HashMap<>();
    while((line=reader.readLine())!=null&&merged.size()<MAX_CATALOG_ITEMS&&request==catalogRequestId&&!destroyed){
     if(line.length()>1024*1024)throw new IOException("Ligne M3U trop longue (limite 1 Mo)");
     line=line.trim();if(line.startsWith("\uFEFF"))line=line.substring(1);
-    if(line.startsWith("#EXTINF:")){
+    if(line.startsWith("#EXTINF:")){streamHeaders.clear();
      name=line.substring(line.lastIndexOf(',')+1).trim();group="Autres";logo="";tvgId="";
      int g=line.indexOf("group-title=\"");if(g>=0){int e=line.indexOf('"',g+13);if(e>g)group=line.substring(g+13,e);}
      int tid=line.indexOf("tvg-id=\"");if(tid>=0){int te=line.indexOf('"',tid+8);if(te>tid)tvgId=line.substring(tid+8,te);}
      int l=line.indexOf("tvg-logo=\"");if(l>=0){int e=line.indexOf('"',l+10);if(e>l)logo=line.substring(l+10,e);}
+    }else if(line.startsWith("#EXTVLCOPT:")||line.startsWith("#EXTHTTP:")){parseM3uHttpOption(line,streamHeaders);
     }else if(!line.isEmpty()&&!line.startsWith("#")&&name!=null){
-     if(line.startsWith("https://")||line.startsWith("http://")){MediaEntry entry=new MediaEntry(name,line,group,logo,"m3u");entry.tvgId=tvgId;merged.add(entry);count++;}
+     if(line.startsWith("https://")||line.startsWith("http://")){MediaEntry entry=new MediaEntry(name,line,group,logo,"m3u");entry.tvgId=tvgId;entry.httpHeaders.putAll(streamHeaders);merged.add(entry);count++;}
      name=null;tvgId="";
     }
    }
@@ -872,10 +898,14 @@ private void loadAllPlaylists(){
             final ExoPlayer activePlayer=player;
             lastPlayedUrl=c.url;long resumePosition=historyPosition(c);pendingResumePosition=0L;
             historyKeysCache.add("history_"+key(c.url));prefs.edit().putString("history_"+key(c.url),c.name==null?"":c.name).apply();
-            List<MediaEntry> queue=playableQueue(c);ArrayList<MediaItem> mediaItems=new ArrayList<>();int startIndex=0;
+            List<MediaEntry> queue=playableQueue(c);ConcatenatingMediaSource playlistSource=new ConcatenatingMediaSource();int startIndex=0;
             for(int i=0;i<queue.size();i++){
                 MediaEntry entry=queue.get(i);
-                mediaItems.add(new MediaItem.Builder().setUri(Uri.parse(entry.url)).setMediaId(entry.url).build());
+                MediaItem mediaItem=new MediaItem.Builder().setUri(Uri.parse(entry.url)).setMediaId(entry.url).build();
+                DefaultHttpDataSource.Factory httpFactory=new DefaultHttpDataSource.Factory();
+                if(!entry.httpHeaders.isEmpty())httpFactory.setDefaultRequestProperties(new HashMap<>(entry.httpHeaders));
+                MediaSource mediaSource=new DefaultMediaSourceFactory(httpFactory).createMediaSource(mediaItem);
+                playlistSource.addMediaSource(mediaSource);
                 if(entry.url.equals(c.url))startIndex=i;
             }
             activePlayer.addListener(new Player.Listener(){
@@ -897,7 +927,7 @@ private void loadAllPlaylists(){
                 }
             });
             activePlayer.setAudioAttributes(new androidx.media3.common.AudioAttributes.Builder().setUsage(androidx.media3.common.C.USAGE_MEDIA).setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MOVIE).build(),true);
-            activePlayer.setMediaItems(mediaItems,startIndex,resumePosition);activePlayer.prepare();activePlayer.play();
+            activePlayer.setMediaSource(playlistSource,startIndex,resumePosition);activePlayer.prepare();activePlayer.play();
             status.setText("Lecture : "+c.name);
             applyRestoredPlayerState();
         }catch(Exception e){releasePlayer();Toast.makeText(this,"Impossible de lancer ce flux",Toast.LENGTH_LONG).show();}
