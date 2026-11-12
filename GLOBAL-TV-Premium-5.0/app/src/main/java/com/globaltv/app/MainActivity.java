@@ -662,6 +662,12 @@ private void loadAllPlaylists(){
         if(f.equals("documentaire"))return value.contains("documentary")||value.contains("documentaire")||value.contains("discovery")||value.contains("history")||value.contains("nature");
         return value.contains(f);
     }
+    private boolean isWidePlayerLayout(){
+        android.content.pm.PackageManager manager=getPackageManager();
+        boolean television=manager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
+            ||manager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_TELEVISION);
+        return television||getResources().getConfiguration().screenWidthDp>=720;
+    }
     private void stylePlayerButton(TextView button,boolean focused){
         if(focused){GradientDrawable d=bg(FOCUS_GOLD,10);d.setStroke(dp(2),FOCUS_RED);button.setBackground(d);button.setTextColor(0xFF17111A);button.animate().scaleX(1.08f).scaleY(1.08f).setDuration(110).start();}
         else{button.setBackground(bg(CARD,10));button.setTextColor(Color.WHITE);button.animate().scaleX(1f).scaleY(1f).setDuration(110).start();}
@@ -950,20 +956,6 @@ private void loadAllPlaylists(){
     }
 
     private void startPlayer(MediaEntry c){
-        if(c!=null&&c.url!=null&&c.url.startsWith("http://")&&!isInsecureStreamHostApproved(c.url)){
-            Uri streamUri=Uri.parse(c.url);
-            String streamHost=streamUri.getHost();
-            if(streamHost==null||streamHost.isEmpty()){
-                pendingPlayerStateRestore=false;
-                Toast.makeText(this,"Adresse du flux invalide",Toast.LENGTH_LONG).show();return;
-            }
-            confirmInsecureHttp(c.url,()->{
-                if(isFinishing()||destroyed)return;
-                approvedInsecureStreamHosts.add(streamHost.toLowerCase(Locale.ROOT));
-                startPlayer(c);
-            },()->pendingPlayerStateRestore=false);
-            return;
-        }
         if(c==null||c.url==null||!(c.url.startsWith("https://")||c.url.startsWith("http://"))){
             Toast.makeText(this,"Adresse du flux invalide",Toast.LENGTH_LONG).show();return;
         }
@@ -986,7 +978,7 @@ private void loadAllPlaylists(){
             transportControls.addView(playerControl("⏭","Suivant",()->{if(player!=null&&player.hasNextMediaItem())player.seekToNextMediaItem();}),new LinearLayout.LayoutParams(dp(44),dp(40)));
             LinearLayout optionControls=row();optionControls.setGravity(Gravity.CENTER);optionControls.addView(playerControl("♫","Pistes audio",()->{if(player!=null)new androidx.media3.ui.TrackSelectionDialogBuilder(this,"Pistes audio",player,androidx.media3.common.C.TRACK_TYPE_AUDIO).build().show();}),new LinearLayout.LayoutParams(dp(44),dp(38)));optionControls.addView(playerControl("CC","Sous-titres",()->{if(player!=null)new androidx.media3.ui.TrackSelectionDialogBuilder(this,"Sous-titres",player,androidx.media3.common.C.TRACK_TYPE_TEXT).build().show();}),new LinearLayout.LayoutParams(dp(44),dp(38)));optionControls.addView(playerControl("▣","Format image",()->{if(playerView!=null){int[] modes={AspectRatioFrameLayout.RESIZE_MODE_ZOOM,AspectRatioFrameLayout.RESIZE_MODE_FIT,AspectRatioFrameLayout.RESIZE_MODE_FILL,AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH};String[] labels={"Zoom","Ajuster","Remplir","Largeur fixe"};int current=0;for(int i=0;i<modes.length;i++)if(modes[i]==playerResizeMode)current=i;playerResizeMode=modes[(current+1)%modes.length];playerView.setResizeMode(playerResizeMode);Toast.makeText(this,"Format : "+labels[(current+1)%labels.length],Toast.LENGTH_SHORT).show();}}),new LinearLayout.LayoutParams(dp(44),dp(38)));transportControls.addView(expand,new LinearLayout.LayoutParams(-2,dp(40)));playerToolbar.addView(transportControls,new LinearLayout.LayoutParams(-1,dp(42)));playerToolbar.addView(optionControls,new LinearLayout.LayoutParams(-1,dp(38)));
             if(catalogScroll.getParent()==playerArea)playerArea.removeView(catalogScroll);
-            boolean wideLayout=getResources().getConfiguration().screenWidthDp>=900;
+            boolean wideLayout=isWidePlayerLayout();
             playerArea.setOrientation(wideLayout?LinearLayout.HORIZONTAL:LinearLayout.VERTICAL);
             LinearLayout videoColumn=column();videoColumn.setGravity(Gravity.CENTER_HORIZONTAL);
             if(wideLayout)playerArea.addView(videoColumn,new LinearLayout.LayoutParams(0,-1,0.62f));
@@ -1003,7 +995,7 @@ private void loadAllPlaylists(){
             for(int i=0;i<queue.size();i++){
                 MediaEntry entry=queue.get(i);
                 MediaItem mediaItem=new MediaItem.Builder().setUri(Uri.parse(entry.url)).setMediaId(entry.url).build();
-                DefaultHttpDataSource.Factory httpFactory=new DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(false);
+                DefaultHttpDataSource.Factory httpFactory=new DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(true);
                 if(!entry.httpHeaders.isEmpty())httpFactory.setDefaultRequestProperties(new HashMap<>(entry.httpHeaders));
                 MediaSource mediaSource=new DefaultMediaSourceFactory(httpFactory).createMediaSource(mediaItem);
                 playlistSource.addMediaSource(mediaSource);
@@ -1070,7 +1062,7 @@ private void loadAllPlaylists(){
         LinearLayout.LayoutParams areaParams=(LinearLayout.LayoutParams)playerArea.getLayoutParams();
         areaParams.width=-1;areaParams.height=0;areaParams.weight=1f;playerArea.setLayoutParams(areaParams);
         View videoColumn=playerView.getParent() instanceof ViewGroup? (View)playerView.getParent():null;
-        boolean wideLayout=getResources().getConfiguration().screenWidthDp>=900;
+        boolean wideLayout=isWidePlayerLayout();
         // En plein écran, la vidéo occupe toute la largeur, y compris sur TV.
         // L'ancien width=0 avec weight=0 réduisait la vue à zéro sur écran large.
         playerArea.setOrientation(playerFullscreen?LinearLayout.VERTICAL:(wideLayout?LinearLayout.HORIZONTAL:LinearLayout.VERTICAL));
