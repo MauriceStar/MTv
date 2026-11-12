@@ -329,11 +329,30 @@ public class MainActivity extends AppCompatActivity {
         if(playerToolbar!=null){if(playerToolbar.getParent() instanceof ViewGroup)((ViewGroup)playerToolbar.getParent()).removeView(playerToolbar);playerToolbar=null;}if(playerArea!=null){for(int i=playerArea.getChildCount()-1;i>=0;i--){View child=playerArea.getChildAt(i);if(child instanceof LinearLayout&&child!=catalogScroll&&((LinearLayout)child).getChildCount()==0)playerArea.removeViewAt(i);}}
         if(player!=null){try{player.release();}catch(Exception ignored){}player=null;}
     }
-    private HttpURLConnection open(String address)throws Exception{URL u=new URL(address);HttpURLConnection c=(HttpURLConnection)u.openConnection();c.setConnectTimeout(10000);c.setReadTimeout(20000);
-        c.setRequestProperty("User-Agent","GLOBAL-TV-Android/5.0");
-        c.setRequestProperty("Accept","*/*");
-        c.setInstanceFollowRedirects(true);
-        return c;}
+    private HttpURLConnection open(String address)throws Exception{
+        URL current=new URL(address);
+        for(int redirect=0;redirect<=5;redirect++){
+            String scheme=current.getProtocol();
+            if(!"http".equalsIgnoreCase(scheme)&&!"https".equalsIgnoreCase(scheme))throw new IOException("Protocole réseau non pris en charge");
+            HttpURLConnection connection=(HttpURLConnection)current.openConnection();
+            connection.setConnectTimeout(10000);connection.setReadTimeout(20000);
+            connection.setRequestProperty("User-Agent","GLOBAL-TV-Android/5.0");
+            connection.setRequestProperty("Accept","*/*");
+            connection.setInstanceFollowRedirects(false);
+            int code=connection.getResponseCode();
+            if(code==301||code==302||code==303||code==307||code==308){
+                String location=connection.getHeaderField("Location");
+                if(location==null||location.trim().isEmpty()){connection.disconnect();throw new IOException("Redirection sans destination");}
+                URL next=new URL(current,location);
+                String nextScheme=next.getProtocol();
+                if(!"http".equalsIgnoreCase(nextScheme)&&!"https".equalsIgnoreCase(nextScheme)){connection.disconnect();throw new IOException("Protocole de redirection non autorisé");}
+                if("https".equalsIgnoreCase(scheme)&&"http".equalsIgnoreCase(nextScheme)){connection.disconnect();throw new IOException("Redirection HTTPS vers HTTP bloquée");}
+                connection.disconnect();current=next;continue;
+            }
+            return connection;
+        }
+        throw new IOException("Trop de redirections réseau");
+    }
     private String get(String address)throws Exception{HttpURLConnection c=open(address);try{int code=c.getResponseCode();InputStream in=code>=200&&code<300?c.getInputStream():c.getErrorStream();if(code<200||code>=300)throw new IOException("Serveur HTTP "+code);if(in==null)throw new IOException("Réponse vide du serveur");
             try(InputStream stream=in;ByteArrayOutputStream out=new ByteArrayOutputStream()){
                 byte[] b=new byte[8192];int n,total=0;
