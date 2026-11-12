@@ -115,6 +115,8 @@ public class MainActivity extends AppCompatActivity {
     private MediaEntry currentEntry;
     private AlertDialog seriesDialog;
     private final Set<String> failedInCurrentRun=new HashSet<>();
+    private ExoPlayer playbackRecoveryPlayer;
+    private Runnable playbackRecoveryRunnable;
     private final Set<String> approvedInsecureStreamHosts=new HashSet<>();
     private final Set<String> approvedInsecureWebHosts=new HashSet<>();
     private Runnable bufferingWatchdog;
@@ -450,6 +452,7 @@ public class MainActivity extends AppCompatActivity {
         if(playerView!=null){playerView.setPlayer(null);if(playerView.getParent() instanceof ViewGroup)((ViewGroup)playerView.getParent()).removeView(playerView);playerView=null;}
         if(playerArea!=null)playerArea.setOrientation(LinearLayout.HORIZONTAL);if(catalogScroll!=null&&catalogScroll.getParent()!=playerArea)playerArea.addView(catalogScroll,new LinearLayout.LayoutParams(-1,-1));
         if(playerToolbar!=null){if(playerToolbar.getParent() instanceof ViewGroup)((ViewGroup)playerToolbar.getParent()).removeView(playerToolbar);playerToolbar=null;}if(playerArea!=null){for(int i=playerArea.getChildCount()-1;i>=0;i--){View child=playerArea.getChildAt(i);if(child instanceof LinearLayout&&child!=catalogScroll&&((LinearLayout)child).getChildCount()==0)playerArea.removeViewAt(i);}}
+        clearPlaybackRecovery(null);
         stopBufferingWatchdog(null);
         stopPlaybackPositionSaver();
         if(player!=null){try{player.release();}catch(Exception ignored){}player=null;}
@@ -911,46 +914,99 @@ private void loadAllPlaylists(){
         return "Le flux est invalide ou incompatible avec le lecteur.";
     }
 
+    private void clearPlaybackRecovery(ExoPlayer expected){
+        if(expected!=null&&playbackRecoveryPlayer!=expected)return;
+        if(playbackRecoveryRunnable!=null)mainHandler.removeCallbacks(playbackRecoveryRunnable);
+        playbackRecoveryRunnable=null;playbackRecoveryPlayer=null;
+    }
+
     private void handlePlayerFailure(ExoPlayer activePlayer,MediaEntry fallback){
         handlePlayerFailure(activePlayer,fallback,null);
     }
 
     private void handlePlayerFailure(ExoPlayer activePlayer,MediaEntry fallback,androidx.media3.common.PlaybackException error){
+        if(activePlayer==null||player!=activePlayer||playbackRecoveryPlayer==activePlayer)return;
+        playbackRecoveryPlayer=activePlayer;
         MediaItem playing=activePlayer.getCurrentMediaItem();
-        String failedUrl=playing!=null&&playing.localConfiguration!=null?playing.localConfiguration.uri.toString():(currentEntry==null?fallback.url:currentEntry.url);
+        String failedUrl=playing!=null&&playing.localConfiguration!=null
+            ?playing.localConfiguration.uri.toString()
+            :(currentEntry!=null?currentEntry.url:(fallback==null?"":fallback.url));
         boolean retryable=isRetryablePlaybackError(error);
-        boolean firstFailure=retryable&&failedInCurrentRun.add(failedUrl);
+        boolean firstFailure=retryable&&!failedUrl.isEmpty()&&failedInCurrentRun.add(failedUrl);
         postUi(()->{
-            if(player!=activePlayer)return;
+            if(player!=activePlayer){clearPlaybackRecovery(activePlayer);return;}
             stopBufferingWatchdog(activePlayer);
             if(retryable&&!hasInternetConnection()){
                 networkUnavailable=true;
                 status.setText("Connexion Internet interrompue. La lecture reprendra automatiquement au retour du réseau.");
+                clearPlaybackRecovery(activePlayer);
                 return;
             }
             if(firstFailure){
-                Toast.makeText(MainActivity.this,"Connexion interrompue. Nouvelle tentative…",Toast.LENGTH_SHORT).show();
-                activePlayer.prepare();activePlayer.play();return;
+                status.setText("Flux interrompu. Nouvelle tentative…");
+                playbackRecoveryRunnable=()->{
+                    playbackRecoveryRunnable=null;
+                    if(player!=activePlayer){clearPlaybackRecovery(activePlayer);return;}
+                    try{
+                        activePlayer.prepare();
+                        activePlayer.play();
+                    }catch(RuntimeException recoveryError){
+                        android.util.Log.e("GLOBALTV","Échec de la première reprise Media3",recoveryError);
+                        try{activePlayer.pause();}catch(RuntimeException ignored){}
+                        status.setText("Reprise impossible pour ce flux. Passage au suivant…");
+                    }finally{clearPlaybackRecovery(activePlayer);}
+                };
+                mainHandler.postDelayed(playbackRecoveryRunnable,650L);
+                return;
             }
+
             int failedIndex=activePlayer.getCurrentMediaItemIndex();
-            if(failedIndex>=0&&failedIndex<activePlayer.getMediaItemCount())activePlayer.removeMediaItem(failedIndex);
-            if(activePlayer.getMediaItemCount()>0){
-                if(failedIndex>=activePlayer.getMediaItemCount()){
+            int itemCount=activePlayer.getMediaItemCount();
+            if(failedIndex<0||failedIndex>=itemCount){
+                try{activePlayer.pause();}catch(RuntimeException ignored){}
+                status.setText("Flux indisponible. Sélectionne une autre chaîne.");
+                clearPlaybackRecovery(activePlayer);
+                return;
+            }
+            try{
+                activePlayer.removeMediaItem(failedIndex);
+                int remaining=activePlayer.getMediaItemCount();
+                if(remaining<=0){
                     activePlayer.pause();
-                    status.setText("Fin de la file de lecture");
-                    Toast.makeText(MainActivity.this,"Ce flux a échoué et aucun autre flux ne le suit dans la file.",Toast.LENGTH_LONG).show();
+                    status.setText("Aucun autre flux disponible dans cette file.");
+                    String detail=playbackFailureMessage(error);
+                    Toast.makeText(MainActivity.this,detail,Toast.LENGTH_LONG).show();
+                    clearPlaybackRecovery(activePlayer);
                     return;
                 }
-                String message=retryable?"Flux indisponible après nouvelle tentative.":playbackFailureMessage(error);
                 int httpCode=findHttpStatusCode(error);
-                if(httpCode==401||httpCode==403)status.setText("Flux refusé par le fournisseur (HTTP "+httpCode+"). Passage au suivant…");
-                else Toast.makeText(MainActivity.this,message+" Passage au suivant…",Toast.LENGTH_SHORT).show();
-                int nextIndex=failedIndex>=0?failedIndex:0;
-                activePlayer.seekTo(nextIndex,0L);activePlayer.prepare();activePlayer.play();
-            }else{
-                String detail=playbackFailureMessage(error);
-                status.setText("Lecture impossible : "+(currentEntry==null?fallback.name:currentEntry.name));
-                Toast.makeText(MainActivity.this,detail,Toast.LENGTH_LONG).show();
+                if(httpCode==401||httpCode==403)
+                    status.setText("Flux refusé (HTTP "+httpCode+"). Passage au suivant…");
+                else
+                    Toast.makeText(MainActivity.this,(retryable?"Flux indisponible après une nouvelle tentative. ":"")+playbackFailureMessage(error)+" Passage au suivant…",Toast.LENGTH_SHORT).show();
+
+                playbackRecoveryRunnable=()->{
+                    playbackRecoveryRunnable=null;
+                    if(player!=activePlayer){clearPlaybackRecovery(activePlayer);return;}
+                    try{
+                        int count=activePlayer.getMediaItemCount();
+                        if(count<=0){activePlayer.pause();status.setText("Aucun autre flux disponible.");return;}
+                        int nextIndex=Math.min(failedIndex,count-1);
+                        activePlayer.seekTo(nextIndex,0L);
+                        activePlayer.prepare();
+                        activePlayer.play();
+                    }catch(RuntimeException recoveryError){
+                        android.util.Log.e("GLOBALTV","Échec du passage au flux suivant",recoveryError);
+                        try{activePlayer.pause();}catch(RuntimeException ignored){}
+                        status.setText("Impossible de relancer le flux suivant.");
+                    }finally{clearPlaybackRecovery(activePlayer);}
+                };
+                mainHandler.postDelayed(playbackRecoveryRunnable,350L);
+            }catch(RuntimeException recoveryError){
+                android.util.Log.e("GLOBALTV","Erreur pendant la récupération du flux",recoveryError);
+                try{activePlayer.pause();}catch(RuntimeException ignored){}
+                status.setText("Le flux est indisponible. La lecture a été arrêtée sans fermer l’application.");
+                clearPlaybackRecovery(activePlayer);
             }
         });
     }
