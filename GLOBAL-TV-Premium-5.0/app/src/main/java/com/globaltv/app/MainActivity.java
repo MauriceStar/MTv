@@ -526,7 +526,7 @@ public class MainActivity extends AppCompatActivity {
         }catch(Exception ignored){}
     }
     private void putM3uHeader(Map<String,String> headers,String name,String value){
-        if(value==null||value.isEmpty()||value.length()>2048||value.indexOf('\\r')>=0||value.indexOf('\\n')>=0)return;
+        if(value==null||value.isEmpty()||value.length()>2048||value.indexOf('\r')>=0||value.indexOf('\n')>=0)return;
         headers.put(name,value);
     }
     private int appendM3uPlaylist(String address,ArrayList<MediaEntry> merged,int request)throws Exception{
