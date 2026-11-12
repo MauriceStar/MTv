@@ -846,7 +846,7 @@ private void loadAllPlaylists(){
         try{
             savePlaybackPosition();releasePlayer();currentEntry=c;
             player=new ExoPlayer.Builder(getApplicationContext()).build();
-            playerView=new PlayerView(this);playerView.setPlayer(player);playerView.setUseController(true);playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_ZOOM);playerView.setBackgroundColor(Color.BLACK);
+            playerView=new PlayerView(this);playerView.setPlayer(player);playerView.setUseController(true);playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_ZOOM);playerView.setBackgroundColor(Color.BLACK);playerView.setKeepScreenOn(true);final PlayerView activePlayerView=playerView;
             GestureDetector playerGestures=new GestureDetector(this,new GestureDetector.SimpleOnGestureListener(){@Override public boolean onDown(android.view.MotionEvent e){return true;}@Override public boolean onDoubleTap(android.view.MotionEvent e){togglePlayerExpanded();return true;}});playerView.setOnTouchListener((v,event)->{playerGestures.onTouchEvent(event);return false;});
             playerToolbar=column();playerToolbar.setGravity(Gravity.CENTER);playerToolbar.setPadding(0,dp(3),0,dp(3));
             TextView expand=text("⛶",23,Color.WHITE,true);
@@ -879,6 +879,7 @@ private void loadAllPlaylists(){
                 if(entry.url.equals(c.url))startIndex=i;
             }
             activePlayer.addListener(new Player.Listener(){
+                @Override public void onPlayWhenReadyChanged(boolean playWhenReady,int reason){activePlayerView.setKeepScreenOn(playWhenReady);}
                 @Override public void onPlayerError(androidx.media3.common.PlaybackException e){
                     handlePlayerFailure(activePlayer,c);
                 }
@@ -946,6 +947,7 @@ private void loadAllPlaylists(){
         }
         applyImmersiveMode();playerView.requestFocus();
     }
+    @Override public void onWindowFocusChanged(boolean hasFocus){super.onWindowFocusChanged(hasFocus);if(hasFocus&&playerFullscreen)applyImmersiveMode();}
     private void applyImmersiveMode(){
         WindowInsetsControllerCompat controller=WindowCompat.getInsetsController(getWindow(),getWindow().getDecorView());
         if(controller!=null){controller.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);controller.hide(WindowInsetsCompat.Type.systemBars());}
