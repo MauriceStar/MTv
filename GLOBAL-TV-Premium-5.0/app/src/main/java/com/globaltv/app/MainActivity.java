@@ -823,12 +823,17 @@ private void loadAllPlaylists(){
 
     private void startPlayer(MediaEntry c){
         if(c!=null&&c.url!=null&&c.url.startsWith("http://")&&!isInsecureStreamHostApproved(c.url)){
+            Uri streamUri=Uri.parse(c.url);
+            String streamHost=streamUri.getHost();
+            if(streamHost==null||streamHost.isEmpty()){
+                pendingPlayerStateRestore=false;
+                Toast.makeText(this,"Adresse du flux invalide",Toast.LENGTH_LONG).show();return;
+            }
             confirmInsecureHttp(c.url,()->{
                 if(isFinishing()||destroyed)return;
-                String host=Uri.parse(c.url).getHost();
-                if(host!=null)approvedInsecureStreamHosts.add(host.toLowerCase(Locale.ROOT));
+                approvedInsecureStreamHosts.add(streamHost.toLowerCase(Locale.ROOT));
                 startPlayer(c);
-            });
+            },()->pendingPlayerStateRestore=false);
             return;
         }
         if(c==null||c.url==null||!(c.url.startsWith("https://")||c.url.startsWith("http://"))){
@@ -1220,7 +1225,8 @@ private void showPinEditor(){
             return "http".equalsIgnoreCase(uri.getScheme())&&host!=null&&approvedInsecureStreamHosts.contains(host.toLowerCase(Locale.ROOT));
         }catch(Exception ignored){return false;}
     }
-    private void confirmInsecureHttp(String address,Runnable proceed){try{if("http".equalsIgnoreCase(Uri.parse(address).getScheme())){new AlertDialog.Builder(this).setTitle("Connexion HTTP non chiffrée").setMessage("Cette adresse utilise HTTP : l’adresse, les identifiants éventuels et les données échangées peuvent être interceptés sur le réseau. Préfère HTTPS si ton fournisseur le propose. Continuer malgré tout ?").setNegativeButton("Annuler",null).setPositiveButton("Continuer",(d,w)->proceed.run()).show();return;}}catch(Exception ignored){}proceed.run();}
+    private void confirmInsecureHttp(String address,Runnable proceed){confirmInsecureHttp(address,proceed,()->{});}
+    private void confirmInsecureHttp(String address,Runnable proceed,Runnable cancel){try{if("http".equalsIgnoreCase(Uri.parse(address).getScheme())){new AlertDialog.Builder(this).setTitle("Connexion HTTP non chiffrée").setMessage("Cette adresse utilise HTTP : l’adresse, les identifiants éventuels et les données échangées peuvent être interceptés sur le réseau. Préfère HTTPS si ton fournisseur le propose. Continuer malgré tout ?").setNegativeButton("Annuler",(d,w)->cancel.run()).setPositiveButton("Continuer",(d,w)->proceed.run()).setOnCancelListener(d->cancel.run()).show();return;}}catch(Exception ignored){}proceed.run();}
     private void showEpgDialog(){EditText input=field("URL du fichier XMLTV (HTTPS conseillé)");input.setText(epgUrl);new AlertDialog.Builder(this).setTitle("Guide TV XMLTV").setMessage("Ajoute l’URL XMLTV de ton fournisseur ou une source autorisée. Les chaînes doivent avoir un tvg-id correspondant.").setView(input).setNegativeButton("Annuler",null).setPositiveButton("Charger",(d,w)->{String u=input.getText().toString().trim();if(u.startsWith("https://")||u.startsWith("http://")){confirmInsecureHttp(u,()->{if(!putSecureString("epg_url",u)){Toast.makeText(this,"Impossible de protéger cette adresse sur cet appareil.",Toast.LENGTH_LONG).show();return;}epgUrl=u;loadEpg(u);});}else Toast.makeText(this,"URL HTTP/HTTPS requise",Toast.LENGTH_LONG).show();}).show();}
     // Limite la taille des flux XML externes pour eviter une consommation memoire excessive.
     private static final class LimitedInputStream extends FilterInputStream {
