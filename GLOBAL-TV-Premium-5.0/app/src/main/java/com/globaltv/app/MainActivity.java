@@ -586,6 +586,20 @@ private void loadAllPlaylists(){
 
     private String api(String action,String extra){String base=xtreamBase;if(!base.endsWith("/"))base+="/";return base+"player_api.php?username="+enc(xtreamUser)+"&password="+enc(xtreamPass)+"&action="+action+(extra==null?"":extra);}
     private String enc(String s){try{return java.net.URLEncoder.encode(s,"UTF-8");}catch(Exception e){return s;}}
+    private String validateXtreamAccount(JSONObject user)throws IOException{
+        if(user==null||!user.has("auth"))throw new IOException("Réponse d’authentification Xtream invalide");
+        if(!"1".equals(user.optString("auth","")))throw new IOException("Identifiants refusés par le serveur");
+        String accountStatus=user.optString("status","").trim().toLowerCase(Locale.ROOT);
+        if(accountStatus.equals("expired")||accountStatus.equals("disabled")||accountStatus.equals("banned")||accountStatus.equals("inactive"))
+            throw new IOException("Abonnement Xtream expiré ou désactivé");
+        String expiration=user.optString("exp_date","").trim();
+        if(!expiration.isEmpty()&&!expiration.equals("0")&&!expiration.equalsIgnoreCase("null")){
+            try{long expiresAt=Long.parseLong(expiration);if(expiresAt>0L&&expiresAt<=System.currentTimeMillis()/1000L)
+                throw new IOException("Abonnement Xtream arrivé à expiration");}
+            catch(NumberFormatException ignored){/* Certains serveurs ne fournissent pas une date Unix exploitable. */}
+        }
+        return accountStatus;
+    }
     private void loadXtream(){
  final int request=++catalogRequestId;seriesRequestId++;status.setText("Connexion au serveur Xtream Codes…");
  executeIo(()->{
@@ -594,7 +608,7 @@ private void loadAllPlaylists(){
    if(request!=catalogRequestId||destroyed)return;
    String auth=get(xtreamBase+(xtreamBase.endsWith("/")?"":"/")+"player_api.php?username="+enc(xtreamUser)+"&password="+enc(xtreamPass));
    if(request!=catalogRequestId||destroyed)return;
-   JSONObject root=new JSONObject(auth);JSONObject user=root.optJSONObject("user_info");if(user==null||!user.has("auth"))throw new IOException("Réponse d’authentification Xtream invalide");if(!"1".equals(user.optString("auth","")))throw new IOException("Identifiants refusés par le serveur");
+   JSONObject root=new JSONObject(auth);JSONObject user=root.optJSONObject("user_info");validateXtreamAccount(user);
    Map<String,String> liveCats=safeCategories("get_live_categories",request,endpointErrors,"Catégories TV");
    if(request!=catalogRequestId||destroyed)return;
    Map<String,String> vodCats=safeCategories("get_vod_categories",request,endpointErrors,"Catégories films");
