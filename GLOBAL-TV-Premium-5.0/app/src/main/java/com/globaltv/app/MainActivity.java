@@ -491,7 +491,7 @@ public class MainActivity extends AppCompatActivity {
             }
         };
     }
-    private int appendM3uPlaylist(String address,ArrayList<MediaEntry> merged)throws Exception{
+    private int appendM3uPlaylist(String address,ArrayList<MediaEntry> merged,int request)throws Exception{
  HttpURLConnection connection=open(address);
  try{
   int code=connection.getResponseCode();if(code<200||code>=300)throw new IOException("Serveur HTTP "+code);
@@ -499,7 +499,7 @@ public class MainActivity extends AppCompatActivity {
   int count=0;
   try(BufferedReader reader=new BufferedReader(new InputStreamReader(limitM3uStream(input,64L*1024L*1024L),"UTF-8"))){
    String line,name=null,group="Autres",logo="",tvgId="";
-   while((line=reader.readLine())!=null&&merged.size()<MAX_CATALOG_ITEMS){
+   while((line=reader.readLine())!=null&&merged.size()<MAX_CATALOG_ITEMS&&request==catalogRequestId&&!destroyed){
     if(line.length()>1024*1024)throw new IOException("Ligne M3U trop longue (limite 1 Mo)");
     line=line.trim();if(line.startsWith("\uFEFF"))line=line.substring(1);
     if(line.startsWith("#EXTINF:")){
@@ -523,7 +523,7 @@ private void loadAllPlaylists(){
   ArrayList<MediaEntry> merged=new ArrayList<>();ArrayList<String> errors=new ArrayList<>();
   for(String address:urls){
    if(merged.size()>=MAX_CATALOG_ITEMS||request!=catalogRequestId||destroyed)break;
-   try{appendM3uPlaylist(address,merged);}catch(Exception ex){String host=Uri.parse(address).getHost();errors.add((host==null?address:host)+": "+ex.getMessage());}
+   try{appendM3uPlaylist(address,merged,request);}catch(Exception ex){String host=Uri.parse(address).getHost();errors.add((host==null?address:host)+": "+ex.getMessage());}
   }
   if(request!=catalogRequestId||destroyed)return;final int loaded=merged.size();
   postUi(()->{if(request!=catalogRequestId)return;renderOffset=0;all.clear();all.addAll(merged);sourceMode="M3U";sourceLabel.setText("SOURCES : "+urls.size()+" M3U");
