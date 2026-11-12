@@ -173,16 +173,11 @@ public class MainActivity extends AppCompatActivity {
             setFocusable(true);
             setClickable(true);
 
-            ImageView backdrop = new ImageView(context);
-            backdrop.setImageResource(R.drawable.splash_mtv);
-            backdrop.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            backdrop.setAlpha(0.82f);
-            addView(backdrop, new FrameLayout.LayoutParams(-1, -1));
-
+            // Single splash artwork: fill the entire display without a duplicate backdrop.
             ImageView artwork = new ImageView(context);
             artwork.setImageResource(R.drawable.splash_mtv);
-            artwork.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            addView(artwork, new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
+            artwork.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            addView(artwork, new FrameLayout.LayoutParams(-1, -1));
 
             LinearLayout loading = new LinearLayout(context);
             loading.setOrientation(LinearLayout.VERTICAL);
