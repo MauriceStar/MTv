@@ -148,6 +148,8 @@ public class MainActivity extends AppCompatActivity {
         private final TextView messageView;
         private final ProgressBar progressBar;
 
+        void start() { /* Static artwork; progress animation is handled by the native ProgressBar. */ }
+
         void setMessage(String value) {
             messageView.setText(value == null ? "CHARGEMENT DU CATALOGUE…" : value);
         }
