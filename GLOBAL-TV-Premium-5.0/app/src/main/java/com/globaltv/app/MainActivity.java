@@ -1347,8 +1347,30 @@ private void showPinEditor(){
         }
         return false;
     }
+    private boolean handlePlayerRemoteKey(int keyCode){
+        if(player==null)return false;
+        switch(keyCode){
+            case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+                if(player.isPlaying())player.pause();else player.play();return true;
+            case KeyEvent.KEYCODE_MEDIA_PLAY:
+                player.play();return true;
+            case KeyEvent.KEYCODE_MEDIA_PAUSE:
+            case KeyEvent.KEYCODE_MEDIA_STOP:
+                player.pause();return true;
+            case KeyEvent.KEYCODE_MEDIA_NEXT:
+            case KeyEvent.KEYCODE_MEDIA_SKIP_FORWARD:
+            case KeyEvent.KEYCODE_CHANNEL_UP:
+                if(player.hasNextMediaItem())player.seekToNextMediaItem();return true;
+            case KeyEvent.KEYCODE_MEDIA_PREVIOUS:
+            case KeyEvent.KEYCODE_MEDIA_SKIP_BACKWARD:
+            case KeyEvent.KEYCODE_CHANNEL_DOWN:
+                if(player.hasPreviousMediaItem())player.seekToPreviousMediaItem();return true;
+            default:return false;
+        }
+    }
     @Override public boolean dispatchKeyEvent(android.view.KeyEvent event){
         if(event.getAction()==KeyEvent.ACTION_DOWN&&event.getKeyCode()==KeyEvent.KEYCODE_BACK&&handleBackAction())return true;
+        if(event.getAction()==KeyEvent.ACTION_DOWN&&event.getRepeatCount()==0&&handlePlayerRemoteKey(event.getKeyCode()))return true;
         if(event.getAction()==KeyEvent.ACTION_DOWN&&webCustomView==null&&isWebSection(section)&&webContainer!=null&&webContainer.getVisibility()==View.VISIBLE&&event.getKeyCode()==KeyEvent.KEYCODE_DPAD_UP&&mtvWebView!=null&&mtvWebView.hasFocus()&&!mtvWebView.canScrollVertically(-1)){
             View menu=null;View webNav=webContainer.getChildAt(0);if(webNav instanceof ViewGroup)menu=((ViewGroup)webNav).getChildAt(0);if(menu!=null){menu.requestFocus();return true;}
         }
