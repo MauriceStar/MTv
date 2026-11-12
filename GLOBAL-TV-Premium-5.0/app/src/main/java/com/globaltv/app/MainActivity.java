@@ -1137,7 +1137,9 @@ private void loadAllPlaylists(){
                         String ext=episode.optString("container_extension","mp4");
                         if(!ext.matches("[A-Za-z0-9]{1,8}"))ext="mp4";
                         String url=base+"series/"+enc(sessionUser)+"/"+enc(sessionPass)+"/"+id+"."+ext;
-                        eps.add(new MediaEntry(episode.optString("title","Épisode "+(i+1)),url,"Saison "+season,"","episode"));
+                        String seriesLabel=s.name==null?"Série":s.name.trim();
+                        String episodeGroup=(seriesLabel.isEmpty()?"Série":seriesLabel)+" • Saison "+season;
+                        eps.add(new MediaEntry(episode.optString("title","Épisode "+(i+1)),url,episodeGroup,"","episode"));
                     }
                 }
             }catch(Exception e){if(request!=seriesRequestId||destroyed)return;err=e.getMessage();}
