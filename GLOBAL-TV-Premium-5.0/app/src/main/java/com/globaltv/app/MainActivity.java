@@ -587,8 +587,9 @@ private void loadAllPlaylists(){
    try{appendM3uPlaylist(address,merged,request);}catch(Exception ex){String host=Uri.parse(address).getHost();errors.add((host==null?address:host)+": "+ex.getMessage());}
   }
   if(request!=catalogRequestId||destroyed)return;final int loaded=merged.size();
-  postUi(()->{if(request!=catalogRequestId)return;renderOffset=0;all.clear();all.addAll(merged);sourceMode="M3U";sourceLabel.setText("SOURCES : "+urls.size()+" M3U");
-   if(loaded==0){String problem=errors.isEmpty()?"Aucune chaîne reçue. Vérifie tes sources.":"Erreur M3U : "+errors.get(0);status.setText(problem);renderList();onStartupPlaylistLoadFinished(false,"AUCUNE PLAYLIST DISPONIBLE • VÉRIFIE TES SOURCES");return;}
+  postUi(()->{if(request!=catalogRequestId)return;
+   if(loaded==0){String problem=errors.isEmpty()?"Aucune chaîne reçue. Vérifie tes sources.":"Erreur M3U : "+errors.get(0);status.setText(problem);onStartupPlaylistLoadFinished(false,"AUCUNE PLAYLIST DISPONIBLE • VÉRIFIE TES SOURCES");return;}
+   renderOffset=0;all.clear();all.addAll(merged);sourceMode="M3U";sourceLabel.setText("SOURCES : "+urls.size()+" M3U");
    status.setText(loaded+" chaînes/contenus chargés • "+urls.size()+" source(s) M3U"+(errors.isEmpty()?"":" • "+errors.size()+" erreur(s)"));renderList();onStartupPlaylistLoadFinished(true,loaded+" CHAÎNES CHARGÉES • PRÊT À REGARDER");
   });
  });
@@ -612,9 +613,8 @@ private void loadAllPlaylists(){
     }
     private void loadXtream(){
  final int request=++catalogRequestId;seriesRequestId++;dismissSeriesDialog();
- // Ne jamais laisser le catalogue de la source précédente visible pendant une nouvelle session Xtream.
- renderOffset=0;all.clear();sourceMode="XTREAM";sourceLabel.setText("SOURCE : XTREAM");
- status.setText("Connexion au serveur Xtream Codes…");renderList();
+ // Conserver le catalogue actuel jusqu’à validation complète de la nouvelle source Xtream.
+ status.setText("Connexion au serveur Xtream Codes…");
  executeIo(()->{
   ArrayList<MediaEntry> parsed=new ArrayList<>();ArrayList<String> endpointErrors=new ArrayList<>();String err=null;
   try{
