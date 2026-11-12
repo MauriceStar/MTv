@@ -741,6 +741,7 @@ private void loadAllPlaylists(){
     private void showWebCustomView(View view,WebChromeClient.CustomViewCallback callback){
         if(webCustomView!=null){if(callback!=null)callback.onCustomViewHidden();return;}
         webCustomView=view;webCustomViewCallback=callback;
+        view.setFocusable(true);view.setFocusableInTouchMode(true);
         webOriginalSystemUiVisibility=getWindow().getDecorView().getSystemUiVisibility();
         webFullscreenContainer=new FrameLayout(this);webFullscreenContainer.setBackgroundColor(Color.BLACK);
         webFullscreenContainer.addView(view,new FrameLayout.LayoutParams(-1,-1));
@@ -864,10 +865,10 @@ private void showPinEditor(){
     }
     @Override public boolean dispatchKeyEvent(android.view.KeyEvent event){
         if(event.getAction()==KeyEvent.ACTION_DOWN&&event.getKeyCode()==KeyEvent.KEYCODE_BACK&&handleBackAction())return true;
-        if(event.getAction()==KeyEvent.ACTION_DOWN&&isWebSection(section)&&webContainer!=null&&webContainer.getVisibility()==View.VISIBLE&&event.getKeyCode()==KeyEvent.KEYCODE_DPAD_UP&&mtvWebView!=null&&mtvWebView.hasFocus()&&!mtvWebView.canScrollVertically(-1)){
+        if(event.getAction()==KeyEvent.ACTION_DOWN&&webCustomView==null&&isWebSection(section)&&webContainer!=null&&webContainer.getVisibility()==View.VISIBLE&&event.getKeyCode()==KeyEvent.KEYCODE_DPAD_UP&&mtvWebView!=null&&mtvWebView.hasFocus()&&!mtvWebView.canScrollVertically(-1)){
             View menu=null;View webNav=webContainer.getChildAt(0);if(webNav instanceof ViewGroup)menu=((ViewGroup)webNav).getChildAt(0);if(menu!=null){menu.requestFocus();return true;}
         }
-        if(isWebSection(section)&&mtvWebView!=null&&mtvWebView.getVisibility()==View.VISIBLE&&event.getAction()==KeyEvent.ACTION_DOWN&&(event.getKeyCode()==KeyEvent.KEYCODE_DPAD_UP||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_DOWN||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_LEFT||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_RIGHT||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_CENTER||event.getKeyCode()==KeyEvent.KEYCODE_ENTER)&&!mtvWebView.hasFocus())mtvWebView.requestFocus();
+        if(webCustomView==null&&isWebSection(section)&&mtvWebView!=null&&mtvWebView.getVisibility()==View.VISIBLE&&event.getAction()==KeyEvent.ACTION_DOWN&&(event.getKeyCode()==KeyEvent.KEYCODE_DPAD_UP||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_DOWN||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_LEFT||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_RIGHT||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_CENTER||event.getKeyCode()==KeyEvent.KEYCODE_ENTER)&&!mtvWebView.hasFocus())mtvWebView.requestFocus();
         return super.dispatchKeyEvent(event);
     }
     @Override public void onTrimMemory(int level){
