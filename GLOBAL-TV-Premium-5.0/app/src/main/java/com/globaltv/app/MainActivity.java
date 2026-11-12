@@ -55,7 +55,9 @@ public class MainActivity extends AppCompatActivity {
     private final Handler mainHandler=new Handler(Looper.getMainLooper());
     private Runnable pendingSearch;
     private volatile boolean destroyed=false;
-    private int catalogRequestId=0;
+    private volatile int catalogRequestId=0;
+    private String parentalAuthorizedTarget="";
+    private boolean resumePlaybackOnStart=false;
     private BrandSplash brandSplash;
     private long splashStartedAt=0L;
     private boolean splashLoadFinished=false;
@@ -87,6 +89,7 @@ public class MainActivity extends AppCompatActivity {
     private ScrollView sidebarScroll,catalogScroll;
     private HorizontalScrollView chipScroll;
     private WebView mtvWebView;
+    private final Set<WebView> webPopupViews=new HashSet<>();
     private String activeWebUrl="";
     private boolean playerExpanded=false;
     private boolean playerFullscreen=false;
@@ -274,20 +277,23 @@ public class MainActivity extends AppCompatActivity {
     }
     private void addNav(String label,String target){TextView v=text(label,14,0xFFD9E1F2,true);v.setPadding(dp(13),0,dp(8),0);v.setId(View.generateViewId());v.setFocusable(true);v.setClickable(true);v.setBackground(bg(0x00172035,10));navViews.put(target,v);
         v.setOnFocusChangeListener((view,hasFocus)->refreshNavStyle(target,hasFocus));
-        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,dp(47));p.bottomMargin=dp(3);sidebar.addView(v,p);v.setOnClickListener(w->{if(isAdultWebSection(target)&&PROFILE_CHILD.equals(activeProfile)){Toast.makeText(this,"Cette rubrique est réservée au profil Adulte.",Toast.LENGTH_LONG).show();return;}if(isProtectedSection(target)&&!prefs.getString("parental_pin_hash","").isEmpty()){requestParentalAccess(target);return;}navigateTo(target);});refreshNavStyle(target,v.hasFocus());}
+        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,dp(47));p.bottomMargin=dp(3);sidebar.addView(v,p);v.setOnClickListener(w->navigateTo(target));refreshNavStyle(target,v.hasFocus());}
     private void refreshNavStyle(String target,boolean focused){TextView v=navViews.get(target);if(v==null)return;boolean selected=section.equals(target);if(selected){GradientDrawable d=bg(0xFF6E54FF,10);d.setStroke(dp(2),0xFF42E8F5);v.setBackground(d);v.setTextColor(Color.WHITE);}else if(focused){GradientDrawable d=bg(FOCUS_GOLD,10);d.setStroke(dp(2),FOCUS_RED);v.setBackground(d);v.setTextColor(0xFF17111A);}else{v.setBackground(bg(0x00172035,10));v.setTextColor(0xFFD9E1F2);}}
     private void refreshAllNavStyles(){for(String target:navViews.keySet())refreshNavStyle(target,navViews.get(target).hasFocus());}
     private void navigateTo(String target){
-        if(playerFullscreen)togglePlayerExpanded();
-        section=target;refreshAllNavStyles();activeFilter="Tout";
-        if(pendingSearch!=null){mainHandler.removeCallbacks(pendingSearch);pendingSearch=null;}
-        search.setText("");search.setHint("⌕  Rechercher…");updateChips();TextView targetNav=navViews.get(target);if(targetNav!=null)search.setNextFocusLeftId(targetNav.getId());
-        if(catalogScroll!=null)catalogScroll.scrollTo(0,0);
-        if(isWebSection(target)){showSiteWebView(webUrlFor(target));return;}
-        hideMtvWebView();renderList();
-        if(target.equals("PARAMÈTRES"))showSettings();
-        else {TextView selectedNav=navViews.get(target);if(selectedNav!=null)selectedNav.requestFocus();}
-    }
+ if(PROFILE_CHILD.equals(activeProfile)&&isAdultWebSection(target)){Toast.makeText(this,"Cette rubrique est réservée au profil Adulte.",Toast.LENGTH_LONG).show();return;}
+ String pinHash=prefs.getString("parental_pin_hash","");
+ if(isProtectedSection(target)&&!pinHash.isEmpty()&&!target.equals(parentalAuthorizedTarget)){requestParentalAccess(target);return;}
+ if(target.equals(parentalAuthorizedTarget))parentalAuthorizedTarget="";
+ if(playerFullscreen)togglePlayerExpanded();
+ section=target;refreshAllNavStyles();activeFilter="Tout";
+ if(pendingSearch!=null){mainHandler.removeCallbacks(pendingSearch);pendingSearch=null;}
+ search.setText("");search.setHint("⌕  Rechercher…");updateChips();TextView targetNav=navViews.get(target);if(targetNav!=null)search.setNextFocusLeftId(targetNav.getId());
+ if(catalogScroll!=null)catalogScroll.scrollTo(0,0);
+ if(isWebSection(target)){showSiteWebView(webUrlFor(target));return;}\n hideMtvWebView();
+ renderList();
+ if(target.equals("PARAMÈTRES"))showSettings();else{TextView selectedNav=navViews.get(target);if(selectedNav!=null)selectedNav.requestFocus();}
+}
     private void updateChips(){if(chips==null)return;chips.removeAllViews();String[] opts;if(section.equals("TV EN DIRECT"))opts=new String[]{"Tout","France","Afrique","USA","Canada","Germany","Espagne","Angleterre","Sports","News","Music","Kids","Réligion","Documentaire"};else if(section.equals("FAVORIS")){ArrayList<String> values=new ArrayList<>();values.add("Tout");values.addAll(favoriteGroups.keySet());values.add("＋ Créer une liste");opts=values.toArray(new String[0]);}else if(section.equals("HISTORIQUE")||section.equals("GUIDE TV")||section.equals("MUSIQUE")||section.equals("INFOS"))opts=new String[]{"Tout"};else opts=new String[]{"Tout","Action","Comédie","Drame","Aventure","Fantasy","Science-fiction","Animation"};int previousId=View.NO_ID;for(String value:opts){final String filter=value;TextView c=text(value,12,activeFilter.equals(value)?Color.WHITE:0xFFB8C4D8,true);c.setGravity(Gravity.CENTER);c.setPadding(dp(15),0,dp(15),0);c.setBackground(bg(activeFilter.equals(value)?ACCENT:CARD,18));c.setFocusable(true);c.setFocusableInTouchMode(true);c.setClickable(true);c.setId(View.generateViewId());c.setNextFocusUpId(search.getId());if(previousId!=View.NO_ID)c.setNextFocusLeftId(previousId);if(previousId!=View.NO_ID)chips.getChildAt(chips.getChildCount()-1).setNextFocusRightId(c.getId());previousId=c.getId();c.setOnFocusChangeListener((v,focus)->{if(focus){if(filter.equals(activeFilter)){GradientDrawable d=bg(ACCENT,18);d.setStroke(dp(2),FOCUS_GOLD);v.setBackground(d);((TextView)v).setTextColor(Color.WHITE);}else{GradientDrawable d=bg(FOCUS_GOLD,18);d.setStroke(dp(2),FOCUS_RED);v.setBackground(d);((TextView)v).setTextColor(0xFF17111A);}Rect rect=new Rect();v.getDrawingRect(rect);chipScroll.requestChildRectangleOnScreen(v,rect,true);}else{v.setBackground(bg(filter.equals(activeFilter)?ACCENT:CARD,18));((TextView)v).setTextColor(filter.equals(activeFilter)?Color.WHITE:0xFFB8C4D8);}});c.setOnKeyListener((v,keyCode,event)->{if(event.getAction()!=KeyEvent.ACTION_DOWN)return false;if(keyCode==KeyEvent.KEYCODE_DPAD_CENTER||keyCode==KeyEvent.KEYCODE_ENTER){v.performClick();return true;}if(keyCode==KeyEvent.KEYCODE_DPAD_RIGHT||keyCode==KeyEvent.KEYCODE_DPAD_LEFT){int idx=chips.indexOfChild(v),next=idx+(keyCode==KeyEvent.KEYCODE_DPAD_RIGHT?1:-1);if(next>=0&&next<chips.getChildCount()){chips.getChildAt(next).requestFocus();return true;}}if(keyCode==KeyEvent.KEYCODE_DPAD_DOWN){if(list.getChildCount()>0){list.getChildAt(0).requestFocus();return true;}}return false;});LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-2,dp(38));p.rightMargin=dp(8);chips.addView(c,p);c.setOnClickListener(v->{if(section.equals("FAVORIS")&&filter.equals("＋ Créer une liste")){showCreateFavoriteGroup();return;}activeFilter=filter;updateChips();renderList();for(int i=0;i<chips.getChildCount();i++){View selected=chips.getChildAt(i);if(selected instanceof TextView&&filter.equals(((TextView)selected).getText().toString())){selected.requestFocus();break;}}});}search.setNextFocusDownId(chips.getChildAt(0).getId());}
 
 
@@ -320,16 +326,70 @@ public class MainActivity extends AppCompatActivity {
                 return out.toString("UTF-8");
             }}finally{c.disconnect();}}
     private void loadPlaylist(String url){if(url!=null&&(url.startsWith("http://")||url.startsWith("https://"))){playlistSources.add(url);prefs.edit().putStringSet("m3u_sources",new HashSet<>(playlistSources)).apply();}loadAllPlaylists();}
-    private void loadAllPlaylists(){final int request=++catalogRequestId;ArrayList<String> urls=new ArrayList<>(playlistSources);if(urls.isEmpty())urls.add(DEFAULT_PLAYLIST);status.setText("Chargement de "+urls.size()+" source(s) M3U…");executeIo(()->{ArrayList<MediaEntry> merged=new ArrayList<>();ArrayList<String> errors=new ArrayList<>();for(String address:urls){if(merged.size()>=MAX_CATALOG_ITEMS)break;try{String data=get(address);BufferedReader r=new BufferedReader(new StringReader(data));String line,name=null,group="Autres",logo="",tvgId="";int count=0;while((line=r.readLine())!=null&&merged.size()<MAX_CATALOG_ITEMS){line=line.trim();if(line.startsWith("#EXTINF:")){name=line.substring(line.lastIndexOf(',')+1).trim();group="Autres";logo="";tvgId="";int g=line.indexOf("group-title=\"");if(g>=0){int e=line.indexOf('"',g+13);if(e>g)group=line.substring(g+13,e);}int tid=line.indexOf("tvg-id=\"");if(tid>=0){int te=line.indexOf('"',tid+8);if(te>tid)tvgId=line.substring(tid+8,te);}int l=line.indexOf("tvg-logo=\"");if(l>=0){int e=line.indexOf('"',l+10);if(e>l)logo=line.substring(l+10,e);}}else if(!line.isEmpty()&&!line.startsWith("#")&&name!=null){if(line.startsWith("https://")||line.startsWith("http://")){MediaEntry entry=new MediaEntry(name,line,group,logo,"m3u");entry.tvgId=tvgId;merged.add(entry);count++;}name=null;tvgId="";}}}catch(Exception ex){errors.add(Uri.parse(address).getHost()+": "+ex.getMessage());}}final int loaded=merged.size();postUi(()->{if(request!=catalogRequestId)return;all.clear();all.addAll(merged);sourceMode="M3U";sourceLabel.setText("SOURCES : "+urls.size()+" M3U");if(loaded==0){String problem=errors.isEmpty()?"Aucune chaîne reçue. Vérifie tes sources.":"Erreur M3U : "+errors.get(0);status.setText(problem);renderList();onStartupPlaylistLoadFinished(false,"AUCUNE PLAYLIST DISPONIBLE • VÉRIFIE TES SOURCES");return;}status.setText(loaded+" chaînes/contenus chargés • "+urls.size()+" source(s) M3U"+(errors.isEmpty()?"":" • "+errors.size()+" erreur(s)"));renderList();onStartupPlaylistLoadFinished(true,loaded+" CHAÎNES CHARGÉES • PRÊT À REGARDER");});});}
+    private int appendM3uPlaylist(String address,ArrayList<MediaEntry> merged)throws Exception{
+ HttpURLConnection connection=open(address);
+ try{
+  int code=connection.getResponseCode();if(code<200||code>=300)throw new IOException("Serveur HTTP "+code);
+  InputStream input=connection.getInputStream();if(input==null)throw new IOException("Réponse vide du serveur");
+  int count=0;long chars=0L;
+  try(BufferedReader reader=new BufferedReader(new InputStreamReader(input,"UTF-8"))){
+   String line,name=null,group="Autres",logo="",tvgId="";
+   while((line=reader.readLine())!=null&&merged.size()<MAX_CATALOG_ITEMS){
+    chars+=line.length();if(chars>64L*1024L*1024L)throw new IOException("Playlist trop volumineuse (limite 64 Mo)");
+    line=line.trim();if(line.startsWith("\uFEFF"))line=line.substring(1);
+    if(line.startsWith("#EXTINF:")){
+     name=line.substring(line.lastIndexOf(',')+1).trim();group="Autres";logo="";tvgId="";
+     int g=line.indexOf("group-title=\"");if(g>=0){int e=line.indexOf('"',g+13);if(e>g)group=line.substring(g+13,e);}
+     int tid=line.indexOf("tvg-id=\"");if(tid>=0){int te=line.indexOf('"',tid+8);if(te>tid)tvgId=line.substring(tid+8,te);}
+     int l=line.indexOf("tvg-logo=\"");if(l>=0){int e=line.indexOf('"',l+10);if(e>l)logo=line.substring(l+10,e);}
+    }else if(!line.isEmpty()&&!line.startsWith("#")&&name!=null){
+     if(line.startsWith("https://")||line.startsWith("http://")){MediaEntry entry=new MediaEntry(name,line,group,logo,"m3u");entry.tvgId=tvgId;merged.add(entry);count++;}
+     name=null;tvgId="";
+    }
+   }
+  }
+  return count;
+ }finally{connection.disconnect();}
+}
+private void loadAllPlaylists(){
+ final int request=++catalogRequestId;ArrayList<String> urls=new ArrayList<>(playlistSources);if(urls.isEmpty())urls.add(DEFAULT_PLAYLIST);
+ status.setText("Chargement de "+urls.size()+" source(s) M3U…");
+ executeIo(()->{
+  ArrayList<MediaEntry> merged=new ArrayList<>();ArrayList<String> errors=new ArrayList<>();
+  for(String address:urls){
+   if(merged.size()>=MAX_CATALOG_ITEMS||request!=catalogRequestId||destroyed)break;
+   try{appendM3uPlaylist(address,merged);}catch(Exception ex){String host=Uri.parse(address).getHost();errors.add((host==null?address:host)+": "+ex.getMessage());}
+  }
+  if(request!=catalogRequestId||destroyed)return;final int loaded=merged.size();
+  postUi(()->{if(request!=catalogRequestId)return;all.clear();all.addAll(merged);sourceMode="M3U";sourceLabel.setText("SOURCES : "+urls.size()+" M3U");
+   if(loaded==0){String problem=errors.isEmpty()?"Aucune chaîne reçue. Vérifie tes sources.":"Erreur M3U : "+errors.get(0);status.setText(problem);renderList();onStartupPlaylistLoadFinished(false,"AUCUNE PLAYLIST DISPONIBLE • VÉRIFIE TES SOURCES");return;}
+   status.setText(loaded+" chaînes/contenus chargés • "+urls.size()+" source(s) M3U"+(errors.isEmpty()?"":" • "+errors.size()+" erreur(s)"));renderList();onStartupPlaylistLoadFinished(true,loaded+" CHAÎNES CHARGÉES • PRÊT À REGARDER");
+  });
+ });
+}
 
     private String api(String action,String extra){String base=xtreamBase;if(!base.endsWith("/"))base+="/";return base+"player_api.php?username="+enc(xtreamUser)+"&password="+enc(xtreamPass)+"&action="+action+(extra==null?"":extra);}
     private String enc(String s){try{return java.net.URLEncoder.encode(s,"UTF-8");}catch(Exception e){return s;}}
-    private void loadXtream(){final int request=++catalogRequestId;status.setText("Connexion au serveur Xtream Codes…");executeIo(()->{ArrayList<MediaEntry> parsed=new ArrayList<>();String err=null;try{String auth=get(xtreamBase+(xtreamBase.endsWith("/")?"":"/")+"player_api.php?username="+enc(xtreamUser)+"&password="+enc(xtreamPass));JSONObject root=new JSONObject(auth);JSONObject user=root.optJSONObject("user_info");if(user!=null&&!user.optString("auth","1").equals("1"))throw new IOException("Identifiants refusés par le serveur");
-                Map<String,String> liveCats=safeCategories("get_live_categories");Map<String,String> vodCats=safeCategories("get_vod_categories");Map<String,String> seriesCats=safeCategories("get_series_categories");
-                parseXtreamArray(parsed,get(api("get_live_streams","")),"live","m3u8",liveCats);
-                try{parseXtreamArray(parsed,get(api("get_vod_streams","")),"movie","mp4",vodCats);}catch(Exception ignored){}
-                try{parseXtreamArray(parsed,get(api("get_series","")),"series","mp4",seriesCats);}catch(Exception ignored){}
-            }catch(Exception e){err=e.getMessage();}final String error=err;postUi(()->{if(request!=catalogRequestId)return;if(error!=null){status.setText("Connexion Xtream impossible : "+error);return;}all.clear();all.addAll(parsed);sourceMode="XTREAM";sourceLabel.setText("SOURCE : XTREAM");status.setText(parsed.size()+" éléments récupérés • Serveur Xtream");renderList();});});}
+    private void loadXtream(){
+ final int request=++catalogRequestId;status.setText("Connexion au serveur Xtream Codes…");
+ executeIo(()->{
+  ArrayList<MediaEntry> parsed=new ArrayList<>();ArrayList<String> endpointErrors=new ArrayList<>();String err=null;
+  try{
+   String auth=get(xtreamBase+(xtreamBase.endsWith("/")?"":"/")+"player_api.php?username="+enc(xtreamUser)+"&password="+enc(xtreamPass));
+   JSONObject root=new JSONObject(auth);JSONObject user=root.optJSONObject("user_info");if(user!=null&&!user.optString("auth","1").equals("1"))throw new IOException("Identifiants refusés par le serveur");
+   Map<String,String> liveCats=safeCategories("get_live_categories"),vodCats=safeCategories("get_vod_categories"),seriesCats=safeCategories("get_series_categories");
+   try{parseXtreamArray(parsed,get(api("get_live_streams","")),"live","m3u8",liveCats);}catch(Exception e){endpointErrors.add("TV : "+e.getMessage());}
+   try{parseXtreamArray(parsed,get(api("get_vod_streams","")),"movie","mp4",vodCats);}catch(Exception e){endpointErrors.add("Films : "+e.getMessage());}
+   try{parseXtreamArray(parsed,get(api("get_series","")),"series","mp4",seriesCats);}catch(Exception e){endpointErrors.add("Séries : "+e.getMessage());}
+   if(parsed.isEmpty()&&!endpointErrors.isEmpty())throw new IOException(endpointErrors.get(0));
+  }catch(Exception e){err=e.getMessage();}
+  final String error=err;final ArrayList<String> failures=endpointErrors;if(request!=catalogRequestId||destroyed)return;
+  postUi(()->{if(request!=catalogRequestId)return;if(error!=null){status.setText("Connexion Xtream impossible : "+error);return;}
+   all.clear();all.addAll(parsed);sourceMode="XTREAM";sourceLabel.setText("SOURCE : XTREAM");
+   status.setText(parsed.size()+" éléments récupérés • Serveur Xtream"+(failures.isEmpty()?"":" • "+failures.size()+" catégorie(s) indisponible(s)"));renderList();
+  });
+ });
+}
     private Map<String,String> safeCategories(String action){try{return parseCategories(get(api(action,"")));}catch(Exception ignored){return new HashMap<>();}}
     private Map<String,String> parseCategories(String json){Map<String,String> map=new HashMap<>();try{JSONArray a=new JSONArray(json);for(int i=0;i<a.length();i++){JSONObject o=a.optJSONObject(i);if(o!=null)map.put(o.optString("category_id"),o.optString("category_name","Autres"));}}catch(Exception ignored){}return map;}
     private void parseXtreamArray(ArrayList<MediaEntry> out,String json,String type,String fallback,Map<String,String> categories){try{JSONArray a=new JSONArray(json);for(int i=0;i<a.length()&&out.size()<MAX_CATALOG_ITEMS;i++){JSONObject o=a.optJSONObject(i);if(o==null)continue;String id=o.optString(type.equals("series")?"series_id":"stream_id",o.optString("id",""));if(id.isEmpty())continue;String name=o.optString("name",type.equals("series")?"Série":"Contenu");String cat=o.optString("category_name",(categories.containsKey(o.optString("category_id"))?categories.get(o.optString("category_id")):(type.equals("live")?"TV en direct":type.equals("movie")?"Films":"Séries")));String logo=o.optString("stream_icon",o.optString("cover",""));String ext=o.optString("container_extension",fallback);String path=xtreamBase+(xtreamBase.endsWith("/")?"":"/")+type+"/"+enc(xtreamUser)+"/"+enc(xtreamPass)+"/"+id+"."+ext;MediaEntry m=new MediaEntry(name,path,cat,logo,type);m.id=id;m.container=ext;m.tvgId=o.optString("epg_channel_id","");out.add(m);}}catch(Exception ignored){}}
@@ -478,7 +538,7 @@ public class MainActivity extends AppCompatActivity {
             if(wideLayout)playerArea.addView(catalogScroll,new LinearLayout.LayoutParams(0,-1,0.38f));
             else playerArea.addView(catalogScroll,new LinearLayout.LayoutParams(-1,0,1f));
             final ExoPlayer activePlayer=player;
-            lastPlayedUrl=c.url;pendingResumePosition=historyPosition(c);
+            lastPlayedUrl=c.url;long resumePosition=historyPosition(c);pendingResumePosition=0L;
             historyKeysCache.add("history_"+key(c.url));prefs.edit().putString("last_url",c.url).putString("history_"+key(c.url),c.name==null?"":c.name).apply();
             List<MediaEntry> queue=playableQueue(c);ArrayList<MediaItem> mediaItems=new ArrayList<>();int startIndex=0;
             for(int i=0;i<queue.size();i++){
@@ -487,22 +547,15 @@ public class MainActivity extends AppCompatActivity {
                 if(entry.url.equals(c.url))startIndex=i;
             }
             activePlayer.addListener(new Player.Listener(){
-                @Override public void onPlaybackStateChanged(int state){
-                    if(state==Player.STATE_READY&&pendingResumePosition>5000&&player==activePlayer){
-                        activePlayer.seekTo(pendingResumePosition);pendingResumePosition=0L;
-                    }
-                }
                 @Override public void onPlayerError(androidx.media3.common.PlaybackException e){
-                    if(currentEntry!=null)failedInCurrentRun.add(currentEntry.url);
+                    String failedUrl=currentEntry==null?c.url:currentEntry.url;boolean firstFailure=failedInCurrentRun.add(failedUrl);
                     postUi(()->{
                         if(player!=activePlayer)return;
-                        if(activePlayer.hasNextMediaItem()){
-                            Toast.makeText(MainActivity.this,"Flux indisponible. Passage au suivant…",Toast.LENGTH_SHORT).show();
-                            activePlayer.seekToNextMediaItem();activePlayer.prepare();activePlayer.play();
-                        }else{
-                            status.setText("Lecture impossible : "+(currentEntry==null?c.name:currentEntry.name));
-                            Toast.makeText(MainActivity.this,"Aucun autre flux disponible dans cette liste.",Toast.LENGTH_LONG).show();
-                        }
+                        if(firstFailure){Toast.makeText(MainActivity.this,"Connexion interrompue. Nouvelle tentative…",Toast.LENGTH_SHORT).show();activePlayer.prepare();activePlayer.play();return;}
+                        int failedIndex=activePlayer.getCurrentMediaItemIndex();
+                        if(failedIndex>=0&&failedIndex<activePlayer.getMediaItemCount())activePlayer.removeMediaItem(failedIndex);
+                        if(activePlayer.getMediaItemCount()>0){Toast.makeText(MainActivity.this,"Flux indisponible. Passage au suivant…",Toast.LENGTH_SHORT).show();int nextIndex=Math.min(failedIndex,activePlayer.getMediaItemCount()-1);activePlayer.seekTo(nextIndex,0L);activePlayer.prepare();activePlayer.play();}
+                        else{status.setText("Lecture impossible : "+(currentEntry==null?c.name:currentEntry.name));Toast.makeText(MainActivity.this,"Aucun autre flux disponible dans cette liste.",Toast.LENGTH_LONG).show();}
                     });
                 }
                 @Override public void onMediaItemTransition(MediaItem item,int reason){
@@ -514,7 +567,8 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }
             });
-            activePlayer.setMediaItems(mediaItems,startIndex,pendingResumePosition);activePlayer.prepare();activePlayer.play();
+            activePlayer.setAudioAttributes(new androidx.media3.common.AudioAttributes.Builder().setUsage(androidx.media3.common.C.USAGE_MEDIA).setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MOVIE).build(),true);
+            activePlayer.setMediaItems(mediaItems,startIndex,resumePosition);activePlayer.prepare();activePlayer.play();
             status.setText("Lecture : "+c.name);
         }catch(Exception e){releasePlayer();Toast.makeText(this,"Impossible de lancer ce flux",Toast.LENGTH_LONG).show();}
     }
@@ -616,17 +670,29 @@ public class MainActivity extends AppCompatActivity {
             android.webkit.WebSettings settings=mtvWebView.getSettings();
             settings.setJavaScriptEnabled(true);settings.setDomStorageEnabled(true);
             settings.setDatabaseEnabled(true);settings.setLoadsImagesAutomatically(true);
-            settings.setJavaScriptCanOpenWindowsAutomatically(true);settings.setSupportMultipleWindows(false);
+            settings.setJavaScriptCanOpenWindowsAutomatically(true);settings.setSupportMultipleWindows(true);
             settings.setLoadWithOverviewMode(true);settings.setUseWideViewPort(true);
             settings.setMediaPlaybackRequiresUserGesture(false);
             mtvWebView.setWebViewClient(new WebViewClient(){
                 @Override public boolean shouldOverrideUrlLoading(WebView view,android.webkit.WebResourceRequest request){return false;}
-                @Override public void onPageFinished(WebView view,String loaded){super.onPageFinished(view,loaded);if(isWebSection(section)&&view.getVisibility()==View.VISIBLE){view.requestFocus();}}
+                @Override public void onPageFinished(WebView view,String loaded){super.onPageFinished(view,loaded);if(isWebSection(section)&&view.getVisibility()==View.VISIBLE)view.requestFocus();}
+                @Override public void onReceivedError(WebView view,android.webkit.WebResourceRequest request,android.webkit.WebResourceError error){super.onReceivedError(view,request,error);if(request.isForMainFrame())postUi(()->Toast.makeText(MainActivity.this,"Erreur de chargement de la page Web.",Toast.LENGTH_LONG).show());}
+                @Override public void onReceivedHttpError(WebView view,android.webkit.WebResourceRequest request,android.webkit.WebResourceResponse response){super.onReceivedHttpError(view,request,response);if(request.isForMainFrame()&&response.getStatusCode()>=400)postUi(()->Toast.makeText(MainActivity.this,"Erreur Web HTTP "+response.getStatusCode(),Toast.LENGTH_LONG).show());}
+                @Override public boolean onRenderProcessGone(WebView view,android.webkit.RenderProcessGoneDetail detail){
+                    if(view==mtvWebView){String reload=activeWebUrl;if(webContainer!=null&&webContainer.getParent()==content)content.removeView(webContainer);mtvWebView=null;webContainer=null;view.destroy();postUi(()->{Toast.makeText(MainActivity.this,"Le lecteur Web a redémarré.",Toast.LENGTH_LONG).show();if(isWebSection(section)&&reload!=null&&!reload.isEmpty())showSiteWebView(reload);});}
+                    return true;
+                }
             });
             mtvWebView.setWebChromeClient(new WebChromeClient(){
                 @Override public void onShowCustomView(View view,CustomViewCallback callback){showWebCustomView(view,callback);}
                 @Override public void onHideCustomView(){hideWebCustomView();}
                 @Override public void onShowCustomView(View view,int requestedOrientation,CustomViewCallback callback){showWebCustomView(view,callback);}
+                @Override public boolean onCreateWindow(WebView view,boolean isDialog,boolean isUserGesture,android.os.Message resultMsg){
+                    WebView popup=new WebView(MainActivity.this);popup.getSettings().setJavaScriptEnabled(true);popup.getSettings().setDomStorageEnabled(true);
+                    popup.setWebViewClient(new WebViewClient(){@Override public void onPageStarted(WebView child,String url,android.graphics.Bitmap favicon){super.onPageStarted(child,url,favicon);if(url!=null&&!url.equals("about:blank")&&mtvWebView!=null){activeWebUrl=url;mtvWebView.loadUrl(url);child.postDelayed(()->{webPopupViews.remove(child);child.stopLoading();child.destroy();},500L);}}});
+                    webPopupViews.add(popup);android.webkit.WebView.WebViewTransport transport=(android.webkit.WebView.WebViewTransport)resultMsg.obj;transport.setWebView(popup);resultMsg.sendToTarget();return true;
+                }
+                @Override public void onCloseWindow(WebView window){if(window!=mtvWebView){webPopupViews.remove(window);window.stopLoading();window.destroy();}}
             });
             mtvWebView.setOnFocusChangeListener((v,focused)->{if(focused)v.setBackgroundColor(Color.BLACK);});
         }
@@ -646,7 +712,7 @@ public class MainActivity extends AppCompatActivity {
         if(mtvWebView.getUrl()==null||!mtvWebView.getUrl().equals(url))mtvWebView.loadUrl(url);
     }
     private void showWebCustomView(View view,WebChromeClient.CustomViewCallback callback){
-        if(webCustomView!=null){hideWebCustomView();return;}
+        if(webCustomView!=null){if(callback!=null)callback.onCustomViewHidden();return;}
         webCustomView=view;webCustomViewCallback=callback;
         webOriginalSystemUiVisibility=getWindow().getDecorView().getSystemUiVisibility();
         webFullscreenContainer=new FrameLayout(this);webFullscreenContainer.setBackgroundColor(Color.BLACK);
@@ -720,8 +786,26 @@ public class MainActivity extends AppCompatActivity {
     private void showSettings(){String[] options={"Changer de profil (Adulte / Enfant)","Ajouter une playlist M3U","Gérer les playlists M3U","Connexion Xtream Codes","Configurer le guide TV (XMLTV)","Définir / modifier le code parental","Effacer l’historique et les reprises","Configurer la source MTV"};new AlertDialog.Builder(this).setTitle("GLOBAL TV • Paramètres").setItems(options,(d,w)->{if(w==0)showProfileDialog();else if(w==1)showM3uDialog();else if(w==2)showPlaylistManager();else if(w==3)showXtreamDialog();else if(w==4)showEpgDialog();else if(w==5)showPinDialog();else if(w==6)new AlertDialog.Builder(this).setTitle("Effacer l’historique ?").setMessage("Les positions de lecture et l’historique seront supprimés.").setNegativeButton("Annuler",null).setPositiveButton("Effacer",(a,b)->{Map<String,?> allPrefs=prefs.getAll();SharedPreferences.Editor ed=prefs.edit();for(String k:allPrefs.keySet())if(k.startsWith("history_")||k.startsWith("position_"))ed.remove(k);ed.apply();renderList();}).show();else if(w==7)showMtvPlaylistDialog();}).show();}
     private boolean isAdultWebSection(String target){return "MTV".equals(target)||"EPI XTV".equals(target)||"DUDETV".equals(target);}
     private boolean isProtectedSection(String target){return target.equals("FILMS")||target.equals("SÉRIES")||target.equals("ANIMÉS")||isAdultWebSection(target);}
-    private void requestParentalAccess(String target){String expected=prefs.getString("parental_pin_hash","");EditText pin=field("Code PIN parental");pin.setInputType(2);new AlertDialog.Builder(this).setTitle("Contrôle parental").setMessage("Entre le code PIN pour accéder à cette rubrique.").setView(pin).setNegativeButton("Annuler",null).setPositiveButton("Valider",(d,w)->{if(expected.equals(hash(pin.getText().toString())))navigateTo(target);else Toast.makeText(this,"Code PIN incorrect",Toast.LENGTH_LONG).show();}).show();}
-    private void showPinDialog(){EditText pin=field("Nouveau code PIN (4 à 8 chiffres)");pin.setInputType(2);new AlertDialog.Builder(this).setTitle("Contrôle parental").setMessage("Laisse vide pour désactiver le contrôle parental.").setView(pin).setNegativeButton("Annuler",null).setPositiveButton("Enregistrer",(d,w)->{String v=pin.getText().toString();if(v.isEmpty())prefs.edit().remove("parental_pin_hash").apply();else if(v.matches("\\d{4,8}"))prefs.edit().putString("parental_pin_hash",hash(v)).apply();else Toast.makeText(this,"Utilise 4 à 8 chiffres",Toast.LENGTH_LONG).show();}).show();}
+    private void requestParentalAccess(String target){
+ String expected=prefs.getString("parental_pin_hash","");EditText pin=field("Code PIN parental");pin.setInputType(2);
+ new AlertDialog.Builder(this).setTitle("Contrôle parental").setMessage("Entre le code PIN pour accéder à cette rubrique.").setView(pin).setNegativeButton("Annuler",null).setPositiveButton("Valider",(d,w)->{
+  if(expected.equals(hash(pin.getText().toString()))){parentalAuthorizedTarget=target;navigateTo(target);}else Toast.makeText(this,"Code PIN incorrect",Toast.LENGTH_LONG).show();
+ }).show();
+}
+    private void showPinDialog(){
+ String existing=prefs.getString("parental_pin_hash","");
+ if(existing.isEmpty()){showPinEditor();return;}
+ EditText current=field("Code PIN actuel");current.setInputType(2);
+ new AlertDialog.Builder(this).setTitle("Vérification du code parental").setMessage("Entre le code actuel avant de le modifier ou de le désactiver.").setView(current).setNegativeButton("Annuler",null).setPositiveButton("Continuer",(d,w)->{
+  if(existing.equals(hash(current.getText().toString())))showPinEditor();else Toast.makeText(this,"Code PIN incorrect",Toast.LENGTH_LONG).show();
+ }).show();
+}
+private void showPinEditor(){
+ EditText pin=field("Nouveau code PIN (4 à 8 chiffres)");pin.setInputType(2);
+ new AlertDialog.Builder(this).setTitle("Contrôle parental").setMessage("Laisse vide pour désactiver le contrôle parental.").setView(pin).setNegativeButton("Annuler",null).setPositiveButton("Enregistrer",(d,w)->{
+  String v=pin.getText().toString();if(v.isEmpty())prefs.edit().remove("parental_pin_hash").apply();else if(v.matches("\\d{4,8}"))prefs.edit().putString("parental_pin_hash",hash(v)).apply();else Toast.makeText(this,"Utilise 4 à 8 chiffres",Toast.LENGTH_LONG).show();
+ }).show();
+}
     private String hash(String value){try{byte[] b=MessageDigest.getInstance("SHA-256").digest(value.getBytes("UTF-8"));StringBuilder out=new StringBuilder();for(byte x:b)out.append(String.format(Locale.US,"%02x",x));return out.toString();}catch(Exception e){return value;}}
     private String key(String value){return hash(value).substring(0,24);}
     private void savePlaybackPosition(){if(player!=null&&!lastPlayedUrl.isEmpty()){long pos=player.getCurrentPosition();if(pos>0)prefs.edit().putLong("position_"+key(lastPlayedUrl),pos).apply();}}
@@ -734,17 +818,18 @@ public class MainActivity extends AppCompatActivity {
     private void showPlaylistManager(){ArrayList<String> urls=new ArrayList<>(playlistSources);if(urls.isEmpty()){new AlertDialog.Builder(this).setTitle("Sources M3U").setMessage("Aucune source enregistrée.").setPositiveButton("Ajouter", (d,w)->showM3uDialog()).show();return;}String[] labels=new String[urls.size()];for(int i=0;i<urls.size();i++)labels[i]=(i+1)+". "+Uri.parse(urls.get(i)).getHost()+" — "+urls.get(i);new AlertDialog.Builder(this).setTitle("Sources M3U • "+urls.size()).setItems(labels,(d,which)->new AlertDialog.Builder(this).setTitle("Gérer cette source").setMessage(urls.get(which)).setNegativeButton("Fermer",null).setNeutralButton("Supprimer",(a,b)->{playlistSources.remove(urls.get(which));prefs.edit().putStringSet("m3u_sources",new HashSet<>(playlistSources)).apply();loadAllPlaylists();}).setPositiveButton("Recharger",(a,b)->loadPlaylist(urls.get(which))).show()).setPositiveButton("Ajouter une source",(d,w)->showM3uDialog()).setNegativeButton("Fermer",null).show();}
     private void showXtreamDialog(){LinearLayout form=column();form.setPadding(dp(8),dp(4),dp(8),dp(4));EditText host=field("URL du serveur (https://serveur:port)");EditText user=field("Nom d’utilisateur");EditText pass=field("Mot de passe");pass.setInputType(129);form.addView(host);form.addView(user);form.addView(pass);new AlertDialog.Builder(this).setTitle("Connexion Xtream Codes").setMessage("Utilise les identifiants fournis par ton fournisseur IPTV autorisé. HTTPS est recommandé.").setView(form).setNegativeButton("Annuler",null).setPositiveButton("Se connecter",(d,w)->{String h=host.getText().toString().trim(),u=user.getText().toString().trim(),p=pass.getText().toString();try{Uri uri=Uri.parse(h);if((!"https".equalsIgnoreCase(uri.getScheme())&&!("http".equalsIgnoreCase(uri.getScheme())))||uri.getHost()==null||u.isEmpty()||p.isEmpty())throw new Exception();xtreamBase=h;xtreamUser=u;xtreamPass=p;section="ACCUEIL";heading.setText("Bienvenue sur GLOBAL TV");loadXtream();}catch(Exception e){Toast.makeText(this,"Vérifie l’URL et les identifiants",Toast.LENGTH_LONG).show();}}).show();}
     private EditText field(String hint){EditText e=new EditText(this);e.setSingleLine(true);e.setTextColor(Color.WHITE);e.setHintTextColor(MUTED);e.setHint(hint);e.setPadding(dp(10),dp(6),dp(10),dp(6));return e;}
-    @Override public boolean dispatchKeyEvent(android.view.KeyEvent event){if(event.getAction()==KeyEvent.ACTION_DOWN&&event.getKeyCode()==KeyEvent.KEYCODE_BACK){
-            if(webCustomView!=null){hideWebCustomView();return true;}
-            if(playerView!=null){if(playerFullscreen){togglePlayerExpanded();return true;}savePlaybackPosition();releasePlayer();status.setText("Lecture fermée");return true;}
-            if(isWebSection(section)){navigateTo("ACCUEIL");return true;}
-        }
-        if(event.getAction()==KeyEvent.ACTION_DOWN&&isWebSection(section)&&webContainer!=null&&webContainer.getVisibility()==View.VISIBLE&&event.getKeyCode()==KeyEvent.KEYCODE_DPAD_UP&&mtvWebView.hasFocus()){
-            View menu=null;View webNav=webContainer.getChildAt(0);if(webNav instanceof ViewGroup)menu=((ViewGroup)webNav).getChildAt(0);if(menu!=null){menu.requestFocus();return true;}
-        }
-        if(isWebSection(section)&&mtvWebView!=null&&mtvWebView.getVisibility()==View.VISIBLE){
-            if(event.getAction()==KeyEvent.ACTION_DOWN&&(event.getKeyCode()==KeyEvent.KEYCODE_DPAD_UP||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_DOWN||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_LEFT||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_RIGHT||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_CENTER||event.getKeyCode()==KeyEvent.KEYCODE_ENTER)&&!mtvWebView.hasFocus())mtvWebView.requestFocus();
-        }return super.dispatchKeyEvent(event);}
+    @Override public boolean dispatchKeyEvent(android.view.KeyEvent event){
+ if(event.getAction()==KeyEvent.ACTION_DOWN&&event.getKeyCode()==KeyEvent.KEYCODE_BACK){
+  if(webCustomView!=null){hideWebCustomView();return true;}
+  if(isWebSection(section)&&mtvWebView!=null&&mtvWebView.getVisibility()==View.VISIBLE){if(mtvWebView.canGoBack()){mtvWebView.goBack();return true;}navigateTo("ACCUEIL");return true;}
+  if(playerView!=null){if(playerFullscreen){togglePlayerExpanded();return true;}savePlaybackPosition();releasePlayer();status.setText("Lecture fermée");return true;}
+ }
+ if(event.getAction()==KeyEvent.ACTION_DOWN&&isWebSection(section)&&webContainer!=null&&webContainer.getVisibility()==View.VISIBLE&&event.getKeyCode()==KeyEvent.KEYCODE_DPAD_UP&&mtvWebView!=null&&mtvWebView.hasFocus()&&!mtvWebView.canScrollVertically(-1)){
+  View menu=null;View webNav=webContainer.getChildAt(0);if(webNav instanceof ViewGroup)menu=((ViewGroup)webNav).getChildAt(0);if(menu!=null){menu.requestFocus();return true;}
+ }
+ if(isWebSection(section)&&mtvWebView!=null&&mtvWebView.getVisibility()==View.VISIBLE&&event.getAction()==KeyEvent.ACTION_DOWN&&(event.getKeyCode()==KeyEvent.KEYCODE_DPAD_UP||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_DOWN||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_LEFT||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_RIGHT||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_CENTER||event.getKeyCode()==KeyEvent.KEYCODE_ENTER)&&!mtvWebView.hasFocus())mtvWebView.requestFocus();
+ return super.dispatchKeyEvent(event);
+}
     @Override public void onTrimMemory(int level){
         super.onTrimMemory(level);
         if(level>=TRIM_MEMORY_RUNNING_LOW){
@@ -758,9 +843,13 @@ public class MainActivity extends AppCompatActivity {
         super.onLowMemory();
         try{com.bumptech.glide.Glide.get(this).clearMemory();}catch(Exception ignored){}
     }
-    @Override protected void onStop(){super.onStop();if(player!=null){savePlaybackPosition();player.pause();}}
+    @Override protected void onStart(){super.onStart();if(resumePlaybackOnStart&&player!=null){resumePlaybackOnStart=false;player.play();}}
+    @Override protected void onStop(){super.onStop();if(player!=null){resumePlaybackOnStart=player.isPlaying();savePlaybackPosition();player.pause();}}
     @Override protected void onDestroy(){
         destroyed=true;if(pendingSearch!=null)mainHandler.removeCallbacks(pendingSearch);
+        if(webCustomView!=null)hideWebCustomView();
+        for(WebView popup:new HashSet<>(webPopupViews)){try{popup.stopLoading();popup.destroy();}catch(Exception ignored){}}webPopupViews.clear();
+        if(mtvWebView!=null){try{mtvWebView.stopLoading();mtvWebView.loadUrl("about:blank");mtvWebView.clearHistory();if(mtvWebView.getParent() instanceof ViewGroup)((ViewGroup)mtvWebView.getParent()).removeView(mtvWebView);mtvWebView.destroy();}catch(Exception ignored){}mtvWebView=null;}
         savePlaybackPosition();releasePlayer();io.shutdownNow();super.onDestroy();
     }
 }
