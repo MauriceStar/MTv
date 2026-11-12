@@ -891,6 +891,8 @@ private void showPinEditor(){
         if(player!=null&&currentEntry!=null){long position=player.getCurrentPosition();outState.putString("session_player_url",currentEntry.url);outState.putString("session_player_name",currentEntry.name==null?"Reprise":currentEntry.name);outState.putLong("session_player_position",position);outState.putBoolean("session_player_playing",player.getPlayWhenReady()||resumePlaybackOnStart);outState.putBoolean("session_player_fullscreen",playerFullscreen);if(position>0L)prefs.edit().putLong("position_"+key(currentEntry.url),position).apply();}
         if(isWebSection(section)&&mtvWebView!=null&&mtvWebView.getVisibility()==View.VISIBLE){outState.putString("session_web_url",activeWebUrl);Bundle webState=new Bundle();mtvWebView.saveState(webState);outState.putBundle("session_web_state",webState);}
     }
+    @Override protected void onResume(){super.onResume();if(mtvWebView!=null)mtvWebView.onResume();}
+    @Override protected void onPause(){if(mtvWebView!=null)mtvWebView.onPause();super.onPause();}
     @Override protected void onStart(){super.onStart();if(resumePlaybackOnStart&&player!=null){resumePlaybackOnStart=false;player.play();}}
     @Override protected void onStop(){super.onStop();if(player!=null){resumePlaybackOnStart=player.isPlaying();savePlaybackPosition();player.pause();}}
     @Override protected void onDestroy(){
