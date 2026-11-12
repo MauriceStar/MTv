@@ -1140,7 +1140,11 @@ private void loadAllPlaylists(){
             for(int i=0;i<queue.size();i++){
                 MediaEntry entry=queue.get(i);
                 MediaItem mediaItem=buildMediaItem(entry);
-                DefaultHttpDataSource.Factory httpFactory=new DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(true);
+                DefaultHttpDataSource.Factory httpFactory=new DefaultHttpDataSource.Factory()
+                    .setUserAgent("GLOBAL-TV-Android/5.0")
+                    .setConnectTimeoutMs(15000)
+                    .setReadTimeoutMs(30000)
+                    .setAllowCrossProtocolRedirects(true);
                 if(!entry.httpHeaders.isEmpty())httpFactory.setDefaultRequestProperties(new HashMap<>(entry.httpHeaders));
                 MediaSource mediaSource=new DefaultMediaSourceFactory(httpFactory).createMediaSource(mediaItem);
                 playlistSource.addMediaSource(mediaSource);
