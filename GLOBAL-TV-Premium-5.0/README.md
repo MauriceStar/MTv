@@ -1,29 +1,34 @@
 # GLOBAL TV Premium 5.0 — Android TV, Google TV et Android
 
-Cette archive est une **base de développement 5.0.0** construite à partir de `GLOBAL-TV-Premium-4.1-MTV-Edition`.
+Cette base de développement correspond à GLOBAL TV Premium 5.0.0.
 
-## Objectifs de cette base
-- Navigation D-pad avec styles de focus visibles.
-- Défilement vertical avec barre de défilement visible.
-- Amélioration des délais réseau et des en-têtes HTTP.
-- Lecteur Media3/ExoPlayer conservé et cycle de vie centralisé.
-- Bouton dédié de mode plein écran/écran normal.
-- Tentative de lecture du média suivant lorsqu'un flux échoue.
-- Conservation des sections M3U/Xtream et de la section MTV dédiée aux sources déclarées par l'utilisateur.
-- Version Android `5.0.0` / `versionCode 6`.
+## Configuration de compilation vérifiée
 
-## Limites à connaître
-Cette base est une première intégration des fonctions 5.0, pas une version certifiée. Le passage automatique au suivant dépend de l'ordre du catalogue et ne peut pas garantir que le flux suivant soit valide. La navigation D-pad doit être vérifiée sur plusieurs télécommandes et tailles d'écran. Le mode plein écran masque les autres zones de l'interface pendant la lecture.
-
-La navigation horizontale des filtres, une grille de focus entièrement déterministe, les tests de buffering sur réseaux instables, la validation des pages oxax.tv en WebView et les tests de non-régression restent à compléter.
-
-## Compilation
-- Android Studio récent
 - JDK 17
-- Android SDK Platform 35
-- Gradle 8.9 (workflow GitHub Actions fourni)
+- Android Gradle Plugin 8.10.1
+- Gradle 8.11.1
+- Android SDK Platform 36
+- Android Build Tools 36.0.0
+- `minSdk 23`, `targetSdk 36`
+- `applicationId: com.globaltv.app`
+- `versionName: 5.0.0`, `versionCode: 6`
 
-Le projet ne contient pas de Gradle Wrapper. Sur GitHub : pousser le contenu du dossier à la racine du dépôt puis lancer **Actions → Build Android APK**. L'artefact attendu est `global-tv-debug-apk`.
+## Compilation locale
 
-## Validation obligatoire
-Le code doit être compilé et testé sur appareils réels (Android TV/Google TV et téléphone Android) avant diffusion. Ce ZIP contient le projet source, pas un APK validé.
+Le dépôt ne contient pas de Gradle Wrapper. Il faut donc installer Gradle 8.11.1 et lancer les commandes depuis ce dossier :
+
+```bash
+gradle lintDebug assembleDebug --no-daemon
+```
+
+Le workflow GitHub Actions `.github/workflows/build-apk.yml` installe automatiquement JDK 17, Gradle 8.11.1 et les composants SDK Android 36. Il exécute également Lint avant de compiler l'APK debug.
+
+Dans GitHub : **Actions → Build Android APK**. L'artefact produit est `global-tv-debug-apk`.
+
+## Version Release
+
+Le projet ne configure pas encore de clé de signature de production. Une APK Release éventuellement compilée sans cette clé ne constitue pas un paquet prêt à publier. La signature de production devra être configurée dans les secrets GitHub, sans déposer de keystore ni de mot de passe dans le dépôt.
+
+## Validation avant diffusion
+
+La réussite de Lint et de la compilation ne remplace pas les essais sur appareils réels. Il reste notamment à valider la navigation à la télécommande, le lecteur interne, les pages WebView, la reprise après interruption, les réseaux instables et les formats d'écran Android TV/téléphone.
