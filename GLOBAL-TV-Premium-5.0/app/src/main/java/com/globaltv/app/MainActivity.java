@@ -1305,6 +1305,7 @@ private void loadAllPlaylists(){
         }
         if(webContainer.getParent()==null)content.addView(webContainer,Math.min(3,content.getChildCount()),new LinearLayout.LayoutParams(-1,0,1));
         webContainer.setVisibility(View.VISIBLE);mtvWebView.setVisibility(View.VISIBLE);mtvWebView.setFocusable(true);mtvWebView.setFocusableInTouchMode(true);
+        mtvWebView.onResume();
         mtvWebView.bringToFront();mtvWebView.requestFocus();
         if(pendingWebViewState!=null){Bundle saved=pendingWebViewState;pendingWebViewState=null;if(mtvWebView.restoreState(saved)==null){if(!shouldBlockWebNavigation(mtvWebView,url))mtvWebView.loadUrl(url);}}else if(mtvWebView.getUrl()==null||!mtvWebView.getUrl().equals(url)){if(!shouldBlockWebNavigation(mtvWebView,url))mtvWebView.loadUrl(url);}
     }
@@ -1329,8 +1330,14 @@ private void loadAllPlaylists(){
         applyImmersiveMode();
         if(mtvWebView!=null)mtvWebView.requestFocus();
     }
+    private void pauseWebMedia(){
+        if(mtvWebView==null)return;
+        try{mtvWebView.evaluateJavascript("(function(){document.querySelectorAll('video,audio').forEach(function(media){try{media.pause();}catch(e){}});})();",null);}catch(Exception ignored){}
+        mtvWebView.onPause();
+    }
     private void hideMtvWebView(){
         activeWebUrl="";
+        pauseWebMedia();
         if(mtvWebView!=null){mtvWebView.setVisibility(View.GONE);}if(webContainer!=null){webContainer.setVisibility(View.GONE);if(webContainer.getParent()==content)content.removeView(webContainer);}
         chipScroll.setVisibility(View.VISIBLE);status.setVisibility(View.VISIBLE);catalogScroll.setVisibility(View.VISIBLE);if(playerArea!=null)playerArea.setVisibility(View.VISIBLE);
     }
@@ -1648,8 +1655,8 @@ private void showPinEditor(){
         if(player!=null&&currentEntry!=null){long position=player.getCurrentPosition();try{outState.putString("session_player_url",encryptLocalValue(currentEntry.url,"session_player_url"));}catch(Exception secureError){android.util.Log.e("GLOBALTV","Impossible de protéger l’URL de reprise",secureError);}outState.putString("session_player_name",currentEntry.name==null?"Reprise":currentEntry.name);outState.putString("session_player_group",currentEntry.group==null?"Reprise":currentEntry.group);outState.putLong("session_player_position",position);outState.putBoolean("session_player_playing",player.getPlayWhenReady()||resumePlaybackOnStart);outState.putBoolean("session_player_fullscreen",playerFullscreen);if(position>0L)prefs.edit().putLong("position_"+key(currentEntry.url),position).apply();}
         if(isWebSection(section)&&mtvWebView!=null&&mtvWebView.getVisibility()==View.VISIBLE){try{outState.putString("session_web_url",encryptLocalValue(activeWebUrl,"session_web_url"));}catch(Exception secureError){android.util.Log.e("GLOBALTV","Impossible de protéger l’URL Web de session",secureError);}}
     }
-    @Override protected void onResume(){super.onResume();if(mtvWebView!=null)mtvWebView.onResume();}
-    @Override protected void onPause(){if(mtvWebView!=null)mtvWebView.onPause();super.onPause();}
+    @Override protected void onResume(){super.onResume();if(mtvWebView!=null&&isWebSection(section)&&mtvWebView.getVisibility()==View.VISIBLE)mtvWebView.onResume();}
+    @Override protected void onPause(){pauseWebMedia();super.onPause();}
     @Override protected void onStart(){super.onStart();registerNetworkMonitor();if(resumePlaybackOnStart&&player!=null){resumePlaybackOnStart=false;player.play();}if(player!=null&&player.getPlaybackState()==Player.STATE_BUFFERING)startBufferingWatchdog(player,currentEntry);}
     @Override protected void onStop(){unregisterNetworkMonitor();stopBufferingWatchdog(null);super.onStop();if(player!=null){resumePlaybackOnStart=player.getPlayWhenReady();savePlaybackPosition();player.pause();}}
     @Override protected void onDestroy(){
