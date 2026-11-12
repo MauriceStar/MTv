@@ -1259,6 +1259,7 @@ private void loadAllPlaylists(){
                     if(line.length()>1024*1024)throw new IOException("Ligne M3U trop longue (limite 1 Mo)");
                     line=line.trim();
                     if(line.startsWith("#EXTINF:")){
+                        streamHeaders.clear();
                         name=line.substring(line.lastIndexOf(',')+1).trim();group="MTV";logo="";tvgId="";
                         int g=line.indexOf("group-title=\"");
                         if(g>=0){int e=line.indexOf('"',g+13);if(e>g)group=line.substring(g+13,e);}
