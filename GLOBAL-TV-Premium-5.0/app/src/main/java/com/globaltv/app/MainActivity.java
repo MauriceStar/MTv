@@ -5,6 +5,10 @@ import android.os.*;
 import android.content.*;
 import android.graphics.Color;
 import android.graphics.Rect;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.Path;
+import android.animation.ValueAnimator;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
@@ -103,7 +107,7 @@ public class MainActivity extends AppCompatActivity {
         playlistSources.add(DEFAULT_PLAYLIST);
         playlistSources.addAll(Arrays.asList(BUILT_IN_PLAYLISTS));
         prefs.edit().putStringSet("m3u_sources",new LinkedHashSet<>(playlistSources)).apply();
-        epgUrl=prefs.getString("epg_url","");mtvPlaylistUrl=prefs.getString("mtv_playlist_url","");lastPlayedUrl=prefs.getString("last_url","");buildUi();loadAllPlaylists();if(!epgUrl.isEmpty())loadEpg(epgUrl);}
+        epgUrl=prefs.getString("epg_url","");mtvPlaylistUrl=prefs.getString("mtv_playlist_url","");lastPlayedUrl=prefs.getString("last_url","");buildUi();showBrandSplash();loadAllPlaylists();if(!epgUrl.isEmpty())loadEpg(epgUrl);}
     // Adapte le nombre de cartes rendues à la classe mémoire réelle de l'appareil.
     // Le catalogue reste complet en mémoire (plafonné), seule la vue est limitée.
     private void configureMemoryBudget(){
@@ -120,6 +124,68 @@ public class MainActivity extends AppCompatActivity {
     private TextView text(String s,int size,int color,boolean bold){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(color);if(bold)t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);t.setGravity(Gravity.CENTER_VERTICAL);return t;}
     private LinearLayout column(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.VERTICAL);return l;}
     private LinearLayout row(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.HORIZONTAL);l.setGravity(Gravity.CENTER_VERTICAL);return l;}
+
+    // Splash MTv : le nom s'illumine dans le téléviseur, puis la parabole rejoint le logo.
+    private void showBrandSplash(){
+        ViewGroup decor=(ViewGroup)getWindow().getDecorView();
+        BrandSplash splash=new BrandSplash(this);
+        decor.addView(splash,new ViewGroup.LayoutParams(-1,-1));
+        splash.start();
+    }
+    private final class BrandSplash extends View {
+        private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
+        private float progress=0f;
+        private ValueAnimator animator;
+        BrandSplash(Context context){super(context);setLayerType(View.LAYER_TYPE_SOFTWARE,null);}
+        void start(){
+            animator=ValueAnimator.ofFloat(0f,1f);animator.setDuration(2450L);
+            animator.addUpdateListener(a->{progress=(Float)a.getAnimatedValue();invalidate();});
+            animator.addListener(new android.animation.AnimatorListenerAdapter(){
+                @Override public void onAnimationEnd(android.animation.Animator a){
+                    if(getParent() instanceof ViewGroup)((ViewGroup)getParent()).removeView(BrandSplash.this);
+                }
+            });animator.start();
+        }
+        private void style(int color,float width,Paint.Style fill){
+            p.setColor(color);p.setStrokeWidth(width);p.setStyle(fill);p.setStrokeCap(Paint.Cap.ROUND);p.setStrokeJoin(Paint.Join.ROUND);p.setShader(null);p.clearShadowLayer();
+        }
+        @Override protected void onDraw(Canvas canvas){
+            super.onDraw(canvas);float w=getWidth(),h=getHeight(),s=Math.min(w/420f,h/760f);
+            canvas.save();canvas.translate((w-420*s)/2f,(h-760*s)/2f);canvas.scale(s,s);
+            p.setShader(new android.graphics.RadialGradient(210,350,520,new int[]{0xFF142B55,0xFF080D19,0xFF050914},null,android.graphics.Shader.TileMode.CLAMP));
+            canvas.drawRect(0,0,420,760,p);p.setShader(null);
+            float appear=Math.min(1f,progress/.28f);
+            float tvL=65,tvT=255,tvR=325,tvB=445;
+            style(0xFF253D70,1,Paint.Style.FILL);canvas.drawRoundRect(tvL,tvT,tvR,tvB,25,25,p);
+            style(0xFF27C8F2,5,Paint.Style.STROKE);p.setShadowLayer(18,0,0,0xFF168FFF);canvas.drawRoundRect(tvL,tvT,tvR,tvB,25,25,p);p.clearShadowLayer();
+            style(0xFF101A35,1,Paint.Style.FILL);canvas.drawRoundRect(tvL+13,tvT+13,tvR-13,tvB-13,16,16,p);
+            style(0xFFB8D7F2,5,Paint.Style.STROKE);canvas.drawLine(165,tvT,140,tvT-36,p);canvas.drawLine(225,tvT,250,tvT-36,p);
+            style(0xFFFFC928,1,Paint.Style.FILL);canvas.drawCircle(138,tvT-39,5,p);canvas.drawCircle(252,tvT-39,5,p);
+            // Le nom apparaît dans l'écran, puis gagne légèrement en relief.
+            float textScale=1f+Math.max(0f,Math.min(1f,(progress-.42f)/.28f))*.18f;
+            canvas.save();canvas.scale(textScale,textScale,195,350);
+            p.setTypeface(Typeface.create("sans-serif-black",Typeface.BOLD));p.setTextAlign(Paint.Align.CENTER);p.setTextSize(62);
+            style(0xFFFFFFFF,1,Paint.Style.FILL);p.setTypeface(Typeface.create("sans-serif-black",Typeface.BOLD));p.setShadowLayer(15,0,0,0xFF27C8F2);
+            canvas.drawText("MT",181,371,p);p.setColor(0xFFFFA51F);canvas.drawText("v",270,371,p);p.clearShadowLayer();canvas.restore();
+            // La parabole arrive uniquement dans la seconde moitié de l'animation.
+            float dish=Math.max(0f,Math.min(1f,(progress-.52f)/.25f));
+            if(dish>0f){
+                p.setAlpha((int)(255*dish));
+                style(0xFFCAD8E8,5,Paint.Style.STROKE);
+                canvas.drawLine(326,360,350,335,p);
+                canvas.drawOval(328,292,393,350,p);
+                style(0xFFCAD8E8,1,Paint.Style.FILL);canvas.drawOval(333,298,388,344,p);
+                style(0xFF263F78,1,Paint.Style.FILL);canvas.drawOval(340,304,382,339,p);
+                style(0xFFFFA51F,4,Paint.Style.STROKE);canvas.drawArc(348,280,410,342,205,95,false,p);
+                style(0xFFFFC928,3,Paint.Style.STROKE);canvas.drawArc(337,265,420,350,205,95,false,p);
+                p.setAlpha(255);
+            }
+            if(progress>.84f){style(0xFFFFC928,2,Paint.Style.STROKE);canvas.drawCircle(205,350,125+(progress-.84f)*55,p);}
+            canvas.restore();
+        }
+        @Override protected void onDetachedFromWindow(){if(animator!=null&&animator.isRunning())animator.cancel();super.onDetachedFromWindow();}
+    }
+
     private void buildUi(){
         root=row();root.setBackgroundColor(BG);setContentView(root);
         sidebarScroll=new ScrollView(this);sidebarScroll.setFillViewport(true);sidebarScroll.setVerticalScrollBarEnabled(true);sidebarScroll.setScrollbarFadingEnabled(false);sidebarScroll.setSmoothScrollingEnabled(true);sidebarScroll.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);root.addView(sidebarScroll,new LinearLayout.LayoutParams(dp(220),-1));
