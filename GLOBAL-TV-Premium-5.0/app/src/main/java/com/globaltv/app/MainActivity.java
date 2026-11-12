@@ -905,7 +905,7 @@ private void loadAllPlaylists(){
 
     private String playbackFailureMessage(androidx.media3.common.PlaybackException error){
         int code=findHttpStatusCode(error);
-        if(code==401||code==403)return "Accès refusé par le fournisseur (HTTP "+code+"). Vérifiez vos identifiants.";
+        if(code==401||code==403)return "Le fournisseur refuse cette requête (HTTP "+code+"). Vérifiez les droits du compte et les en-têtes exigés par votre fournisseur.";
         if(code==404||code==410)return "Ce flux n’existe plus ou a été retiré (HTTP "+code+").";
         if(code==429)return "Le fournisseur limite temporairement les connexions (HTTP 429).";
         if(code>=500&&code<=599)return "Le serveur du fournisseur rencontre un problème (HTTP "+code+").";
@@ -944,7 +944,9 @@ private void loadAllPlaylists(){
                     return;
                 }
                 String message=retryable?"Flux indisponible après nouvelle tentative.":playbackFailureMessage(error);
-                Toast.makeText(MainActivity.this,message+" Passage au suivant…",Toast.LENGTH_SHORT).show();
+                int httpCode=findHttpStatusCode(error);
+                if(httpCode==401||httpCode==403)status.setText("Flux refusé par le fournisseur (HTTP "+httpCode+"). Passage au suivant…");
+                else Toast.makeText(MainActivity.this,message+" Passage au suivant…",Toast.LENGTH_SHORT).show();
                 int nextIndex=failedIndex>=0?failedIndex:0;
                 activePlayer.seekTo(nextIndex,0L);activePlayer.prepare();activePlayer.play();
             }else{
