@@ -682,6 +682,32 @@ private void loadAllPlaylists(){
         TextView button=text(glyph,19,Color.WHITE,true);button.setGravity(Gravity.CENTER);button.setContentDescription(description);button.setFocusable(true);button.setClickable(true);button.setBackground(bg(CARD,10));
         button.setOnFocusChangeListener((v,focused)->stylePlayerButton((TextView)v,focused));button.setOnClickListener(v->{if(action!=null)action.run();});return button;
     }
+    // Charge les logos de manière défensive : seules les URL HTTP(S) valides sont transmises à Glide.
+    // Le cache disque des données évite de retélécharger les mêmes images à chaque pagination.
+    private void loadChannelArtwork(ImageView target,String address,int widthDp,int heightDp){
+        if(target==null)return;
+        target.setImageDrawable(bg(CARD,8));
+        if(destroyed||address==null)return;
+        String imageUrl=address.trim();
+        if(imageUrl.isEmpty()||imageUrl.length()>2048)return;
+        try{
+            Uri parsed=Uri.parse(imageUrl);
+            String scheme=parsed.getScheme();
+            if(parsed.getHost()==null||parsed.getHost().isEmpty()
+                ||(!"http".equalsIgnoreCase(scheme)&&!"https".equalsIgnoreCase(scheme)))return;
+            com.bumptech.glide.Glide.with(this)
+                .load(imageUrl)
+                .override(dp(widthDp),dp(heightDp))
+                .diskCacheStrategy(com.bumptech.glide.load.engine.DiskCacheStrategy.DATA)
+                .dontAnimate()
+                .placeholder(bg(CARD,8))
+                .error(bg(CARD,8))
+                .into(target);
+        }catch(RuntimeException imageError){
+            android.util.Log.w("GLOBALTV","Logo ignoré : chargement impossible",imageError);
+        }
+    }
+
     private void renderHome(){
         list.removeAllViews();
 
@@ -696,7 +722,7 @@ private void loadAllPlaylists(){
         TextView featuredTitle=text("CHAÎNES À DÉCOUVRIR",12,0xFFFFC45C,true);featuredTitle.setLetterSpacing(0.08f);LinearLayout.LayoutParams ft=new LinearLayout.LayoutParams(-1,dp(34));ft.topMargin=dp(8);list.addView(featuredTitle,ft);
         HorizontalScrollView featuredScroll=new HorizontalScrollView(this);featuredScroll.setHorizontalScrollBarEnabled(false);LinearLayout featured=row();featuredScroll.addView(featured);list.addView(featuredScroll,new LinearLayout.LayoutParams(-1,dp(154)));
         int count=0;for(MediaEntry entry:all){if(entry==null||entry.name==null||entry.name.isEmpty())continue;if(PROFILE_CHILD.equals(activeProfile)&&isAdultEntry(entry))continue;LinearLayout card=column();card.setGravity(Gravity.CENTER_HORIZONTAL);card.setPadding(dp(8),dp(8),dp(8),dp(6));card.setBackground(bg(PANEL,12));card.setFocusable(true);card.setClickable(true);LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(dp(132),dp(138));cp.rightMargin=dp(10);featured.addView(card,cp);
-            ImageView logo=new ImageView(this);logo.setScaleType(ImageView.ScaleType.FIT_CENTER);logo.setBackground(bg(CARD,8));card.addView(logo,new LinearLayout.LayoutParams(dp(112),dp(78)));if(entry.logo!=null&&!entry.logo.isEmpty())com.bumptech.glide.Glide.with(this).load(entry.logo).override(dp(112),dp(78)).placeholder(bg(CARD,8)).error(bg(CARD,8)).into(logo);
+            ImageView logo=new ImageView(this);logo.setScaleType(ImageView.ScaleType.FIT_CENTER);logo.setBackground(bg(CARD,8));card.addView(logo,new LinearLayout.LayoutParams(dp(112),dp(78)));loadChannelArtwork(logo,entry.logo,112,78);
             TextView label=text(entry.name,11,Color.WHITE,true);label.setGravity(Gravity.CENTER);label.setMaxLines(2);card.addView(label,new LinearLayout.LayoutParams(-1,dp(42)));
             card.setOnFocusChangeListener((v,focus)->{if(focus){GradientDrawable d=bg(0xFF3A315D,12);d.setStroke(dp(2),FOCUS_GOLD);v.setBackground(d);v.animate().scaleX(1.05f).scaleY(1.05f).setDuration(110).start();}else{v.setBackground(bg(PANEL,12));v.animate().scaleX(1f).scaleY(1f).setDuration(110).start();}});
             card.setOnClickListener(v->play(entry));if(++count>=12)break;
@@ -733,7 +759,7 @@ private void loadAllPlaylists(){
             LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(-1,dp(62));ip.bottomMargin=dp(8);list.addView(item,ip);
             if(chips!=null){for(int ci=0;ci<chips.getChildCount();ci++)chips.getChildAt(ci).setNextFocusDownId(item.getId());if(chips.getChildCount()>0)item.setNextFocusUpId(chips.getChildAt(0).getId());}
             ImageView artwork=new ImageView(this);artwork.setScaleType(ImageView.ScaleType.CENTER_CROP);artwork.setBackground(bg(CARD,8));item.addView(artwork,new LinearLayout.LayoutParams(dp(76),dp(52)));
-            if(c.logo!=null&&!c.logo.isEmpty())com.bumptech.glide.Glide.with(this).load(c.logo).override(dp(76),dp(52)).placeholder(bg(CARD,8)).error(bg(CARD,8)).into(artwork);else artwork.setImageDrawable(bg(CARD,8));
+            loadChannelArtwork(artwork,c.logo,76,52);
             LinearLayout meta=column();meta.setPadding(dp(12),0,0,0);item.addView(meta,new LinearLayout.LayoutParams(0,-1,1));
             meta.addView(text(itemName,14,Color.WHITE,true));
             String detail=itemGroup+"  •  "+(c.type.equals("live")||c.type.equals("m3u")?"En direct":c.type.equals("series")?"Série":"VOD");
