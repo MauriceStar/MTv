@@ -105,6 +105,8 @@ public class MainActivity extends AppCompatActivity {
     private View playerFullscreenTop,playerFullscreenChips,playerFullscreenStatus,playerFullscreenFooter;
     private MediaEntry currentEntry;
     private final Set<String> failedInCurrentRun=new HashSet<>();
+    private Runnable bufferingWatchdog;
+    private ExoPlayer bufferingWatchdogPlayer;
     private EditText search;
     private TextView status,heading,sourceLabel;
     private PlayerView playerView;
@@ -329,6 +331,7 @@ public class MainActivity extends AppCompatActivity {
         if(playerView!=null){playerView.setPlayer(null);if(playerView.getParent() instanceof ViewGroup)((ViewGroup)playerView.getParent()).removeView(playerView);playerView=null;}
         if(playerArea!=null)playerArea.setOrientation(LinearLayout.HORIZONTAL);if(catalogScroll!=null&&catalogScroll.getParent()!=playerArea)playerArea.addView(catalogScroll,new LinearLayout.LayoutParams(-1,-1));
         if(playerToolbar!=null){if(playerToolbar.getParent() instanceof ViewGroup)((ViewGroup)playerToolbar.getParent()).removeView(playerToolbar);playerToolbar=null;}if(playerArea!=null){for(int i=playerArea.getChildCount()-1;i>=0;i--){View child=playerArea.getChildAt(i);if(child instanceof LinearLayout&&child!=catalogScroll&&((LinearLayout)child).getChildCount()==0)playerArea.removeViewAt(i);}}
+        stopBufferingWatchdog(null);
         if(player!=null){try{player.release();}catch(Exception ignored){}player=null;}
     }
     private HttpURLConnection open(String address)throws Exception{
@@ -564,6 +567,47 @@ private void loadAllPlaylists(){
     }
     private boolean isMusicEntry(MediaEntry e){String v=((e.name==null?"":e.name)+" "+(e.group==null?"":e.group)).toLowerCase(Locale.ROOT);String[] keys={"music","musique","radio","mtv","trace","mezzo","mcm","vevo","concert","hits","clip"};for(String k:keys)if(v.contains(k))return true;return false;}
     private boolean isNewsEntry(MediaEntry e){String v=((e.name==null?"":e.name)+" "+(e.group==null?"":e.group)).toLowerCase(Locale.ROOT);String[] keys={"news","info","information","actualité","actualite","journal","france 24","bfm","cnews","lci","euronews","al jazeera","bbc","cnn"};for(String k:keys)if(v.contains(k))return true;return false;}
+    private void startBufferingWatchdog(ExoPlayer activePlayer,MediaEntry fallback){
+        stopBufferingWatchdog(null);
+        if(destroyed||!activePlayer.getPlayWhenReady())return;
+        bufferingWatchdogPlayer=activePlayer;
+        bufferingWatchdog=()->{
+            if(player==activePlayer&&activePlayer.getPlaybackState()==Player.STATE_BUFFERING&&activePlayer.getPlayWhenReady()){
+                bufferingWatchdog=null;bufferingWatchdogPlayer=null;
+                handlePlayerFailure(activePlayer,fallback);
+            }
+        };
+        mainHandler.postDelayed(bufferingWatchdog,45000L);
+    }
+    private void stopBufferingWatchdog(ExoPlayer expected){
+        if(expected!=null&&bufferingWatchdogPlayer!=expected)return;
+        if(bufferingWatchdog!=null)mainHandler.removeCallbacks(bufferingWatchdog);
+        bufferingWatchdog=null;bufferingWatchdogPlayer=null;
+    }
+    private void handlePlayerFailure(ExoPlayer activePlayer,MediaEntry fallback){
+        MediaItem playing=activePlayer.getCurrentMediaItem();
+        String failedUrl=playing!=null&&playing.localConfiguration!=null?playing.localConfiguration.uri.toString():(currentEntry==null?fallback.url:currentEntry.url);
+        boolean firstFailure=failedInCurrentRun.add(failedUrl);
+        postUi(()->{
+            if(player!=activePlayer)return;
+            stopBufferingWatchdog(activePlayer);
+            if(firstFailure){
+                Toast.makeText(MainActivity.this,"Connexion interrompue. Nouvelle tentative…",Toast.LENGTH_SHORT).show();
+                activePlayer.prepare();activePlayer.play();return;
+            }
+            int failedIndex=activePlayer.getCurrentMediaItemIndex();
+            if(failedIndex>=0&&failedIndex<activePlayer.getMediaItemCount())activePlayer.removeMediaItem(failedIndex);
+            if(activePlayer.getMediaItemCount()>0){
+                Toast.makeText(MainActivity.this,"Flux indisponible. Passage au suivant…",Toast.LENGTH_SHORT).show();
+                int nextIndex=failedIndex>=0&&failedIndex<activePlayer.getMediaItemCount()?failedIndex:0;
+                activePlayer.seekTo(nextIndex,0L);activePlayer.prepare();activePlayer.play();
+            }else{
+                status.setText("Lecture impossible : "+(currentEntry==null?fallback.name:currentEntry.name));
+                Toast.makeText(MainActivity.this,"Aucun autre flux disponible dans cette liste.",Toast.LENGTH_LONG).show();
+            }
+        });
+    }
+
     private void startPlayer(MediaEntry c){
         if(c==null||c.url==null||!(c.url.startsWith("https://")||c.url.startsWith("http://"))){
             Toast.makeText(this,"Adresse du flux invalide",Toast.LENGTH_LONG).show();return;
@@ -608,15 +652,11 @@ private void loadAllPlaylists(){
             }
             activePlayer.addListener(new Player.Listener(){
                 @Override public void onPlayerError(androidx.media3.common.PlaybackException e){
-                    String failedUrl=currentEntry==null?c.url:currentEntry.url;boolean firstFailure=failedInCurrentRun.add(failedUrl);
-                    postUi(()->{
-                        if(player!=activePlayer)return;
-                        if(firstFailure){Toast.makeText(MainActivity.this,"Connexion interrompue. Nouvelle tentative…",Toast.LENGTH_SHORT).show();activePlayer.prepare();activePlayer.play();return;}
-                        int failedIndex=activePlayer.getCurrentMediaItemIndex();
-                        if(failedIndex>=0&&failedIndex<activePlayer.getMediaItemCount())activePlayer.removeMediaItem(failedIndex);
-                        if(activePlayer.getMediaItemCount()>0){Toast.makeText(MainActivity.this,"Flux indisponible. Passage au suivant…",Toast.LENGTH_SHORT).show();int nextIndex=failedIndex>=0&&failedIndex<activePlayer.getMediaItemCount()?failedIndex:0;activePlayer.seekTo(nextIndex,0L);activePlayer.prepare();activePlayer.play();}
-                        else{status.setText("Lecture impossible : "+(currentEntry==null?c.name:currentEntry.name));Toast.makeText(MainActivity.this,"Aucun autre flux disponible dans cette liste.",Toast.LENGTH_LONG).show();}
-                    });
+                    handlePlayerFailure(activePlayer,c);
+                }
+                @Override public void onPlaybackStateChanged(int playbackState){
+                    if(playbackState==Player.STATE_BUFFERING)startBufferingWatchdog(activePlayer,c);
+                    else stopBufferingWatchdog(activePlayer);
                 }
                 @Override public void onMediaItemTransition(MediaItem item,int reason){
                     String uri=item.localConfiguration==null?"":item.localConfiguration.uri.toString();
@@ -1037,8 +1077,8 @@ private void showPinEditor(){
     }
     @Override protected void onResume(){super.onResume();if(mtvWebView!=null)mtvWebView.onResume();}
     @Override protected void onPause(){if(mtvWebView!=null)mtvWebView.onPause();super.onPause();}
-    @Override protected void onStart(){super.onStart();if(resumePlaybackOnStart&&player!=null){resumePlaybackOnStart=false;player.play();}}
-    @Override protected void onStop(){super.onStop();if(player!=null){resumePlaybackOnStart=player.isPlaying();savePlaybackPosition();player.pause();}}
+    @Override protected void onStart(){super.onStart();if(resumePlaybackOnStart&&player!=null){resumePlaybackOnStart=false;player.play();}if(player!=null&&player.getPlaybackState()==Player.STATE_BUFFERING)startBufferingWatchdog(player,currentEntry);}
+    @Override protected void onStop(){stopBufferingWatchdog(null);super.onStop();if(player!=null){resumePlaybackOnStart=player.isPlaying();savePlaybackPosition();player.pause();}}
     @Override protected void onDestroy(){
         destroyed=true;if(pendingSearch!=null)mainHandler.removeCallbacks(pendingSearch);
         if(webCustomView!=null)hideWebCustomView();
