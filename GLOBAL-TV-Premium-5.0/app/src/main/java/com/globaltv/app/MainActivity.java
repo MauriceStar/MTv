@@ -532,7 +532,7 @@ private int appendM3uPlaylist(String address,ArrayList<MediaEntry> merged,int re
    while((line=reader.readLine())!=null&&merged.size()<MAX_CATALOG_ITEMS&&request==catalogRequestId&&!destroyed){
     if(line.length()>1024*1024)throw new IOException("Ligne M3U trop longue (limite 1 Mo)");
     line=line.trim();if(line.startsWith("\uFEFF"))line=line.substring(1);
-    if(line.startsWith("#EXTINF:")){streamHeaders.clear();
+    if(line.startsWith("#EXTINF:")){streamHeaders.clear();streamHeaders.clear();
      name=line.substring(line.lastIndexOf(',')+1).trim();group="Autres";logo="";tvgId="";
      int g=line.indexOf("group-title=\"");if(g>=0){int e=line.indexOf('"',g+13);if(e>g)group=line.substring(g+13,e);}
      int tid=line.indexOf("tvg-id=\"");if(tid>=0){int te=line.indexOf('"',tid+8);if(te>tid)tvgId=line.substring(tid+8,te);}
@@ -1205,7 +1205,7 @@ private void loadAllPlaylists(){
             try{
                 String data=get(url);if(request!=catalogRequestId||destroyed)return;
                 BufferedReader reader=new BufferedReader(new StringReader(data));
-                String line,name=null,group="MTV",logo="",tvgId="";int count=0;
+                String line,name=null,group="MTV",logo="",tvgId="";Map<String,String> streamHeaders=new HashMap<>();int count=0;
                 while((line=reader.readLine())!=null&&count<MAX_CATALOG_ITEMS&&request==catalogRequestId&&!destroyed){
                     if(line.length()>1024*1024)throw new IOException("Ligne M3U trop longue (limite 1 Mo)");
                     line=line.trim();
@@ -1217,9 +1217,10 @@ private void loadAllPlaylists(){
                         if(tid>=0){int e=line.indexOf('"',tid+8);if(e>tid)tvgId=line.substring(tid+8,e);}
                         int l=line.indexOf("tvg-logo=\"");
                         if(l>=0){int e=line.indexOf('"',l+10);if(e>l)logo=line.substring(l+10,e);}
+                    }else if(line.startsWith("#EXTVLCOPT:")||line.startsWith("#EXTHTTP:")){parseM3uHttpOption(line,streamHeaders);
                     }else if(!line.isEmpty()&&!line.startsWith("#")&&name!=null){
                         if(line.startsWith("https://")||line.startsWith("http://")){
-                            MediaEntry entry=new MediaEntry(name,line,group,logo,"m3u");entry.tvgId=tvgId;parsed.add(entry);count++;
+                            MediaEntry entry=new MediaEntry(name,line,group,logo,"m3u");entry.tvgId=tvgId;entry.httpHeaders.putAll(streamHeaders);parsed.add(entry);count++;
                         }name=null;
                     }
                 }
