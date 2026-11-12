@@ -824,10 +824,49 @@ private void loadAllPlaylists(){
         if(bufferingWatchdog!=null)mainHandler.removeCallbacks(bufferingWatchdog);
         bufferingWatchdog=null;bufferingWatchdogPlayer=null;
     }
+    private int findHttpStatusCode(Throwable error){
+        for(Throwable cause=error;cause!=null;cause=cause.getCause()){
+            if(cause instanceof androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException){
+                return ((androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException)cause).responseCode;
+            }
+        }
+        return -1;
+    }
+
+    private boolean isRetryablePlaybackError(androidx.media3.common.PlaybackException error){
+        if(error==null)return true; // Expiration du watchdog de buffering.
+        int httpCode=findHttpStatusCode(error);
+        if(httpCode!=-1)return httpCode==408||httpCode==425||httpCode==429||httpCode>=500&&httpCode<=599;
+        for(Throwable cause=error;cause!=null;cause=cause.getCause()){
+            if(cause instanceof java.net.SocketTimeoutException||
+               cause instanceof java.net.UnknownHostException||
+               cause instanceof java.net.ConnectException||
+               cause instanceof java.net.NoRouteToHostException||
+               cause instanceof java.net.SocketException||
+               cause instanceof java.io.InterruptedIOException)return true;
+        }
+        return false;
+    }
+
+    private String playbackFailureMessage(androidx.media3.common.PlaybackException error){
+        int code=findHttpStatusCode(error);
+        if(code==401||code==403)return "Accès refusé par le fournisseur (HTTP "+code+"). Vérifiez vos identifiants.";
+        if(code==404||code==410)return "Ce flux n’existe plus ou a été retiré (HTTP "+code+").";
+        if(code==429)return "Le fournisseur limite temporairement les connexions (HTTP 429).";
+        if(code>=500&&code<=599)return "Le serveur du fournisseur rencontre un problème (HTTP "+code+").";
+        if(code==408)return "Le fournisseur a mis trop de temps à répondre (HTTP 408).";
+        return "Le flux est invalide ou incompatible avec le lecteur.";
+    }
+
     private void handlePlayerFailure(ExoPlayer activePlayer,MediaEntry fallback){
+        handlePlayerFailure(activePlayer,fallback,null);
+    }
+
+    private void handlePlayerFailure(ExoPlayer activePlayer,MediaEntry fallback,androidx.media3.common.PlaybackException error){
         MediaItem playing=activePlayer.getCurrentMediaItem();
         String failedUrl=playing!=null&&playing.localConfiguration!=null?playing.localConfiguration.uri.toString():(currentEntry==null?fallback.url:currentEntry.url);
-        boolean firstFailure=failedInCurrentRun.add(failedUrl);
+        boolean retryable=isRetryablePlaybackError(error);
+        boolean firstFailure=retryable&&failedInCurrentRun.add(failedUrl);
         postUi(()->{
             if(player!=activePlayer)return;
             stopBufferingWatchdog(activePlayer);
@@ -838,12 +877,14 @@ private void loadAllPlaylists(){
             int failedIndex=activePlayer.getCurrentMediaItemIndex();
             if(failedIndex>=0&&failedIndex<activePlayer.getMediaItemCount())activePlayer.removeMediaItem(failedIndex);
             if(activePlayer.getMediaItemCount()>0){
-                Toast.makeText(MainActivity.this,"Flux indisponible. Passage au suivant…",Toast.LENGTH_SHORT).show();
+                String message=retryable?"Flux indisponible après nouvelle tentative.":"";
+                Toast.makeText(MainActivity.this,message+" Passage au suivant…",Toast.LENGTH_SHORT).show();
                 int nextIndex=failedIndex>=0&&failedIndex<activePlayer.getMediaItemCount()?failedIndex:0;
                 activePlayer.seekTo(nextIndex,0L);activePlayer.prepare();activePlayer.play();
             }else{
+                String detail=playbackFailureMessage(error);
                 status.setText("Lecture impossible : "+(currentEntry==null?fallback.name:currentEntry.name));
-                Toast.makeText(MainActivity.this,"Aucun autre flux disponible dans cette liste.",Toast.LENGTH_LONG).show();
+                Toast.makeText(MainActivity.this,detail,Toast.LENGTH_LONG).show();
             }
         });
     }
@@ -902,7 +943,7 @@ private void loadAllPlaylists(){
             for(int i=0;i<queue.size();i++){
                 MediaEntry entry=queue.get(i);
                 MediaItem mediaItem=new MediaItem.Builder().setUri(Uri.parse(entry.url)).setMediaId(entry.url).build();
-                DefaultHttpDataSource.Factory httpFactory=new DefaultHttpDataSource.Factory();
+                DefaultHttpDataSource.Factory httpFactory=new DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(false);
                 if(!entry.httpHeaders.isEmpty())httpFactory.setDefaultRequestProperties(new HashMap<>(entry.httpHeaders));
                 MediaSource mediaSource=new DefaultMediaSourceFactory(httpFactory).createMediaSource(mediaItem);
                 playlistSource.addMediaSource(mediaSource);
@@ -911,7 +952,7 @@ private void loadAllPlaylists(){
             activePlayer.addListener(new Player.Listener(){
                 @Override public void onPlayWhenReadyChanged(boolean playWhenReady,int reason){activePlayerView.setKeepScreenOn(playWhenReady);}
                 @Override public void onPlayerError(androidx.media3.common.PlaybackException e){
-                    handlePlayerFailure(activePlayer,c);
+                    handlePlayerFailure(activePlayer,c,e);
                 }
                 @Override public void onPlaybackStateChanged(int playbackState){
                     if(playbackState==Player.STATE_BUFFERING)startBufferingWatchdog(activePlayer,c);
