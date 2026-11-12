@@ -1081,7 +1081,11 @@ private void loadAllPlaylists(){
                 if(entry.url.equals(c.url))startIndex=i;
             }
             activePlayer.addListener(new Player.Listener(){
-                @Override public void onPlayWhenReadyChanged(boolean playWhenReady,int reason){activePlayerView.setKeepScreenOn(playWhenReady);}
+                @Override public void onPlayWhenReadyChanged(boolean playWhenReady,int reason){
+                    if(destroyed||player!=activePlayer)return;
+                    try{activePlayerView.setKeepScreenOn(playWhenReady);}
+                    catch(RuntimeException viewStateError){android.util.Log.w("GLOBALTV","État d’écran du lecteur indisponible",viewStateError);}
+                }
                 @Override public void onPlayerError(androidx.media3.common.PlaybackException e){
                     handlePlayerFailure(activePlayer,c,e);
                 }
@@ -1092,9 +1096,9 @@ private void loadAllPlaylists(){
                     if(playbackState==Player.STATE_ENDED){stopPlaybackPositionSaver();clearPlaybackPosition(currentEntry);}
                 }
                 @Override public void onMediaItemTransition(MediaItem item,int reason){
-                    if(player!=activePlayer)return;
+                    if(destroyed||player!=activePlayer||item==null)return;
                     if(reason==Player.MEDIA_ITEM_TRANSITION_REASON_AUTO)clearPlaybackPosition(currentEntry);
-                    String uri=item.localConfiguration==null?"":item.localConfiguration.uri.toString();
+                    String uri=item.localConfiguration==null||item.localConfiguration.uri==null?"":item.localConfiguration.uri.toString();
                     for(MediaEntry entry:queue)if(entry.url.equals(uri)){
                         currentEntry=entry;lastPlayedUrl=entry.url;
                         historyKeysCache.add("history_"+key(entry.url));prefs.edit().putString("history_"+key(entry.url),entry.name==null?"":entry.name).apply();
@@ -1741,7 +1745,22 @@ private void showPinEditor(){
         super.onSaveInstanceState(outState);
         outState.putString("session_section",section);outState.putString("session_filter",activeFilter);outState.putString("session_search",search==null?"":search.getText().toString());
         if(catalogScroll!=null)outState.putInt("session_catalog_scroll",catalogScroll.getScrollY());
-        if(player!=null&&currentEntry!=null){long position=player.getCurrentPosition();try{outState.putString("session_player_url",encryptLocalValue(currentEntry.url,"session_player_url"));}catch(Exception secureError){android.util.Log.e("GLOBALTV","Impossible de protéger l’URL de reprise",secureError);}outState.putString("session_player_name",currentEntry.name==null?"Reprise":currentEntry.name);outState.putString("session_player_group",currentEntry.group==null?"Reprise":currentEntry.group);outState.putLong("session_player_position",position);outState.putBoolean("session_player_playing",player.getPlayWhenReady()||resumePlaybackOnStart);outState.putBoolean("session_player_fullscreen",playerFullscreen);if(position>0L)prefs.edit().putLong("position_"+key(currentEntry.url),position).apply();}
+        ExoPlayer statePlayer=player;MediaEntry stateEntry=currentEntry;
+        if(statePlayer!=null&&stateEntry!=null){
+            try{
+                if(player==statePlayer&&!destroyed){
+                    long position=statePlayer.getCurrentPosition();
+                    outState.putString("session_player_url",encryptLocalValue(stateEntry.url,"session_player_url"));
+                    outState.putString("session_player_name",stateEntry.name==null?"Reprise":stateEntry.name);
+                    outState.putString("session_player_group",stateEntry.group==null?"Reprise":stateEntry.group);
+                    outState.putLong("session_player_position",position);
+                    outState.putBoolean("session_player_playing",statePlayer.getPlayWhenReady()||resumePlaybackOnStart);
+                    outState.putBoolean("session_player_fullscreen",playerFullscreen);
+                    if(position>0L&&prefs!=null)prefs.edit().putLong("position_"+key(stateEntry.url),position).apply();
+                }
+            }catch(RuntimeException playerStateError){android.util.Log.w("GLOBALTV","État de lecture non sauvegardé : lecteur indisponible",playerStateError);}
+            catch(Exception secureError){android.util.Log.e("GLOBALTV","Impossible de protéger l’URL de reprise",secureError);}
+        }
         if(isWebSection(section)&&mtvWebView!=null&&mtvWebView.getVisibility()==View.VISIBLE){try{outState.putString("session_web_url",encryptLocalValue(activeWebUrl,"session_web_url"));}catch(Exception secureError){android.util.Log.e("GLOBALTV","Impossible de protéger l’URL Web de session",secureError);}}
     }
     @Override protected void onResume(){super.onResume();if(mtvWebView!=null&&isWebSection(section)&&mtvWebView.getVisibility()==View.VISIBLE)mtvWebView.onResume();}
