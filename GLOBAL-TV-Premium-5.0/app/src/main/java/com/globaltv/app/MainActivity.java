@@ -472,7 +472,7 @@ private void loadAllPlaylists(){
         for(String[] item:quick){TextView tile=text(item[0],12,Color.WHITE,true);tile.setGravity(Gravity.CENTER);tile.setPadding(dp(16),0,dp(16),0);tile.setFocusable(true);tile.setClickable(true);tile.setBackground(bg(CARD,12));LinearLayout.LayoutParams tp=new LinearLayout.LayoutParams(-2,dp(40));tp.rightMargin=dp(9);categoryRow.addView(tile,tp);tile.setOnFocusChangeListener((v,focus)->{if(focus){GradientDrawable d=bg(FOCUS_GOLD,12);d.setStroke(dp(2),FOCUS_RED);v.setBackground(d);((TextView)v).setTextColor(0xFF17111A);v.animate().scaleX(1.04f).scaleY(1.04f).setDuration(110).start();}else{v.setBackground(bg(CARD,12));((TextView)v).setTextColor(Color.WHITE);v.animate().scaleX(1f).scaleY(1f).setDuration(110).start();}});tile.setOnClickListener(v->{navigateTo(item[1]);});}
         TextView featuredTitle=text("CHAÎNES À DÉCOUVRIR",12,0xFFFFC45C,true);featuredTitle.setLetterSpacing(0.08f);LinearLayout.LayoutParams ft=new LinearLayout.LayoutParams(-1,dp(34));ft.topMargin=dp(8);list.addView(featuredTitle,ft);
         HorizontalScrollView featuredScroll=new HorizontalScrollView(this);featuredScroll.setHorizontalScrollBarEnabled(false);LinearLayout featured=row();featuredScroll.addView(featured);list.addView(featuredScroll,new LinearLayout.LayoutParams(-1,dp(154)));
-        int count=0;for(MediaEntry entry:all){if(entry==null||entry.name==null||entry.name.isEmpty())continue;LinearLayout card=column();card.setGravity(Gravity.CENTER_HORIZONTAL);card.setPadding(dp(8),dp(8),dp(8),dp(6));card.setBackground(bg(PANEL,12));card.setFocusable(true);card.setClickable(true);LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(dp(132),dp(138));cp.rightMargin=dp(10);featured.addView(card,cp);
+        int count=0;for(MediaEntry entry:all){if(entry==null||entry.name==null||entry.name.isEmpty())continue;if(PROFILE_CHILD.equals(activeProfile)&&isAdultEntry(entry))continue;LinearLayout card=column();card.setGravity(Gravity.CENTER_HORIZONTAL);card.setPadding(dp(8),dp(8),dp(8),dp(6));card.setBackground(bg(PANEL,12));card.setFocusable(true);card.setClickable(true);LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(dp(132),dp(138));cp.rightMargin=dp(10);featured.addView(card,cp);
             ImageView logo=new ImageView(this);logo.setScaleType(ImageView.ScaleType.FIT_CENTER);logo.setBackground(bg(CARD,8));card.addView(logo,new LinearLayout.LayoutParams(dp(112),dp(78)));if(entry.logo!=null&&!entry.logo.isEmpty())com.bumptech.glide.Glide.with(this).load(entry.logo).placeholder(bg(CARD,8)).error(bg(CARD,8)).into(logo);
             TextView label=text(entry.name,11,Color.WHITE,true);label.setGravity(Gravity.CENTER);label.setMaxLines(2);card.addView(label,new LinearLayout.LayoutParams(-1,dp(42)));
             card.setOnFocusChangeListener((v,focus)->{if(focus){GradientDrawable d=bg(0xFF3A315D,12);d.setStroke(dp(2),FOCUS_GOLD);v.setBackground(d);v.animate().scaleX(1.05f).scaleY(1.05f).setDuration(110).start();}else{v.setBackground(bg(PANEL,12));v.animate().scaleX(1f).scaleY(1f).setDuration(110).start();}});
@@ -546,6 +546,9 @@ private void loadAllPlaylists(){
     private void startPlayer(MediaEntry c){
         if(c==null||c.url==null||!(c.url.startsWith("https://")||c.url.startsWith("http://"))){
             Toast.makeText(this,"Adresse du flux invalide",Toast.LENGTH_LONG).show();return;
+        }
+        if(PROFILE_CHILD.equals(activeProfile)&&isAdultEntry(c)){
+            Toast.makeText(this,"Ce contenu est bloqué dans le profil Enfant.",Toast.LENGTH_LONG).show();return;
         }
         try{
             savePlaybackPosition();releasePlayer();currentEntry=c;
