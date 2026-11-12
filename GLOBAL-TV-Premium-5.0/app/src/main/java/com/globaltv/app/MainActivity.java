@@ -975,6 +975,11 @@ private void loadAllPlaylists(){
                 @Override public void onPlaybackStateChanged(int playbackState){
                     if(playbackState==Player.STATE_BUFFERING)startBufferingWatchdog(activePlayer,c);
                     else stopBufferingWatchdog(activePlayer);
+                    if(playbackState==Player.STATE_READY){
+                        MediaItem readyItem=activePlayer.getCurrentMediaItem();
+                        if(readyItem!=null&&readyItem.localConfiguration!=null)
+                            failedInCurrentRun.remove(readyItem.localConfiguration.uri.toString());
+                    }
                 }
                 @Override public void onMediaItemTransition(MediaItem item,int reason){
                     String uri=item.localConfiguration==null?"":item.localConfiguration.uri.toString();
