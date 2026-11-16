@@ -569,6 +569,17 @@ private void loadAllPlaylists(){
     }
     private boolean isMusicEntry(MediaEntry e){String v=((e.name==null?"":e.name)+" "+(e.group==null?"":e.group)).toLowerCase(Locale.ROOT);String[] keys={"music","musique","radio","mtv","trace","mezzo","mcm","vevo","concert","hits","clip"};for(String k:keys)if(v.contains(k))return true;return false;}
     private boolean isNewsEntry(MediaEntry e){String v=((e.name==null?"":e.name)+" "+(e.group==null?"":e.group)).toLowerCase(Locale.ROOT);String[] keys={"news","info","information","actualité","actualite","journal","france 24","bfm","cnews","lci","euronews","al jazeera","bbc","cnn"};for(String k:keys)if(v.contains(k))return true;return false;}
+    private MediaItem buildCompatibleMediaItem(MediaEntry entry){
+        Uri uri=Uri.parse(entry.url);
+        String path=uri.getPath()==null?"":uri.getPath().toLowerCase(Locale.ROOT);
+        String mime=null;
+        if(path.endsWith(".m3u8"))mime=androidx.media3.common.MimeTypes.APPLICATION_M3U8;
+        else if(path.endsWith(".mpd"))mime=androidx.media3.common.MimeTypes.APPLICATION_MPD;
+        else if(path.endsWith(".ismc")||path.contains(".ism/manifest"))mime=androidx.media3.common.MimeTypes.APPLICATION_SS;
+        MediaItem.Builder builder=new MediaItem.Builder().setUri(uri).setMediaId(entry.url);
+        if(mime!=null)builder.setMimeType(mime);
+        return builder.build();
+    }
     private void startPlayer(MediaEntry c){
         if(c==null||c.url==null||!(c.url.startsWith("https://")||c.url.startsWith("http://"))){
             Toast.makeText(this,"Adresse du flux invalide",Toast.LENGTH_LONG).show();return;
@@ -605,7 +616,7 @@ private void loadAllPlaylists(){
             List<MediaEntry> queue=playableQueue(c);ArrayList<MediaItem> mediaItems=new ArrayList<>();int startIndex=0;
             for(int i=0;i<queue.size();i++){
                 MediaEntry entry=queue.get(i);
-                mediaItems.add(new MediaItem.Builder().setUri(Uri.parse(entry.url)).setMediaId(entry.url).build());
+                mediaItems.add(buildCompatibleMediaItem(entry));
                 if(entry.url.equals(c.url))startIndex=i;
             }
             activePlayer.addListener(new Player.Listener(){
