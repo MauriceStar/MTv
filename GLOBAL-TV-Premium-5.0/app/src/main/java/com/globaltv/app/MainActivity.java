@@ -721,6 +721,30 @@ private void loadAllPlaylists(){
     }
     private boolean isWebSection(String target){return "MTV".equals(target)||"WITV".equals(target)||"FRSTV".equals(target)||"FSLIVE".equals(target)||"EPI XTV".equals(target)||"DUDETV".equals(target)||"BRAFLIX".equals(target);}
     private String webUrlFor(String target){if("WITV".equals(target))return "https://wiflix.mov/";if("FRSTV".equals(target))return "https://french-stream.net/";if("FSLIVE".equals(target))return "https://fstv.one/";if("EPI XTV".equals(target))return "https://www.xnxx.com/";if("DUDETV".equals(target))return "https://theporndude.com/";if("BRAFLIX".equals(target))return "https://braflix.uk/";return "https://oxax.tv/";}
+    private boolean isAllowedWebNavigation(String targetUrl){
+        try{
+            Uri target=Uri.parse(targetUrl),current=Uri.parse(activeWebUrl);
+            String scheme=target.getScheme(),host=target.getHost(),currentHost=current.getHost();
+            if(host==null||currentHost==null||!("http".equalsIgnoreCase(scheme)||"https".equalsIgnoreCase(scheme)))return false;
+            host=host.toLowerCase(Locale.ROOT);currentHost=currentHost.toLowerCase(Locale.ROOT);
+            return host.equals(currentHost)||host.endsWith("."+currentHost)||currentHost.endsWith("."+host);
+        }catch(Exception ignored){return false;}
+    }
+    private boolean isBlockedAdRequest(String requestUrl){
+        try{
+            Uri uri=Uri.parse(requestUrl);String host=uri.getHost();
+            if(host==null)return false;host=host.toLowerCase(Locale.ROOT);
+            String[] blocked={
+                "doubleclick.net","googlesyndication.com","googleadservices.com","googletagservices.com",
+                "adservice.google.com","popads.net","popcash.net","propellerads.com","exoclick.com",
+                "trafficjunky.net","adsterra.com","taboola.com","outbrain.com","criteo.com",
+                "smartadserver.com","adroll.com","mgid.com","adnxs.com","bidvertiser.com",
+                "hilltopads.com"," monetag.com","onclicka.com","juicyads.com"
+            };
+            for(String domain:blocked){String clean=domain.trim();if(host.equals(clean)||host.endsWith("."+clean))return true;}
+        }catch(Exception ignored){}
+        return false;
+    }
     private void showMtvWebView(){showSiteWebView("https://oxax.tv/");}
     private void showSiteWebView(String url){
         activeWebUrl=url;
@@ -732,11 +756,25 @@ private void loadAllPlaylists(){
             android.webkit.WebSettings settings=mtvWebView.getSettings();
             settings.setJavaScriptEnabled(true);settings.setDomStorageEnabled(true);
             settings.setDatabaseEnabled(true);settings.setLoadsImagesAutomatically(true);
-            settings.setJavaScriptCanOpenWindowsAutomatically(true);settings.setSupportMultipleWindows(true);
+            settings.setJavaScriptCanOpenWindowsAutomatically(false);settings.setSupportMultipleWindows(false);
             settings.setLoadWithOverviewMode(true);settings.setUseWideViewPort(true);
             settings.setMediaPlaybackRequiresUserGesture(false);
             mtvWebView.setWebViewClient(new WebViewClient(){
-                @Override public boolean shouldOverrideUrlLoading(WebView view,android.webkit.WebResourceRequest request){return false;}
+                @Override public boolean shouldOverrideUrlLoading(WebView view,android.webkit.WebResourceRequest request){
+                    if(request==null||!request.isForMainFrame())return false;
+                    String target=request.getUrl()==null?"":request.getUrl().toString();
+                    if(!isAllowedWebNavigation(target)){Toast.makeText(MainActivity.this,"Redirection externe bloquée.",Toast.LENGTH_SHORT).show();return true;}
+                    activeWebUrl=target;return false;
+                }
+                @Override public boolean shouldOverrideUrlLoading(WebView view,String target){
+                    if(!isAllowedWebNavigation(target)){Toast.makeText(MainActivity.this,"Redirection externe bloquée.",Toast.LENGTH_SHORT).show();return true;}
+                    activeWebUrl=target;return false;
+                }
+                @Override public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view,android.webkit.WebResourceRequest request){
+                    String target=request!=null&&request.getUrl()!=null?request.getUrl().toString():"";
+                    if(isBlockedAdRequest(target))return new android.webkit.WebResourceResponse("text/plain","UTF-8",new ByteArrayInputStream(new byte[0]));
+                    return super.shouldInterceptRequest(view,request);
+                }
                 @Override public void onPageFinished(WebView view,String loaded){super.onPageFinished(view,loaded);if(isWebSection(section)&&view.getVisibility()==View.VISIBLE)view.requestFocus();}
                 @Override public void onReceivedError(WebView view,android.webkit.WebResourceRequest request,android.webkit.WebResourceError error){super.onReceivedError(view,request,error);if(request.isForMainFrame())postUi(()->Toast.makeText(MainActivity.this,"Erreur de chargement de la page Web.",Toast.LENGTH_LONG).show());}
                 @Override public void onReceivedHttpError(WebView view,android.webkit.WebResourceRequest request,android.webkit.WebResourceResponse response){super.onReceivedHttpError(view,request,response);if(request.isForMainFrame()&&response.getStatusCode()>=400)postUi(()->Toast.makeText(MainActivity.this,"Erreur Web HTTP "+response.getStatusCode(),Toast.LENGTH_LONG).show());}
@@ -749,12 +787,7 @@ private void loadAllPlaylists(){
                 @Override public void onShowCustomView(View view,CustomViewCallback callback){showWebCustomView(view,callback);}
                 @Override public void onHideCustomView(){hideWebCustomView();}
                 @Override public void onShowCustomView(View view,int requestedOrientation,CustomViewCallback callback){showWebCustomView(view,callback);}
-                @Override public boolean onCreateWindow(WebView view,boolean isDialog,boolean isUserGesture,android.os.Message resultMsg){
-                    WebView popup=new WebView(MainActivity.this);popup.getSettings().setJavaScriptEnabled(true);popup.getSettings().setDomStorageEnabled(true);
-                    popup.setWebViewClient(new WebViewClient(){@Override public void onPageStarted(WebView child,String url,android.graphics.Bitmap favicon){super.onPageStarted(child,url,favicon);if(url!=null&&!url.equals("about:blank")&&mtvWebView!=null){activeWebUrl=url;mtvWebView.loadUrl(url);child.postDelayed(()->{webPopupViews.remove(child);child.stopLoading();child.destroy();},500L);}}});
-                    webPopupViews.add(popup);android.webkit.WebView.WebViewTransport transport=(android.webkit.WebView.WebViewTransport)resultMsg.obj;transport.setWebView(popup);resultMsg.sendToTarget();return true;
-                }
-                @Override public void onCloseWindow(WebView window){if(window!=mtvWebView){webPopupViews.remove(window);window.stopLoading();window.destroy();}}
+                @Override public boolean onCreateWindow(WebView view,boolean isDialog,boolean isUserGesture,android.os.Message resultMsg){return false;}
             });
             mtvWebView.setOnFocusChangeListener((v,focused)->{if(focused)v.setBackgroundColor(Color.BLACK);});
         }
