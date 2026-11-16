@@ -420,12 +420,12 @@ private void loadAllPlaylists(){
         String value=((group==null?"":group)+" "+(name==null?"":name)).toLowerCase(Locale.ROOT);
         String f=filter.toLowerCase(Locale.ROOT);
         String[][] aliases={
-            {"afrique","africa","african","west africa","east africa","north africa","south africa","central africa","togo","benin","bénin","côte d’ivoire","cote d’ivoire","ivory coast","ghana","nigeria","senegal","sénégal","cameroon","cameroun","congo","rdc","dr congo","morocco","maroc","algeria","algérie","tunisia","tunisie","egypt","égypte"},
-            {"europe","european","france","french","français","royaume-uni","united kingdom","britain","england","uk","allemagne","germany","deutschland","espagne","spain","italie","italy","portugal","belgique","belgium","pays-bas","netherlands","suisse","switzerland"},
-            {"asie","asia","asian","middle east","moyen-orient","inde","india","chine","china","japon","japan","corée du sud","south korea","korea","turquie","turkey","arabie saoudite","saudi arabia","émirats arabes unis","uae"},
+            {"afrique","africa","african","west africa","east africa","north africa","south africa","central africa","togo","benin","bénin","côte d’ivoire","cote d’ivoire","ivory coast","ghana","nigeria","senegal","sénégal","cameroon","cameroun","congo","rdc","dr congo","morocco","maroc","algeria","algérie","tunisia","tunisie","egypt","égypte","kenya","ouganda","uganda","tanzanie","tanzania","éthiopie","ethiopia","rwanda","zambie","zambia"},
+            {"europe","european","france","french","français","royaume-uni","united kingdom","britain","england","uk","allemagne","germany","deutschland","espagne","spain","italie","italy","portugal","belgique","belgium","pays-bas","netherlands","suisse","switzerland","autriche","austria","suède","sweden","norvège","norway","danemark","denmark","grèce","greece","pologne","poland","russie","russia"},
+            {"asie","asia","asian","middle east","moyen-orient","inde","india","chine","china","japon","japan","corée du sud","south korea","korea","turquie","turkey","arabie saoudite","saudi arabia","émirats arabes unis","uae","pakistan","bangladesh","indonésie","indonesia","philippines","thaïlande","thailand","vietnam","malaisie","malaysia","singapour","singapore"},
             {"amérique du nord","north america","north-america","nord-améric","usa","united states","canada","mexique","mexico"},
-            {"amérique du sud","south america","latin america","latino","sud-améric","brésil","brazil","argentine","argentina","chili","chile"},
-            {"océanie","oceania","australia","new zealand","pacific","australie","nouvelle-zélande"},
+            {"amérique du sud","south america","latin america","latino","sud-améric","brésil","brazil","argentine","argentina","chili","chile","colombie","colombia","pérou","peru","uruguay","équateur","ecuador"},
+            {"océanie","oceania","australia","new zealand","pacific","australie","nouvelle-zélande","fidji","fiji","papouasie-nouvelle-guinée","papua new guinea"},
             {"france","french","français","française"},
             {"togo","togolese"},
             {"bénin","benin","beninese"},
