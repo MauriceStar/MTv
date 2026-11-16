@@ -231,7 +231,7 @@ public class MainActivity extends AppCompatActivity {
         LinearLayout brand=row();brand.setGravity(Gravity.CENTER);TextView dish=text("📡",25,0xFFFFC45C,true);dish.setGravity(Gravity.CENTER);brand.addView(dish,new LinearLayout.LayoutParams(dp(38),dp(62)));TextView brandName=text("MTv",50,0xFFFFB52E,true);brandName.setTypeface(Typeface.create("sans-serif-black",Typeface.BOLD_ITALIC));brandName.setGravity(Gravity.CENTER);brandName.setLetterSpacing(0.025f);brandName.setShadowLayer(dp(8),0,dp(2),0xFFFF654F);brand.addView(brandName,new LinearLayout.LayoutParams(-2,dp(68)));LinearLayout.LayoutParams brandParams=new LinearLayout.LayoutParams(-1,dp(72));brandParams.bottomMargin=dp(5);sidebar.addView(brand,brandParams);
         addNav("⌂   Accueil","ACCUEIL");addNav("▣   TV en direct","TV EN DIRECT");addNav("⚽   Sports","SPORTS");addNav("🎬   Cinéma","CINÉMA");addNav("🎭   Divertissement","DIVERTISSEMENT");addNav("🧒   Jeunesse","JEUNESSE");addNav("📰   Magazine","MAGAZINE");addNav("🎥   Documentaire","DOCUMENTAIRE");addNav("🎓   Éducation","ÉDUCATION");addNav("✝   Religion","RELIGION");addNav("🔬   Science & Technologie","SCIENCE & TECHNOLOGIE");addNav("💃   Novelas","NOVELAS");addNav("♫   Musique","MUSIQUE");addNav("▤   Infos","INFOS");addNav("▶   Films","FILMS");addNav("▤   Séries","SÉRIES");addNav("✦   Animés","ANIMÉS");addNav("♡   Mes favoris","FAVORIS");addNav("◷   Historique","HISTORIQUE");addNav("▦   Guide TV","GUIDE TV");addNav("🌐   AOXTv","MTV");addNav("🌐   WiTv","WITV");addNav("🌐   FrSTv","FRSTV");addNav("🌐   FsLive","FSLIVE");addNav("🌐   EpiXtv","EPI XTV");addNav("🌐   DudeTV","DUDETV");addNav("🌐   Braflix","BRAFLIX");
         View spacer=new View(this);sidebar.addView(spacer,new LinearLayout.LayoutParams(1,dp(12)));
-        sourceLabel=text("SOURCE : M3U",10,CYAN,true);sidebar.addView(sourceLabel,new LinearLayout.LayoutParams(-1,dp(28)));
+        sourceLabel=text("SOURCE : M3U",10,CYAN,true);sourceLabel.setVisibility(View.GONE);sidebar.addView(sourceLabel,new LinearLayout.LayoutParams(-1,dp(28)));
         addNav("⚙   Sources & paramètres","PARAMÈTRES");
         content=column();content.setPadding(dp(25),dp(18),dp(25),dp(14));root.addView(content,new LinearLayout.LayoutParams(0,-1,1));
         LinearLayout top=row();content.addView(top,new LinearLayout.LayoutParams(-1,dp(58)));
@@ -295,7 +295,7 @@ public class MainActivity extends AppCompatActivity {
  renderList();
  if(target.equals("PARAMÈTRES"))showSettings();else{TextView selectedNav=navViews.get(target);if(selectedNav!=null)selectedNav.requestFocus();}
 }
-    private void updateChips(){if(chips==null)return;chips.removeAllViews();String[] opts;if(section.equals("FAVORIS")){ArrayList<String> values=new ArrayList<>();values.add("Tout");values.addAll(favoriteGroups.keySet());values.add("＋ Créer une liste");opts=values.toArray(new String[0]);}else opts=new String[]{"Tout","Afrique","Europe","Asie","Amérique du Nord","Amérique du Sud","Océanie","France","Togo","Bénin","Côte d’Ivoire","Ghana","Nigeria","Sénégal","Cameroun","Congo","RDC","Afrique du Sud","Maroc","Algérie","Tunisie","Égypte","Royaume-Uni","Allemagne","Espagne","Italie","Portugal","Belgique","Pays-Bas","Suisse","USA","Canada","Mexique","Brésil","Argentine","Chili","Inde","Chine","Japon","Corée du Sud","Turquie","Arabie saoudite","Émirats arabes unis","Australie","Nouvelle-Zélande"};int previousId=View.NO_ID;for(String value:opts){final String filter=value;TextView c=text(value,12,activeFilter.equals(value)?Color.WHITE:0xFFB8C4D8,true);c.setGravity(Gravity.CENTER);c.setPadding(dp(15),0,dp(15),0);c.setBackground(bg(activeFilter.equals(value)?ACCENT:CARD,18));c.setFocusable(true);c.setFocusableInTouchMode(true);c.setClickable(true);c.setId(View.generateViewId());c.setNextFocusUpId(search.getId());if(previousId!=View.NO_ID)c.setNextFocusLeftId(previousId);if(previousId!=View.NO_ID)chips.getChildAt(chips.getChildCount()-1).setNextFocusRightId(c.getId());previousId=c.getId();c.setOnFocusChangeListener((v,focus)->{if(focus){if(filter.equals(activeFilter)){GradientDrawable d=bg(ACCENT,18);d.setStroke(dp(2),FOCUS_GOLD);v.setBackground(d);((TextView)v).setTextColor(Color.WHITE);}else{GradientDrawable d=bg(FOCUS_GOLD,18);d.setStroke(dp(2),FOCUS_RED);v.setBackground(d);((TextView)v).setTextColor(0xFF17111A);}Rect rect=new Rect();v.getDrawingRect(rect);chipScroll.requestChildRectangleOnScreen(v,rect,true);}else{v.setBackground(bg(filter.equals(activeFilter)?ACCENT:CARD,18));((TextView)v).setTextColor(filter.equals(activeFilter)?Color.WHITE:0xFFB8C4D8);}});c.setOnKeyListener((v,keyCode,event)->{if(event.getAction()!=KeyEvent.ACTION_DOWN)return false;if(keyCode==KeyEvent.KEYCODE_DPAD_CENTER||keyCode==KeyEvent.KEYCODE_ENTER){v.performClick();return true;}if(keyCode==KeyEvent.KEYCODE_DPAD_RIGHT||keyCode==KeyEvent.KEYCODE_DPAD_LEFT){int idx=chips.indexOfChild(v),next=idx+(keyCode==KeyEvent.KEYCODE_DPAD_RIGHT?1:-1);if(next>=0&&next<chips.getChildCount()){chips.getChildAt(next).requestFocus();return true;}}if(keyCode==KeyEvent.KEYCODE_DPAD_DOWN){if(list.getChildCount()>0){list.getChildAt(0).requestFocus();return true;}}return false;});LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-2,dp(38));p.rightMargin=dp(8);chips.addView(c,p);c.setOnClickListener(v->{if(section.equals("FAVORIS")&&filter.equals("＋ Créer une liste")){showCreateFavoriteGroup();return;}activeFilter=filter;updateChips();renderList();for(int i=0;i<chips.getChildCount();i++){View selected=chips.getChildAt(i);if(selected instanceof TextView&&filter.equals(((TextView)selected).getText().toString())){selected.requestFocus();break;}}});}search.setNextFocusDownId(chips.getChildAt(0).getId());}
+    private void updateChips(){if(chips==null)return;chips.removeAllViews();String[] opts;if(section.equals("FAVORIS")){ArrayList<String> values=new ArrayList<>();values.add("Tout");values.addAll(favoriteGroups.keySet());values.add("＋ Créer une liste");opts=values.toArray(new String[0]);}else opts=new String[]{"Tout","Afrique","Europe","Asie","Amérique du Nord","Amérique du Sud","Océanie","Togo","Bénin","Côte d’Ivoire","Ghana","Nigeria","Sénégal","Cameroun","Congo","RDC","Afrique du Sud","Maroc","Algérie","Tunisie","Égypte","Kenya","Ouganda","Tanzanie","Éthiopie","Rwanda","Zambie","France","Royaume-Uni","Allemagne","Espagne","Italie","Portugal","Belgique","Pays-Bas","Suisse","Autriche","Suède","Norvège","Danemark","Grèce","Pologne","Russie","USA","Canada","Mexique","Brésil","Argentine","Colombie","Chili","Pérou","Uruguay","Équateur","Inde","Chine","Japon","Corée du Sud","Pakistan","Bangladesh","Indonésie","Philippines","Thaïlande","Vietnam","Malaisie","Singapour","Turquie","Arabie saoudite","Émirats arabes unis","Australie","Nouvelle-Zélande","Fidji","Papouasie-Nouvelle-Guinée"};int previousId=View.NO_ID;for(String value:opts){final String filter=value;TextView c=text(value,12,activeFilter.equals(value)?Color.WHITE:0xFFB8C4D8,true);c.setGravity(Gravity.CENTER);c.setPadding(dp(15),0,dp(15),0);c.setBackground(bg(activeFilter.equals(value)?ACCENT:CARD,18));c.setFocusable(true);c.setFocusableInTouchMode(true);c.setClickable(true);c.setId(View.generateViewId());c.setNextFocusUpId(search.getId());if(previousId!=View.NO_ID)c.setNextFocusLeftId(previousId);if(previousId!=View.NO_ID)chips.getChildAt(chips.getChildCount()-1).setNextFocusRightId(c.getId());previousId=c.getId();c.setOnFocusChangeListener((v,focus)->{if(focus){if(filter.equals(activeFilter)){GradientDrawable d=bg(ACCENT,18);d.setStroke(dp(2),FOCUS_GOLD);v.setBackground(d);((TextView)v).setTextColor(Color.WHITE);}else{GradientDrawable d=bg(FOCUS_GOLD,18);d.setStroke(dp(2),FOCUS_RED);v.setBackground(d);((TextView)v).setTextColor(0xFF17111A);}Rect rect=new Rect();v.getDrawingRect(rect);chipScroll.requestChildRectangleOnScreen(v,rect,true);}else{v.setBackground(bg(filter.equals(activeFilter)?ACCENT:CARD,18));((TextView)v).setTextColor(filter.equals(activeFilter)?Color.WHITE:0xFFB8C4D8);}});c.setOnKeyListener((v,keyCode,event)->{if(event.getAction()!=KeyEvent.ACTION_DOWN)return false;if(keyCode==KeyEvent.KEYCODE_DPAD_CENTER||keyCode==KeyEvent.KEYCODE_ENTER){v.performClick();return true;}if(keyCode==KeyEvent.KEYCODE_DPAD_RIGHT||keyCode==KeyEvent.KEYCODE_DPAD_LEFT){int idx=chips.indexOfChild(v),next=idx+(keyCode==KeyEvent.KEYCODE_DPAD_RIGHT?1:-1);if(next>=0&&next<chips.getChildCount()){chips.getChildAt(next).requestFocus();return true;}}if(keyCode==KeyEvent.KEYCODE_DPAD_DOWN){if(list.getChildCount()>0){list.getChildAt(0).requestFocus();return true;}}return false;});LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-2,dp(38));p.rightMargin=dp(8);chips.addView(c,p);c.setOnClickListener(v->{if(section.equals("FAVORIS")&&filter.equals("＋ Créer une liste")){showCreateFavoriteGroup();return;}activeFilter=filter;updateChips();renderList();for(int i=0;i<chips.getChildCount();i++){View selected=chips.getChildAt(i);if(selected instanceof TextView&&filter.equals(((TextView)selected).getText().toString())){selected.requestFocus();break;}}});}search.setNextFocusDownId(chips.getChildAt(0).getId());}
 
 
     private void executeIo(Runnable task){
@@ -463,7 +463,34 @@ private void loadAllPlaylists(){
             {"arabie saoudite","saudi arabia","saudi"},
             {"émirats arabes unis","united arab emirates","uae","emirates"},
             {"australie","australia","australian"},
-            {"nouvelle-zélande","new zealand"}
+            {"nouvelle-zélande","new zealand"},
+            {"kenya","kenyan"},
+            {"ouganda","uganda","ugandan"},
+            {"tanzanie","tanzania","tanzanian"},
+            {"éthiopie","ethiopia","ethiopian"},
+            {"rwanda","rwandan"},
+            {"zambie","zambia","zambian"},
+            {"autriche","austria","austrian"},
+            {"suède","sweden","swedish"},
+            {"norvège","norway","norwegian"},
+            {"danemark","denmark","danish"},
+            {"grèce","greece","greek"},
+            {"pologne","poland","polish"},
+            {"russie","russia","russian"},
+            {"pakistan","pakistani"},
+            {"bangladesh","bangladeshi"},
+            {"indonésie","indonesia","indonesian"},
+            {"philippines","philippine"},
+            {"thaïlande","thailand","thai"},
+            {"vietnam","vietnamese"},
+            {"malaisie","malaysia","malaysian"},
+            {"singapour","singapore"},
+            {"colombie","colombia","colombian"},
+            {"pérou","peru","peruvian"},
+            {"uruguay","uruguayan"},
+            {"équateur","ecuador","ecuadorian"},
+            {"fidji","fiji","fijian"},
+            {"papouasie-nouvelle-guinée","papua new guinea"}
         };
         for(String[] groupAliases:aliases)if(groupAliases[0].equalsIgnoreCase(filter)){
             for(String alias:groupAliases)if(value.contains(alias))return true;
@@ -586,7 +613,8 @@ private void loadAllPlaylists(){
         }
         try{
             savePlaybackPosition();releasePlayer();currentEntry=c;
-            player=new ExoPlayer.Builder(getApplicationContext()).build();
+            androidx.media3.exoplayer.DefaultRenderersFactory renderersFactory=new androidx.media3.exoplayer.DefaultRenderersFactory(getApplicationContext()).setEnableDecoderFallback(true);
+            player=new ExoPlayer.Builder(getApplicationContext(),renderersFactory).build();
             playerView=new PlayerView(this);playerView.setPlayer(player);playerView.setUseController(true);playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_ZOOM);playerView.setBackgroundColor(Color.BLACK);
             GestureDetector playerGestures=new GestureDetector(this,new GestureDetector.SimpleOnGestureListener(){@Override public boolean onDown(android.view.MotionEvent e){return true;}@Override public boolean onDoubleTap(android.view.MotionEvent e){togglePlayerExpanded();return true;}});playerView.setOnTouchListener((v,event)->{playerGestures.onTouchEvent(event);return false;});
             playerToolbar=column();playerToolbar.setGravity(Gravity.CENTER);playerToolbar.setPadding(0,dp(3),0,dp(3));
