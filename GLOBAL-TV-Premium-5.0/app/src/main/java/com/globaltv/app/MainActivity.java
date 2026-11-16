@@ -420,12 +420,12 @@ private void loadAllPlaylists(){
         String value=((group==null?"":group)+" "+(name==null?"":name)).toLowerCase(Locale.ROOT);
         String f=filter.toLowerCase(Locale.ROOT);
         String[][] aliases={
-            {"afrique","africa","african","west africa","east africa","north africa","south africa","central africa"},
-            {"europe","european"},
-            {"asie","asia","asian","middle east","moyen-orient"},
-            {"amérique du nord","north america","north-america","nord-améric"},
-            {"amérique du sud","south america","latin america","latino","sud-améric"},
-            {"océanie","oceania","australia","new zealand","pacific"},
+            {"afrique","africa","african","west africa","east africa","north africa","south africa","central africa","togo","benin","bénin","côte d’ivoire","cote d’ivoire","ivory coast","ghana","nigeria","senegal","sénégal","cameroon","cameroun","congo","rdc","dr congo","morocco","maroc","algeria","algérie","tunisia","tunisie","egypt","égypte"},
+            {"europe","european","france","french","français","royaume-uni","united kingdom","britain","england","uk","allemagne","germany","deutschland","espagne","spain","italie","italy","portugal","belgique","belgium","pays-bas","netherlands","suisse","switzerland"},
+            {"asie","asia","asian","middle east","moyen-orient","inde","india","chine","china","japon","japan","corée du sud","south korea","korea","turquie","turkey","arabie saoudite","saudi arabia","émirats arabes unis","uae"},
+            {"amérique du nord","north america","north-america","nord-améric","usa","united states","canada","mexique","mexico"},
+            {"amérique du sud","south america","latin america","latino","sud-améric","brésil","brazil","argentine","argentina","chili","chile"},
+            {"océanie","oceania","australia","new zealand","pacific","australie","nouvelle-zélande"},
             {"france","french","français","française"},
             {"togo","togolese"},
             {"bénin","benin","beninese"},
