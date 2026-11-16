@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - work/recovery-thursday-build
 
 permissions:
   contents: read
