@@ -566,7 +566,7 @@ private void loadAllPlaylists(){
         if(list==null)return;
         list.removeAllViews();
         Map<String,?> saved;
-        try{saved=prefs==null?Collections.emptyMap():new HashMap<>(prefs.getAll());}
+        try{saved=prefs==null?Collections.emptyMap():prefs.getAll();}
         catch(Exception ex){saved=Collections.emptyMap();}
         historyKeysCache.clear();
         for(String prefKey:saved.keySet())if(prefKey!=null&&prefKey.startsWith("history_"))historyKeysCache.add(prefKey);
@@ -596,7 +596,7 @@ private void loadAllPlaylists(){
             try{Object stored=saved.get("position_"+key(entry.url));if(stored instanceof Number)position=Math.max(0L,((Number)stored).longValue());}catch(Exception ignored){}
             String detail=group+"  •  "+(("live".equals(type)||"m3u".equals(type))?"En direct":("series".equals(type)?"Série":"VOD"))+"  •  Reprendre à "+(position/60000)+" min";
             LinearLayout item=row();item.setPadding(dp(12),dp(5),dp(12),dp(5));item.setBackground(bg(PANEL,11));item.setFocusable(true);item.setClickable(true);
-            LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(-1,dp(64));ip.bottomMargin=dp(7);list.addView(item,ip);
+            LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(-1,dp(64));ip.bottomMargin=dp(7);list.addView(item,ip);if(chips!=null&&chips.getChildCount()>0)item.setNextFocusUpId(chips.getChildAt(0).getId());
             TextView symbol=text(("live".equals(type)||"m3u".equals(type))?"TV":"▶",16,0xFFFFC247,true);symbol.setGravity(Gravity.CENTER);symbol.setBackground(bg(CARD,8));item.addView(symbol,new LinearLayout.LayoutParams(dp(54),dp(48)));
             LinearLayout meta=column();meta.setGravity(Gravity.CENTER_VERTICAL);meta.setPadding(dp(12),0,0,0);item.addView(meta,new LinearLayout.LayoutParams(0,-1,1f));
             TextView title=text(name,13,Color.WHITE,true);title.setMaxLines(1);meta.addView(title,new LinearLayout.LayoutParams(-1,dp(24)));
