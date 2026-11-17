@@ -513,6 +513,22 @@ private void loadAllPlaylists(){
         TextView button=text(glyph,19,Color.WHITE,true);button.setGravity(Gravity.CENTER);button.setContentDescription(description);button.setFocusable(true);button.setClickable(true);button.setBackground(bg(CARD,10));
         button.setOnFocusChangeListener((v,focused)->stylePlayerButton((TextView)v,focused));button.setOnClickListener(v->{if(action!=null)action.run();});return button;
     }
+    private void addHomeFavorites(){
+        ArrayList<MediaEntry> saved=new ArrayList<>();
+        for(MediaEntry entry:all)if(entry!=null&&entry.url!=null&&favorites.contains(entry.url))saved.add(entry);
+        if(saved.isEmpty())return;
+        TextView title=text("TES FAVORIS",12,0xFFFFC45C,true);title.setLetterSpacing(0.08f);LinearLayout.LayoutParams tp=new LinearLayout.LayoutParams(-1,dp(30));tp.topMargin=dp(8);list.addView(title,tp);
+        HorizontalScrollView scroll=new HorizontalScrollView(this);scroll.setHorizontalScrollBarEnabled(false);LinearLayout strip=row();scroll.addView(strip);list.addView(scroll,new LinearLayout.LayoutParams(-1,dp(58)));
+        for(int i=0;i<saved.size()&&i<8;i++){MediaEntry entry=saved.get(i);TextView item=text("♥  "+entry.name,11,Color.WHITE,true);item.setGravity(Gravity.CENTER);item.setMaxLines(1);item.setPadding(dp(13),0,dp(13),0);item.setBackground(bg(0xFF38243D,12));item.setFocusable(true);item.setClickable(true);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-2,dp(44));p.rightMargin=dp(8);strip.addView(item,p);item.setOnFocusChangeListener((v,focus)->v.setBackground(bg(focus?0xFF70404F:0xFF38243D,12)));item.setOnClickListener(v->{section="FAVORIS";play(entry);});}
+    }
+    private void addHomeNews(){
+        ArrayList<MediaEntry> news=new ArrayList<>();for(MediaEntry entry:all)if(entry!=null&&entry.url!=null&&isNewsEntry(entry)&&!isAdultEntry(entry)){news.add(entry);if(news.size()>=5)break;}
+        if(news.isEmpty())return;
+        TextView title=text("FLASH INFOS  •  ACTUALITÉS EN DIRECT",12,0xFFFFC45C,true);title.setLetterSpacing(0.04f);LinearLayout.LayoutParams tp=new LinearLayout.LayoutParams(-1,dp(30));tp.topMargin=dp(8);list.addView(title,tp);
+        TextView hint=text("Retrouve les chaînes d’information disponibles dans ton catalogue.",10,MUTED,false);list.addView(hint,new LinearLayout.LayoutParams(-1,dp(22)));
+        HorizontalScrollView scroll=new HorizontalScrollView(this);scroll.setHorizontalScrollBarEnabled(false);LinearLayout strip=row();scroll.addView(strip);list.addView(scroll,new LinearLayout.LayoutParams(-1,dp(58)));
+        for(MediaEntry entry:news){TextView item=text("◉  "+entry.name,11,Color.WHITE,true);item.setGravity(Gravity.CENTER);item.setMaxLines(1);item.setPadding(dp(13),0,dp(13),0);item.setBackground(bg(0xFF173B50,12));item.setFocusable(true);item.setClickable(true);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-2,dp(44));p.rightMargin=dp(8);strip.addView(item,p);item.setOnFocusChangeListener((v,focus)->v.setBackground(bg(focus?0xFF25657A:0xFF173B50,12)));item.setOnClickListener(v->{section="INFOS";play(entry);});}
+    }
     private void renderHome(){
         list.removeAllViews();
         LinearLayout hero=row();hero.setGravity(Gravity.CENTER_VERTICAL);GradientDrawable heroBg=new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,new int[]{0xFF43236F,0xFF12566B,0xFF15304E});heroBg.setCornerRadius(dp(20));hero.setBackground(heroBg);hero.setPadding(dp(18),dp(13),dp(16),dp(13));LinearLayout.LayoutParams hp=new LinearLayout.LayoutParams(-1,dp(190));hp.topMargin=dp(10);hp.bottomMargin=dp(14);list.addView(hero,hp);
@@ -533,13 +549,22 @@ private void loadAllPlaylists(){
             tile.setOnFocusChangeListener((v,focus)->{if(focus){GradientDrawable d=bg(0xFFFFC247,13);d.setStroke(dp(3),0xFFFF7A00);v.setBackground(d);v.animate().scaleX(1.055f).scaleY(1.055f).setDuration(110).start();}else{v.setBackground(tileBg);v.animate().scaleX(1f).scaleY(1f).setDuration(110).start();}});
             tile.setOnClickListener(v->navigateTo(item[2]));
         }
+        addHomeFavorites();
+        addHomeNews();
         TextView featuredTitle=text("TES CHAÎNES À LA UNE",12,0xFFFFC45C,true);featuredTitle.setLetterSpacing(0.08f);LinearLayout.LayoutParams ft=new LinearLayout.LayoutParams(-1,dp(34));ft.topMargin=dp(9);list.addView(featuredTitle,ft);
         HorizontalScrollView featuredScroll=new HorizontalScrollView(this);featuredScroll.setHorizontalScrollBarEnabled(false);LinearLayout featured=row();featuredScroll.addView(featured);list.addView(featuredScroll,new LinearLayout.LayoutParams(-1,dp(154)));
-        int count=0;for(MediaEntry entry:all){if(entry==null||entry.name==null||entry.name.isEmpty())continue;LinearLayout card=column();card.setGravity(Gravity.CENTER_HORIZONTAL);card.setPadding(dp(8),dp(8),dp(8),dp(6));card.setBackground(bg(PANEL,12));card.setFocusable(true);card.setClickable(true);LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(dp(132),dp(138));cp.rightMargin=dp(10);featured.addView(card,cp);
+        ArrayList<MediaEntry> featuredEntries=new ArrayList<>();
+        String homeSection=section;
+        String[] featuredSections={"TV EN DIRECT","SPORTS","FILMS","CINÉMA","SÉRIES","DIVERTISSEMENT","INFOS","MUSIQUE","DOCUMENTAIRE","MAGAZINE","JEUNESSE","NOVELAS","ANIMÉS","ÉDUCATION","RELIGION","SCIENCE & TECHNOLOGIE"};
+        HashSet<String> featuredUrls=new HashSet<>();
+        try{for(String category:featuredSections){section=category;for(MediaEntry entry:all){if(entry==null||entry.name==null||entry.name.isEmpty()||entry.url==null||featuredUrls.contains(entry.url))continue;if(matchSection(entry)){featuredEntries.add(entry);featuredUrls.add(entry.url);break;}}}}finally{section=homeSection;}
+        int count=0;
+        for(MediaEntry entry:featuredEntries){
+            LinearLayout card=column();card.setGravity(Gravity.CENTER_HORIZONTAL);card.setPadding(dp(8),dp(8),dp(8),dp(6));card.setBackground(bg(PANEL,12));card.setFocusable(true);card.setClickable(true);LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(dp(132),dp(138));cp.rightMargin=dp(10);featured.addView(card,cp);
             ImageView logo=new ImageView(this);logo.setScaleType(ImageView.ScaleType.FIT_CENTER);logo.setBackground(bg(CARD,8));card.addView(logo,new LinearLayout.LayoutParams(dp(112),dp(78)));if(entry.logo!=null&&!entry.logo.isEmpty())com.bumptech.glide.Glide.with(this).load(entry.logo).placeholder(bg(CARD,8)).error(bg(CARD,8)).into(logo);
             TextView label=text(entry.name,11,Color.WHITE,true);label.setGravity(Gravity.CENTER);label.setMaxLines(2);card.addView(label,new LinearLayout.LayoutParams(-1,dp(42)));
             card.setOnFocusChangeListener((v,focus)->{if(focus){GradientDrawable d=bg(0xFF3A315D,12);d.setStroke(dp(2),FOCUS_GOLD);v.setBackground(d);v.animate().scaleX(1.05f).scaleY(1.05f).setDuration(110).start();}else{v.setBackground(bg(PANEL,12));v.animate().scaleX(1f).scaleY(1f).setDuration(110).start();}});
-            card.setOnClickListener(v->play(entry));if(++count>=12)break;
+            card.setOnClickListener(v->play(entry));count++;
         }
         if(count==0){TextView empty=text("Tes chaînes apparaîtront ici dès que la playlist sera chargée.",12,MUTED,false);list.addView(empty);}
     }
@@ -572,7 +597,7 @@ private void loadAllPlaylists(){
             if(!matchSectionFor(entry))continue;
             String searchable=((entry.name==null?"":entry.name)+" "+(entry.group==null?"":entry.group)).toLowerCase(Locale.ROOT);
             if(!query.isEmpty()&&!searchable.contains(query))continue;
-            if(activeFilter!=null&&!activeFilter.equals("Tout")&&!searchable.contains(activeFilter.toLowerCase(Locale.ROOT)))continue;
+            if(activeFilter!=null&&!filterMatches(activeFilter,entry.group,entry.name))continue;
             queue.add(entry);
         }
         int selectedIndex=queue.indexOf(selected);if(selectedIndex<0){queue.add(0,selected);selectedIndex=0;}
@@ -989,17 +1014,17 @@ private void showPinEditor(){
             if(next){if(player.hasNextMediaItem())player.seekToNextMediaItem();return true;}
             if(previous){if(player.hasPreviousMediaItem())player.seekToPreviousMediaItem();return true;}
         }
- if(event.getAction()==KeyEvent.ACTION_DOWN&&event.getKeyCode()==KeyEvent.KEYCODE_BACK){
-  if(webCustomView!=null){hideWebCustomView();return true;}
-  if(isWebSection(section)&&mtvWebView!=null&&mtvWebView.getVisibility()==View.VISIBLE){if(mtvWebView.canGoBack()){mtvWebView.goBack();return true;}navigateTo("ACCUEIL");return true;}
-  if(playerView!=null){if(playerFullscreen){togglePlayerExpanded();return true;}savePlaybackPosition();releasePlayer();status.setText("Lecture fermée");return true;}
- }
- if(event.getAction()==KeyEvent.ACTION_DOWN&&isWebSection(section)&&webContainer!=null&&webContainer.getVisibility()==View.VISIBLE&&event.getKeyCode()==KeyEvent.KEYCODE_DPAD_UP&&mtvWebView!=null&&mtvWebView.hasFocus()&&!mtvWebView.canScrollVertically(-1)){
-  View menu=null;View webNav=webContainer.getChildAt(0);if(webNav instanceof ViewGroup)menu=((ViewGroup)webNav).getChildAt(0);if(menu!=null){menu.requestFocus();return true;}
- }
- if(isWebSection(section)&&mtvWebView!=null&&mtvWebView.getVisibility()==View.VISIBLE&&event.getAction()==KeyEvent.ACTION_DOWN&&(event.getKeyCode()==KeyEvent.KEYCODE_DPAD_UP||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_DOWN||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_LEFT||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_RIGHT||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_CENTER||event.getKeyCode()==KeyEvent.KEYCODE_ENTER)&&!mtvWebView.hasFocus())mtvWebView.requestFocus();
- return super.dispatchKeyEvent(event);
-}
+        if(event.getAction()==KeyEvent.ACTION_DOWN&&event.getKeyCode()==KeyEvent.KEYCODE_BACK){
+            if(webCustomView!=null){hideWebCustomView();return true;}
+            if(isWebSection(section)&&mtvWebView!=null&&mtvWebView.getVisibility()==View.VISIBLE){if(mtvWebView.canGoBack()){mtvWebView.goBack();return true;}navigateTo("ACCUEIL");return true;}
+            if(playerView!=null){if(playerFullscreen){togglePlayerExpanded();return true;}savePlaybackPosition();releasePlayer();status.setText("Lecture fermée");return true;}
+        }
+        if(event.getAction()==KeyEvent.ACTION_DOWN&&isWebSection(section)&&webContainer!=null&&webContainer.getVisibility()==View.VISIBLE&&event.getKeyCode()==KeyEvent.KEYCODE_DPAD_UP&&mtvWebView!=null&&mtvWebView.hasFocus()&&!mtvWebView.canScrollVertically(-1)){
+            View menu=null;View webNav=webContainer.getChildAt(0);if(webNav instanceof ViewGroup)menu=((ViewGroup)webNav).getChildAt(0);if(menu!=null){menu.requestFocus();return true;}
+        }
+        if(isWebSection(section)&&mtvWebView!=null&&mtvWebView.getVisibility()==View.VISIBLE&&event.getAction()==KeyEvent.ACTION_DOWN&&(event.getKeyCode()==KeyEvent.KEYCODE_DPAD_UP||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_DOWN||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_LEFT||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_RIGHT||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_CENTER||event.getKeyCode()==KeyEvent.KEYCODE_ENTER)&&!mtvWebView.hasFocus())mtvWebView.requestFocus();
+        return super.dispatchKeyEvent(event);
+    }
     @Override public void onTrimMemory(int level){
         super.onTrimMemory(level);
         if(level>=TRIM_MEMORY_RUNNING_LOW){
