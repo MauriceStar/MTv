@@ -399,11 +399,11 @@ private void loadAllPlaylists(){
     private boolean hasHistory(MediaEntry c){if(c==null||c.url==null||c.url.isEmpty())return false;try{return historyKeysCache.contains("history_"+key(c.url));}catch(Exception ex){return false;}}
     private long historyPosition(MediaEntry c){if(c==null||c.url==null||prefs==null)return 0L;try{Object value=prefs.getAll().get("position_"+key(c.url));return value instanceof Long?Math.max(0L,(Long)value):0L;}catch(Exception ex){return 0L;}}
     private boolean matchSection(MediaEntry c){
-        if(c==null||c.url==null)return false;
+        if(c==null||c.url==null||c.url.isEmpty())return false;
         if(section.equals("MTV")) return mtvItems.contains(c);
         if(section.equals("MUSIQUE"))return isMusicEntry(c);
         if(section.equals("INFOS"))return isNewsEntry(c);
-        String g=c.group==null?"":c.group.toLowerCase(Locale.ROOT),n=c.name==null?"":c.name.toLowerCase(Locale.ROOT);if(section.equals("FAVORIS")){if(!favorites.contains(c.url))return false;if(activeFilter!=null&&!activeFilter.equals("Tout")){Set<String> group=favoriteGroups.get(activeFilter);return group!=null&&group.contains(c.url);}return true;}if(section.equals("HISTORIQUE"))return hasHistory(c);if(section.equals("GUIDE TV"))return (c.type.equals("live")||c.type.equals("m3u"))&&!c.tvgId.isEmpty();if(section.equals("TV EN DIRECT"))return c.type.equals("live")||c.type.equals("m3u");if(section.equals("FILMS"))return c.type.equals("movie")||g.contains("movie")||g.contains("film")||g.contains("vod");if(section.equals("SÉRIES"))return c.type.equals("series")||g.contains("series");if(section.equals("ANIMÉS"))return g.contains("anime")||g.contains("animation")||g.contains("cartoon")||n.contains("anime");
+        String g=c.group==null?"":c.group.toLowerCase(Locale.ROOT),n=c.name==null?"":c.name.toLowerCase(Locale.ROOT);if(section.equals("FAVORIS")){if(!favorites.contains(c.url))return false;if(activeFilter!=null&&!activeFilter.equals("Tout")){Set<String> group=favoriteGroups.get(activeFilter);return group!=null&&group.contains(c.url);}return true;}if(section.equals("HISTORIQUE"))return hasHistory(c);if(section.equals("GUIDE TV"))return (c.type.equals("live")||c.type.equals("m3u"))&&!c.tvgId.isEmpty();String type=c.type==null?"":c.type;if(section.equals("TV EN DIRECT"))return type.equals("live")||type.equals("m3u");if(section.equals("FILMS"))return type.equals("movie")||g.contains("movie")||g.contains("film")||g.contains("vod");if(section.equals("SÉRIES"))return type.equals("series")||g.contains("series");if(section.equals("ANIMÉS"))return g.contains("anime")||g.contains("animation")||g.contains("cartoon")||n.contains("anime");
         String categoryText=g+" "+n;
         if(section.equals("SPORTS"))return matchesAny(categoryText,"sport","football","soccer","basket","tennis","rugby","cricket","formula 1","f1","motogp","volley","boxing","wrestling");
         if(section.equals("CINÉMA"))return c.type.equals("movie")||matchesAny(categoryText,"cinema","cinéma","movie","film","vod");
@@ -543,7 +543,7 @@ private void loadAllPlaylists(){
         }
         if(count==0){TextView empty=text("Tes chaînes apparaîtront ici dès que la playlist sera chargée.",12,MUTED,false);list.addView(empty);}
     }
-    private void renderList(){if(list==null)return;list.removeAllViews();if(section.equals("HISTORIQUE")){historyKeysCache.clear();try{for(String prefKey:prefs.getAll().keySet())if(prefKey.startsWith("history_"))historyKeysCache.add(prefKey);}catch(Exception ignored){}}String q=search==null?"":search.getText().toString().toLowerCase(Locale.ROOT);if(section.equals("ACCUEIL")&&q.trim().isEmpty()){renderHome();return;}int shown=0;List<MediaEntry> activeItems=section.equals("MTV")?mtvItems:all;
+    private void renderList(){if(list==null)return;list.removeAllViews();if(section.equals("HISTORIQUE")){historyKeysCache.clear();try{if(prefs!=null){Map<String,?> saved=prefs.getAll();if(saved!=null)for(String prefKey:saved.keySet())if(prefKey!=null&&prefKey.startsWith("history_"))historyKeysCache.add(prefKey);}}catch(Exception ignored){}}String q=search==null?"":search.getText().toString().toLowerCase(Locale.ROOT);if(section.equals("ACCUEIL")&&q.trim().isEmpty()){renderHome();return;}int shown=0;List<MediaEntry> activeItems=section.equals("MTV")?mtvItems:all;
         for(MediaEntry c:activeItems){if(!matchSection(c))continue;
             if(PROFILE_CHILD.equals(activeProfile) && isAdultEntry(c)) continue;
             String itemName=c.name==null?"":c.name;String itemGroup=c.group==null?"":c.group;
@@ -552,8 +552,8 @@ private void loadAllPlaylists(){
             item.setBackground(bg(0xFF17233A,12));
             item.setOnFocusChangeListener((view,hasFocus)->view.setBackground(bg(hasFocus?ACCENT:0xFF17233A,12)));LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(-1,dp(62));ip.bottomMargin=dp(8);list.addView(item,ip);if(chips!=null){for(int ci=0;ci<chips.getChildCount();ci++)chips.getChildAt(ci).setNextFocusDownId(item.getId());item.setNextFocusUpId(chips.getChildAt(0).getId());}
             ImageView artwork=new ImageView(this);artwork.setScaleType(ImageView.ScaleType.CENTER_CROP);artwork.setBackground(bg(CARD,8));item.addView(artwork,new LinearLayout.LayoutParams(dp(76),dp(52)));if(c.logo!=null&&!c.logo.isEmpty())com.bumptech.glide.Glide.with(this).load(c.logo).placeholder(bg(CARD,8)).error(bg(CARD,8)).into(artwork);else artwork.setImageDrawable(bg(CARD,8));
-            LinearLayout meta=column();meta.setPadding(dp(12),0,0,0);item.addView(meta,new LinearLayout.LayoutParams(0,-1,1));meta.addView(text(itemName,14,Color.WHITE,true));String detail=itemGroup+"  •  "+(c.type.equals("live")||c.type.equals("m3u")?"En direct":c.type.equals("series")?"Série":"VOD");if(!c.tvgId.isEmpty()&&epgNow.containsKey(c.tvgId))detail+="  •  En cours : "+epgNow.get(c.tvgId);if(!c.tvgId.isEmpty()&&epgNext.containsKey(c.tvgId))detail+="  •  Ensuite : "+epgNext.get(c.tvgId);if(section.equals("HISTORIQUE")){long pos=historyPosition(c);detail+="  •  Reprendre à "+(pos/60000)+" min";}meta.addView(text(detail,10,MUTED,false));
-            TextView fav=text(favorites.contains(c.url)?"♥":"♡",22,0xFFFF7199,true);fav.setGravity(Gravity.CENTER);fav.setId(View.generateViewId());fav.setFocusable(true);fav.setClickable(true);fav.setBackground(bg(CARD,8));fav.setOnFocusChangeListener((v,focus)->v.setBackground(bg(focus?ACCENT:CARD,8)));item.setNextFocusRightId(fav.getId());item.addView(fav,new LinearLayout.LayoutParams(dp(52),-1));fav.setNextFocusLeftId(item.getId());fav.setOnClickListener(v->{if(!favorites.add(c.url))favorites.remove(c.url);getPreferences(0).edit().putStringSet("favorites",new HashSet<>(favorites)).apply();fav.setText(favorites.contains(c.url)?"♥":"♡");renderList();});fav.setOnLongClickListener(v->{showAssignFavoriteGroup(c);return true;});item.setOnClickListener(v->{if(c.type.equals("series"))showSeries(c);else play(c);});shown++;if(shown>=maxRenderItems)break;}
+            LinearLayout meta=column();meta.setPadding(dp(12),0,0,0);item.addView(meta,new LinearLayout.LayoutParams(0,-1,1));meta.addView(text(itemName,14,Color.WHITE,true));String entryType=c.type==null?"":c.type;String tvgId=c.tvgId==null?"":c.tvgId;String detail=itemGroup+"  •  "+(entryType.equals("live")||entryType.equals("m3u")?"En direct":entryType.equals("series")?"Série":"VOD");if(!tvgId.isEmpty()&&epgNow.containsKey(tvgId))detail+="  •  En cours : "+epgNow.get(tvgId);if(!tvgId.isEmpty()&&epgNext.containsKey(tvgId))detail+="  •  Ensuite : "+epgNext.get(tvgId);if(section.equals("HISTORIQUE")){long pos=historyPosition(c);detail+="  •  Reprendre à "+(pos/60000)+" min";}meta.addView(text(detail,10,MUTED,false));
+            TextView fav=text(favorites.contains(c.url)?"♥":"♡",22,0xFFFF7199,true);fav.setGravity(Gravity.CENTER);fav.setId(View.generateViewId());fav.setFocusable(true);fav.setClickable(true);fav.setBackground(bg(CARD,8));fav.setOnFocusChangeListener((v,focus)->v.setBackground(bg(focus?ACCENT:CARD,8)));item.setNextFocusRightId(fav.getId());item.addView(fav,new LinearLayout.LayoutParams(dp(52),-1));fav.setNextFocusLeftId(item.getId());fav.setOnClickListener(v->{if(!favorites.add(c.url))favorites.remove(c.url);getPreferences(0).edit().putStringSet("favorites",new HashSet<>(favorites)).apply();fav.setText(favorites.contains(c.url)?"♥":"♡");renderList();});fav.setOnLongClickListener(v->{showAssignFavoriteGroup(c);return true;});item.setOnClickListener(v->{if("series".equals(c.type))showSeries(c);else play(c);});shown++;if(shown>=maxRenderItems)break;}
         if(shown>=maxRenderItems){
             TextView more=text("Afficher les chaînes / contenus suivants…",13,Color.WHITE,true);
             more.setGravity(Gravity.CENTER);more.setFocusable(true);more.setClickable(true);more.setPadding(dp(12),dp(10),dp(12),dp(10));more.setBackground(bg(ACCENT,10));
@@ -572,7 +572,7 @@ private void loadAllPlaylists(){
             if(!matchSectionFor(entry))continue;
             String searchable=((entry.name==null?"":entry.name)+" "+(entry.group==null?"":entry.group)).toLowerCase(Locale.ROOT);
             if(!query.isEmpty()&&!searchable.contains(query))continue;
-            if(!activeFilter.equals("Tout")&&!searchable.contains(activeFilter.toLowerCase(Locale.ROOT)))continue;
+            if(activeFilter!=null&&!activeFilter.equals("Tout")&&!searchable.contains(activeFilter.toLowerCase(Locale.ROOT)))continue;
             queue.add(entry);
         }
         int selectedIndex=queue.indexOf(selected);if(selectedIndex<0){queue.add(0,selected);selectedIndex=0;}
@@ -658,14 +658,32 @@ private void loadAllPlaylists(){
             }
             activePlayer.addListener(new Player.Listener(){
                 @Override public void onPlayerError(androidx.media3.common.PlaybackException e){
-                    String failedUrl=currentEntry==null?c.url:currentEntry.url;boolean firstFailure=failedInCurrentRun.add(failedUrl);
                     postUi(()->{
-                        if(player!=activePlayer)return;
-                        if(firstFailure){Toast.makeText(MainActivity.this,"Connexion interrompue. Nouvelle tentative…",Toast.LENGTH_SHORT).show();activePlayer.prepare();activePlayer.play();return;}
+                        if(player!=activePlayer||destroyed)return;
                         int failedIndex=activePlayer.getCurrentMediaItemIndex();
-                        if(failedIndex>=0&&failedIndex<activePlayer.getMediaItemCount())activePlayer.removeMediaItem(failedIndex);
-                        if(activePlayer.getMediaItemCount()>0){Toast.makeText(MainActivity.this,"Flux indisponible. Passage au suivant…",Toast.LENGTH_SHORT).show();int nextIndex=Math.min(failedIndex,activePlayer.getMediaItemCount()-1);activePlayer.seekTo(nextIndex,0L);activePlayer.prepare();activePlayer.play();}
-                        else{status.setText("Lecture impossible : "+(currentEntry==null?c.name:currentEntry.name));Toast.makeText(MainActivity.this,"Aucun autre flux disponible dans cette liste.",Toast.LENGTH_LONG).show();}
+                        String failedUrl=(failedIndex>=0&&failedIndex<queue.size())?queue.get(failedIndex).url:(currentEntry==null?c.url:currentEntry.url);
+                        if(failedUrl==null)failedUrl=c.url;
+                        boolean firstFailure=failedInCurrentRun.add(failedUrl);
+                        if(firstFailure){
+                            Toast.makeText(MainActivity.this,"Connexion interrompue. Nouvelle tentative…",Toast.LENGTH_SHORT).show();
+                            activePlayer.prepare();activePlayer.play();return;
+                        }
+                        if(failedIndex<0||failedIndex>=queue.size()){
+                            failedIndex=-1;
+                            for(int i=0;i<queue.size();i++)if(failedUrl.equals(queue.get(i).url)){failedIndex=i;break;}
+                        }
+                        int nextIndex=-1;
+                        for(int i=Math.max(0,failedIndex+1);i<queue.size();i++){
+                            MediaEntry candidate=queue.get(i);
+                            if(candidate!=null&&candidate.url!=null&&!failedInCurrentRun.contains(candidate.url)){nextIndex=i;break;}
+                        }
+                        if(nextIndex>=0){
+                            Toast.makeText(MainActivity.this,"Flux indisponible. Passage au suivant…",Toast.LENGTH_SHORT).show();
+                            activePlayer.seekTo(nextIndex,0L);activePlayer.prepare();activePlayer.play();
+                        }else{
+                            activePlayer.stop();
+                            Toast.makeText(MainActivity.this,"Aucun autre flux disponible dans cette rubrique.",Toast.LENGTH_LONG).show();
+                        }
                     });
                 }
                 @Override public void onMediaItemTransition(MediaItem item,int reason){
