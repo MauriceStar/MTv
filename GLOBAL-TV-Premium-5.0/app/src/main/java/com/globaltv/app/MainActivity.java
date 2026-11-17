@@ -585,20 +585,7 @@ private void loadAllPlaylists(){
         for(int i=index+1;i<queue.size();i++)if(!failedInCurrentRun.contains(queue.get(i).url))return queue.get(i);
         return null;
     }
-    private boolean matchSectionFor(MediaEntry entry){
-        if(entry==null)return false;
-        if(section.equals("MTV"))return mtvItems.contains(entry);
-        if(section.equals("MUSIQUE"))return isMusicEntry(entry);
-        if(section.equals("INFOS"))return isNewsEntry(entry);
-        String group=entry.group==null?"":entry.group.toLowerCase(Locale.ROOT);
-        if(section.equals("FAVORIS"))return favorites.contains(entry.url);
-        if(section.equals("HISTORIQUE"))return hasHistory(entry);
-        if(section.equals("TV EN DIRECT"))return entry.type.equals("live")||entry.type.equals("m3u");
-        if(section.equals("FILMS"))return entry.type.equals("movie")||group.contains("movie")||group.contains("film")||group.contains("vod");
-        if(section.equals("SÉRIES"))return entry.type.equals("series")||group.contains("series");
-        if(section.equals("ANIMÉS"))return isAnimeEntry(entry);
-        return true;
-    }
+    private boolean matchSectionFor(MediaEntry entry){return matchSection(entry);}
     private boolean isAnimeEntry(MediaEntry e){
         String v=((e.name==null?"":e.name)+" "+(e.group==null?"":e.group)).toLowerCase(Locale.ROOT);
         return v.contains("anime")||v.contains("animation")||v.contains("cartoon");
@@ -995,6 +982,13 @@ private void showPinEditor(){
     private void showXtreamDialog(){LinearLayout form=column();form.setPadding(dp(8),dp(4),dp(8),dp(4));EditText host=field("URL du serveur (https://serveur:port)");EditText user=field("Nom d’utilisateur");EditText pass=field("Mot de passe");pass.setInputType(129);form.addView(host);form.addView(user);form.addView(pass);new AlertDialog.Builder(this).setTitle("Connexion Xtream Codes").setMessage("Utilise les identifiants fournis par ton fournisseur IPTV autorisé. HTTPS est recommandé.").setView(form).setNegativeButton("Annuler",null).setPositiveButton("Se connecter",(d,w)->{String h=host.getText().toString().trim(),u=user.getText().toString().trim(),p=pass.getText().toString();try{Uri uri=Uri.parse(h);if((!"https".equalsIgnoreCase(uri.getScheme())&&!("http".equalsIgnoreCase(uri.getScheme())))||uri.getHost()==null||u.isEmpty()||p.isEmpty())throw new Exception();xtreamBase=h;xtreamUser=u;xtreamPass=p;section="ACCUEIL";heading.setText("Bienvenue sur GLOBAL TV");loadXtream();}catch(Exception e){Toast.makeText(this,"Vérifie l’URL et les identifiants",Toast.LENGTH_LONG).show();}}).show();}
     private EditText field(String hint){EditText e=new EditText(this);e.setSingleLine(true);e.setTextColor(Color.WHITE);e.setHintTextColor(MUTED);e.setHint(hint);e.setPadding(dp(10),dp(6),dp(10),dp(6));return e;}
     @Override public boolean dispatchKeyEvent(android.view.KeyEvent event){
+        if(event.getAction()==KeyEvent.ACTION_DOWN&&event.getRepeatCount()==0&&player!=null&&playerView!=null){
+            int code=event.getKeyCode();
+            boolean next=code==KeyEvent.KEYCODE_MEDIA_NEXT||code==KeyEvent.KEYCODE_CHANNEL_UP||code==KeyEvent.KEYCODE_PAGE_DOWN||code==KeyEvent.KEYCODE_P;
+            boolean previous=code==KeyEvent.KEYCODE_MEDIA_PREVIOUS||code==KeyEvent.KEYCODE_CHANNEL_DOWN||code==KeyEvent.KEYCODE_PAGE_UP;
+            if(next){if(player.hasNextMediaItem())player.seekToNextMediaItem();return true;}
+            if(previous){if(player.hasPreviousMediaItem())player.seekToPreviousMediaItem();return true;}
+        }
  if(event.getAction()==KeyEvent.ACTION_DOWN&&event.getKeyCode()==KeyEvent.KEYCODE_BACK){
   if(webCustomView!=null){hideWebCustomView();return true;}
   if(isWebSection(section)&&mtvWebView!=null&&mtvWebView.getVisibility()==View.VISIBLE){if(mtvWebView.canGoBack()){mtvWebView.goBack();return true;}navigateTo("ACCUEIL");return true;}
