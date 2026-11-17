@@ -72,6 +72,7 @@ public class MainActivity extends AppCompatActivity {
     private String mtvPlaylistUrl="";
     private final Set<String> favorites=new HashSet<>();
     private final Set<String> historyKeysCache=new HashSet<>();
+    private final LinkedHashSet<String> recentlyPlayable=new LinkedHashSet<>();
     private final Map<String,String> epgNow=new ConcurrentHashMap<>();
     private final LinkedHashMap<String,Set<String>> favoriteGroups=new LinkedHashMap<>();
     private final Map<String,String> epgNext=new ConcurrentHashMap<>();
@@ -110,7 +111,7 @@ public class MainActivity extends AppCompatActivity {
     @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);getWindow().setStatusBarColor(BG);getWindow().setNavigationBarColor(BG);prefs=getPreferences(0);
         activeProfile=prefs.getString("active_profile",PROFILE_ADULT);
         configureMemoryBudget();
-        favorites.addAll(prefs.getStringSet("favorites",new HashSet<>()));for(String group:prefs.getStringSet("favorite_groups",new HashSet<>()))favoriteGroups.put(group,new LinkedHashSet<>(prefs.getStringSet("favorite_group_"+key(group),new HashSet<>())));playlistSources.addAll(prefs.getStringSet("m3u_sources",new LinkedHashSet<>()));
+        favorites.addAll(prefs.getStringSet("favorites",new HashSet<>()));Set<String> priorPlayable=prefs.getStringSet("recently_playable",new LinkedHashSet<>());if(priorPlayable!=null)recentlyPlayable.addAll(priorPlayable);while(recentlyPlayable.size()>250)recentlyPlayable.remove(recentlyPlayable.iterator().next());for(String group:prefs.getStringSet("favorite_groups",new HashSet<>()))favoriteGroups.put(group,new LinkedHashSet<>(prefs.getStringSet("favorite_group_"+key(group),new HashSet<>())));playlistSources.addAll(prefs.getStringSet("m3u_sources",new LinkedHashSet<>()));
         playlistSources.add(DEFAULT_PLAYLIST);
         playlistSources.addAll(Arrays.asList(BUILT_IN_PLAYLISTS));
         prefs.edit().putStringSet("m3u_sources",new LinkedHashSet<>(playlistSources)).apply();
@@ -396,6 +397,16 @@ private void loadAllPlaylists(){
     private Map<String,String> parseCategories(String json){Map<String,String> map=new HashMap<>();try{JSONArray a=new JSONArray(json);for(int i=0;i<a.length();i++){JSONObject o=a.optJSONObject(i);if(o!=null)map.put(o.optString("category_id"),o.optString("category_name","Autres"));}}catch(Exception ignored){}return map;}
     private void parseXtreamArray(ArrayList<MediaEntry> out,String json,String type,String fallback,Map<String,String> categories){try{JSONArray a=new JSONArray(json);for(int i=0;i<a.length()&&out.size()<MAX_CATALOG_ITEMS;i++){JSONObject o=a.optJSONObject(i);if(o==null)continue;String id=o.optString(type.equals("series")?"series_id":"stream_id",o.optString("id",""));if(id.isEmpty())continue;String name=o.optString("name",type.equals("series")?"Série":"Contenu");String cat=o.optString("category_name",(categories.containsKey(o.optString("category_id"))?categories.get(o.optString("category_id")):(type.equals("live")?"TV en direct":type.equals("movie")?"Films":"Séries")));String logo=o.optString("stream_icon",o.optString("cover",""));String ext=o.optString("container_extension",fallback);String path=xtreamBase+(xtreamBase.endsWith("/")?"":"/")+type+"/"+enc(xtreamUser)+"/"+enc(xtreamPass)+"/"+id+"."+ext;MediaEntry m=new MediaEntry(name,path,cat,logo,type);m.id=id;m.container=ext;m.tvgId=o.optString("epg_channel_id","");out.add(m);}}catch(Exception ignored){}}
 
+    private void recordSuccessfulStream(String url){
+        if(url==null||url.isEmpty()||prefs==null)return;
+        recentlyPlayable.remove(url);recentlyPlayable.add(url);
+        while(recentlyPlayable.size()>250)recentlyPlayable.remove(recentlyPlayable.iterator().next());
+        prefs.edit().putStringSet("recently_playable",new HashSet<>(recentlyPlayable)).apply();
+    }
+    private void recordFailedStream(String url){
+        if(url==null||url.isEmpty()||prefs==null)return;
+        if(recentlyPlayable.remove(url))prefs.edit().putStringSet("recently_playable",new HashSet<>(recentlyPlayable)).apply();
+    }
     private boolean hasHistory(MediaEntry c){if(c==null||c.url==null||c.url.isEmpty())return false;try{return historyKeysCache.contains("history_"+key(c.url));}catch(Exception ex){return false;}}
     private long historyPosition(MediaEntry c){if(c==null||c.url==null||prefs==null)return 0L;try{Object value=prefs.getAll().get("position_"+key(c.url));return value instanceof Long?Math.max(0L,(Long)value):0L;}catch(Exception ex){return 0L;}}
     private boolean matchSection(MediaEntry c){
@@ -569,6 +580,7 @@ private void loadAllPlaylists(){
         if(count==0){TextView empty=text("Tes chaînes apparaîtront ici dès que la playlist sera chargée.",12,MUTED,false);list.addView(empty);}
     }
     private void renderList(){if(list==null)return;list.removeAllViews();if(section.equals("HISTORIQUE")){historyKeysCache.clear();try{if(prefs!=null){Map<String,?> saved=prefs.getAll();if(saved!=null)for(String prefKey:saved.keySet())if(prefKey!=null&&prefKey.startsWith("history_"))historyKeysCache.add(prefKey);}}catch(Exception ignored){}}String q=search==null?"":search.getText().toString().toLowerCase(Locale.ROOT);if(section.equals("ACCUEIL")&&q.trim().isEmpty()){renderHome();return;}int shown=0;List<MediaEntry> activeItems=section.equals("MTV")?mtvItems:all;
+         ArrayList<MediaEntry> preferredItems=new ArrayList<>(),otherItems=new ArrayList<>();for(MediaEntry entry:activeItems){if(entry!=null&&entry.url!=null&&recentlyPlayable.contains(entry.url))preferredItems.add(entry);else otherItems.add(entry);}preferredItems.addAll(otherItems);activeItems=preferredItems;
         for(MediaEntry c:activeItems){if(!matchSection(c))continue;
             if(PROFILE_CHILD.equals(activeProfile) && isAdultEntry(c)) continue;
             String itemName=c.name==null?"":c.name;String itemGroup=c.group==null?"":c.group;
@@ -669,6 +681,7 @@ private void loadAllPlaylists(){
                 if(entry.url.equals(c.url))startIndex=i;
             }
             activePlayer.addListener(new Player.Listener(){
+                @Override public void onPlaybackStateChanged(int state){if(state==Player.STATE_READY){MediaEntry playing=currentEntry;recordSuccessfulStream(playing==null?c.url:playing.url);}}
                 @Override public void onPlayerError(androidx.media3.common.PlaybackException e){
                     postUi(()->{
                         if(player!=activePlayer||destroyed)return;
@@ -689,6 +702,7 @@ private void loadAllPlaylists(){
                             MediaEntry candidate=queue.get(i);
                             if(candidate!=null&&candidate.url!=null&&!failedInCurrentRun.contains(candidate.url)){nextIndex=i;break;}
                         }
+                        recordFailedStream(failedUrl);
                         if(nextIndex>=0){
                             Toast.makeText(MainActivity.this,"Flux indisponible. Passage au suivant…",Toast.LENGTH_SHORT).show();
                             activePlayer.seekTo(nextIndex,0L);activePlayer.prepare();activePlayer.play();
