@@ -399,7 +399,8 @@ private void loadAllPlaylists(){
 
     private void recordSuccessfulStream(String url){
         if(url==null||url.isEmpty()||prefs==null)return;
-        recentlyPlayable.remove(url);recentlyPlayable.add(url);
+        if(recentlyPlayable.contains(url))return;
+        recentlyPlayable.add(url);
         while(recentlyPlayable.size()>250)recentlyPlayable.remove(recentlyPlayable.iterator().next());
         prefs.edit().putStringSet("recently_playable",new HashSet<>(recentlyPlayable)).apply();
     }
