@@ -3,16 +3,14 @@ package com.globaltv.app;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
-import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
-import android.graphics.Shader;
 import android.graphics.DashPathEffect;
 import android.graphics.Typeface;
 import android.view.View;
 
-/** Logo MTv : parabole, signal satellite et trajectoire orbitale. */
+/** Logo MTv : parabole proche du mot-symbole, satellite au-dessus du v et liaison. */
 public final class MtvBrandMark extends View {
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path path = new Path();
@@ -20,7 +18,7 @@ public final class MtvBrandMark extends View {
     public MtvBrandMark(Context context) {
         super(context);
         setLayerType(View.LAYER_TYPE_SOFTWARE, null);
-        setContentDescription("Logo MTv avec parabole et satellite");
+        setContentDescription("Logo MTv avec parabole, satellite et liaison de transmission");
     }
 
     private void paint(int color, float width, Paint.Style style) {
@@ -38,17 +36,28 @@ public final class MtvBrandMark extends View {
         canvas.save();
         canvas.scale(getWidth() / 1774f, getHeight() / 887f);
 
-        // Trajectoire de transmission en pointillés, au-dessus du mot-symbole.
+        // Mesure réelle du mot-symbole : MT et v restent attachés sur la même ligne.
+        Paint measure = new Paint(Paint.ANTI_ALIAS_FLAG);
+        measure.setTypeface(Typeface.create("sans-serif-black", Typeface.BOLD_ITALIC));
+        measure.setTextSize(370f);
+        final float mtStart = 490f;
+        final float mtWidth = measure.measureText("MT");
+        final float vStart = mtStart + mtWidth - 20f;
+        final float vCenter = vStart + measure.measureText("v") * 0.52f;
+        final float satelliteShift = vCenter - 1380f;
+
+        // Trajectoire en pointillés reliant le foyer de la parabole au satellite placé au-dessus du v.
         paint(0xFFFFC52B, 13f, Paint.Style.STROKE);
         p.setPathEffect(new DashPathEffect(new float[]{34f, 24f}, 0f));
         path.reset();
         path.moveTo(455f, 285f);
-        path.cubicTo(720f, 40f, 1120f, 10f, 1370f, 135f);
+        path.cubicTo(720f, 40f, vCenter - 240f, 5f, vCenter, 135f);
         canvas.drawPath(path, p);
         p.setPathEffect(null);
 
-        // Satellite et panneaux solaires.
+        // Satellite et panneaux solaires, centrés sur le v.
         canvas.save();
+        canvas.translate(satelliteShift, 0f);
         canvas.rotate(18f, 1380f, 130f);
         paint(0xFF2865A8, 8f, Paint.Style.FILL);
         canvas.drawRoundRect(new RectF(1190f, 65f, 1318f, 188f), 8f, 8f, p);
@@ -76,7 +85,7 @@ public final class MtvBrandMark extends View {
         canvas.drawArc(new RectF(310f, 175f, 575f, 470f), -72f, 144f, false, p);
         canvas.drawArc(new RectF(270f, 145f, 620f, 510f), -72f, 144f, false, p);
 
-        // Parabole métallique : réflecteur, bras et tête LNB.
+        // Parabole métallique rapprochée du M.
         paint(0xFFB9C5D2, 16f, Paint.Style.STROKE);
         path.reset();
         path.moveTo(245f, 265f);
@@ -100,25 +109,25 @@ public final class MtvBrandMark extends View {
         canvas.drawLine(235f, 650f, 390f, 650f, p);
         canvas.drawLine(265f, 640f, 355f, 640f, p);
 
-        // Signature MTv sur une seule ligne.
+        // MTv : même ligne de base, v minuscule jaune, sans décalage ni espace.
         paint(Color.WHITE, 0f, Paint.Style.FILL);
         p.setTypeface(Typeface.create("sans-serif-black", Typeface.BOLD_ITALIC));
         p.setTextSize(370f);
         p.setShadowLayer(18f, 0f, 7f, 0xAAFFFFFF);
-        canvas.drawText("MT", 545f, 585f, p);
+        canvas.drawText("MT", mtStart, 585f, p);
         p.clearShadowLayer();
         paint(0xFFFFC21F, 0f, Paint.Style.FILL);
         p.setTypeface(Typeface.create("sans-serif-black", Typeface.BOLD_ITALIC));
         p.setTextSize(370f);
         p.setShadowLayer(22f, 0f, 5f, 0xFFFFA900);
-        canvas.drawText("v", 1190f, 585f, p);
+        canvas.drawText("v", vStart, 585f, p);
         p.clearShadowLayer();
 
         // Liseré orbital doré sous le logo.
         paint(0xFFFFB51E, 15f, Paint.Style.STROKE);
         path.reset();
         path.moveTo(110f, 620f);
-        path.cubicTo(330f, 790f, 920f, 720f, 1190f, 600f);
+        path.cubicTo(330f, 790f, 920f, 720f, vStart + measure.measureText("v") * 0.8f, 600f);
         canvas.drawPath(path, p);
         canvas.restore();
     }
