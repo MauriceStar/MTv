@@ -1,109 +1,34 @@
 package com.globaltv.app;
 
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
-import android.graphics.Color;
-import android.graphics.LinearGradient;
-import android.graphics.Paint;
-import android.graphics.Path;
-import android.graphics.RectF;
-import android.graphics.Shader;
-import android.graphics.DashPathEffect;
-import android.graphics.Typeface;
+import android.util.Base64;
 import android.view.View;
 
-/** Logo MTv : parabole complète, mot-symbole attaché et satellite relié. */
+/** Logo MTv : visuel réaliste validé, intégré directement dans l'application. */
 public final class MtvBrandMark extends View {
-    private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Path path = new Path();
+    private static final String LOGO = "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";
+    private final Bitmap bitmap;
 
     public MtvBrandMark(Context context) {
         super(context);
+        byte[] bytes = Base64.decode(LOGO, Base64.DEFAULT);
+        bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+        setContentDescription("Logo MTv avec parabole réaliste, satellite et liaison pointillée");
         setLayerType(View.LAYER_TYPE_SOFTWARE, null);
-        setContentDescription("Logo MTv avec parabole complète et satellite relié");
-    }
-
-    private void paint(int color, float width, Paint.Style style) {
-        p.reset(); p.setAntiAlias(true); p.setColor(color); p.setStrokeWidth(width);
-        p.setStyle(style); p.setStrokeCap(Paint.Cap.ROUND); p.setStrokeJoin(Paint.Join.ROUND);
-    }
-
-    private void gradient(int top, int bottom, float width, Paint.Style style) {
-        paint(Color.WHITE, width, style);
-        p.setShader(new LinearGradient(0, 150, 0, 680, top, bottom, Shader.TileMode.CLAMP));
     }
 
     @Override protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
-        canvas.save();
-        canvas.scale(getWidth() / 1774f, getHeight() / 887f);
-
-        Paint measure = new Paint(Paint.ANTI_ALIAS_FLAG);
-        measure.setTypeface(Typeface.create("sans-serif-black", Typeface.BOLD_ITALIC));
-        measure.setTextSize(370f);
-        final float textStart = 545f;
-        final float vStart = textStart + measure.measureText("MT") - 18f;
-        final float vCenter = vStart + measure.measureText("v") * .50f;
-        final float satShift = vCenter - 1380f;
-
-        // Liaison dorée unique, relevée : elle part du foyer de la parabole et rejoint le satellite.
-        paint(0xFFFFB52E, 19f, Paint.Style.STROKE);
-        p.setShadowLayer(14f, 0f, 0f, 0xFFFFA900);
-        path.reset();
-        path.moveTo(470f, 300f);
-        path.cubicTo(680f, 65f, vCenter - 220f, 35f, vCenter, 135f);
-        canvas.drawPath(path, p);
-        p.clearShadowLayer();
-
-        // Satellite détaillé, avec panneaux bleus quadrillés et corps métallique.
-        canvas.save(); canvas.translate(satShift, 0f); canvas.rotate(16f, 1380f, 130f);
-        paint(0xFF173D70, 0f, Paint.Style.FILL);
-        canvas.drawRoundRect(new RectF(1185, 62, 1322, 194), 9, 9, p);
-        canvas.drawRoundRect(new RectF(1450, 62, 1587, 194), 9, 9, p);
-        paint(0xFF5BA5E8, 3f, Paint.Style.STROKE);
-        for(int i=1;i<4;i++){canvas.drawLine(1185+i*34,62,1185+i*34,194,p);canvas.drawLine(1450+i*34,62,1450+i*34,194,p);}
-        for(int i=1;i<4;i++){canvas.drawLine(1185,62+i*33,1322,62+i*33,p);canvas.drawLine(1450,62+i*33,1587,62+i*33,p);}
-        paint(0xFFB8C8D8, 8f, Paint.Style.STROKE);
-        canvas.drawLine(1322,128,1345,128,p); canvas.drawLine(1415,128,1450,128,p);
-        p.setShader(new LinearGradient(1340,75,1420,190,0xFFF4F7FA,0xFF71869D,Shader.TileMode.CLAMP));
-        p.setStyle(Paint.Style.FILL);
-        canvas.drawRoundRect(new RectF(1340,76,1420,181),25,25,p); p.setShader(null);
-        paint(0xFFEDF3F8, 0f, Paint.Style.FILL); canvas.drawOval(new RectF(1350,54,1410,92),p);
-        paint(0xFFFFC52B, 9f, Paint.Style.STROKE); canvas.drawLine(1380,181,1380,207,p);
-        canvas.restore();
-
-        // Parabole complète, réflecteur creux métallique et structure arrière.
-        p.setShader(new LinearGradient(210,240,520,570,0xFFF5F8FC,0xFF65788D,Shader.TileMode.CLAMP));
-        p.setStyle(Paint.Style.FILL);
-        path.reset(); path.moveTo(245,250); path.cubicTo(135,330,215,520,415,565);
-        path.cubicTo(515,585,560,500,505,390); path.cubicTo(450,300,335,235,245,250);
-        canvas.drawPath(path,p); p.setShader(null);
-        paint(0xFFDCE5EF,15f,Paint.Style.STROKE);
-        path.reset(); path.moveTo(245,250); path.cubicTo(135,330,215,520,415,565);
-        path.cubicTo(515,585,560,500,505,390); canvas.drawPath(path,p);
-        paint(0xFF52677D,8f,Paint.Style.STROKE);
-        canvas.drawLine(245,250,505,390,p); canvas.drawLine(415,565,505,390,p);
-        canvas.drawLine(315,430,465,300,p);
-        // Bras d'alimentation et tête LNB.
-        paint(0xFFB7C4D2,19f,Paint.Style.STROKE); canvas.drawLine(315,430,465,300,p);
-        p.setShader(new LinearGradient(440,285,495,330,0xFFFFFFFF,0xFF687D93,Shader.TileMode.CLAMP));
-        p.setStyle(Paint.Style.FILL); canvas.drawRoundRect(new RectF(438,286,495,330),13,13,p); p.setShader(null);
-        // Mât, articulation et socle, visibles en entier.
-        paint(0xFF8D9EAF,22f,Paint.Style.STROKE); canvas.drawLine(310,525,310,640,p);
-        canvas.drawLine(310,555,255,650,p); canvas.drawLine(310,555,365,650,p);
-        p.setShader(new LinearGradient(225,635,390,665,0xFFE6EDF4,0xFF63768B,Shader.TileMode.CLAMP));
-        p.setStyle(Paint.Style.FILL); canvas.drawRoundRect(new RectF(220,642,400,668),10,10,p); p.setShader(null);
-        paint(0xFFE5EDF5,5f,Paint.Style.STROKE); canvas.drawLine(245,650,375,650,p);
-
-        // Mot-symbole sur une seule ligne : le v minuscule touche le T.
-        paint(Color.WHITE,0f,Paint.Style.FILL);
-        p.setTypeface(Typeface.create("sans-serif-black",Typeface.BOLD_ITALIC)); p.setTextSize(370f);
-        p.setShadowLayer(18f,0f,7f,0xAAFFFFFF); canvas.drawText("MT",textStart,585f,p); p.clearShadowLayer();
-        paint(0xFFFFC21F,0f,Paint.Style.FILL);
-        p.setTypeface(Typeface.create("sans-serif-black",Typeface.BOLD_ITALIC)); p.setTextSize(370f);
-        p.setShadowLayer(22f,0f,5f,0xFFFFA900); canvas.drawText("v",vStart,585f,p); p.clearShadowLayer();
-
-        // Aucun trait décoratif sous la parabole : la seule liaison est celle vers le satellite.
-        canvas.restore();
+        if (bitmap == null) return;
+        float scale = Math.min(getWidth() / (float) bitmap.getWidth(), getHeight() / (float) bitmap.getHeight());
+        float w = bitmap.getWidth() * scale;
+        float h = bitmap.getHeight() * scale;
+        float left = (getWidth() - w) / 2f;
+        float top = (getHeight() - h) / 2f;
+        android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG | android.graphics.Paint.FILTER_BITMAP_FLAG);
+        canvas.drawBitmap(bitmap, null, new android.graphics.RectF(left, top, left + w, top + h), paint);
     }
 }
