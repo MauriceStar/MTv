@@ -1421,8 +1421,8 @@ private void showPinEditor(){
         super.onLowMemory();
         try{com.bumptech.glide.Glide.get(this).clearMemory();}catch(Exception ignored){}
     }
-    @Override protected void onStart(){super.onStart();if(resumePlaybackOnStart&&player!=null){resumePlaybackOnStart=false;player.play();}}
-    @Override protected void onStop(){super.onStop();if(player!=null){resumePlaybackOnStart=player.isPlaying();savePlaybackPosition();player.pause();}}
+    @Override protected void onStart(){super.onStart();if(resumePlaybackOnStart&&player!=null){resumePlaybackOnStart=false;player.play();}if(playbackSaveRunnable!=null)mainHandler.postDelayed(playbackSaveRunnable,15000L);}
+    @Override protected void onStop(){super.onStop();if(playbackSaveRunnable!=null)mainHandler.removeCallbacks(playbackSaveRunnable);if(player!=null){resumePlaybackOnStart=player.isPlaying();savePlaybackPosition();player.pause();}}
     @Override protected void onDestroy(){
         destroyed=true;catalogRequestId++;epgRequestId++;if(pendingSearch!=null)mainHandler.removeCallbacks(pendingSearch);
         if(webCustomView!=null)hideWebCustomView();
