@@ -56,6 +56,7 @@ public class MainActivity extends AppCompatActivity {
     private Runnable pendingSearch;
     private volatile boolean destroyed=false;
     private volatile int catalogRequestId=0;
+    private volatile int epgRequestId=0;
     private String parentalAuthorizedTarget="";
     private boolean resumePlaybackOnStart=false;
     private BrandSplash brandSplash;
@@ -308,15 +309,25 @@ public class MainActivity extends AppCompatActivity {
         }
     }
     private void postUi(Runnable task){
-        if(!destroyed)mainHandler.post(()->{if(!destroyed&&!isFinishing())task.run();});
+        if(task==null||destroyed)return;
+        mainHandler.post(()->{
+            if(destroyed||isFinishing())return;
+            try{task.run();}
+            catch(Exception uiError){android.util.Log.e("MTv-UI","UI task failed",uiError);}
+        });
     }
     private void releasePlayer(){
-        if(playerFullscreen){togglePlayerExpanded();}
-        if(playerExpanded){sidebarShell.setVisibility(View.VISIBLE);sidebarScroll.setVisibility(View.VISIBLE);sidebar.setVisibility(View.VISIBLE);for(int i=0;i<content.getChildCount();i++)content.getChildAt(i).setVisibility(View.VISIBLE);playerExpanded=false;}
-        if(playerView!=null){playerView.setPlayer(null);if(playerView.getParent() instanceof ViewGroup)((ViewGroup)playerView.getParent()).removeView(playerView);playerView=null;}
-        if(playerArea!=null)playerArea.setOrientation(LinearLayout.HORIZONTAL);if(catalogScroll!=null&&catalogScroll.getParent()!=playerArea)playerArea.addView(catalogScroll,new LinearLayout.LayoutParams(-1,-1));
-        if(playerToolbar!=null){if(playerToolbar.getParent() instanceof ViewGroup)((ViewGroup)playerToolbar.getParent()).removeView(playerToolbar);playerToolbar=null;}if(playerArea!=null){for(int i=playerArea.getChildCount()-1;i>=0;i--){View child=playerArea.getChildAt(i);if(child instanceof LinearLayout&&child!=catalogScroll&&((LinearLayout)child).getChildCount()==0)playerArea.removeViewAt(i);}}
-        if(player!=null){try{player.release();}catch(Exception ignored){}player=null;}
+        ExoPlayer oldPlayer=player;
+        PlayerView oldView=playerView;
+        LinearLayout oldToolbar=playerToolbar;
+        player=null;playerView=null;playerToolbar=null;
+        try{if(playerFullscreen&&oldView!=null)togglePlayerExpanded();}catch(Exception e){android.util.Log.w("MTv-Player","Unable to leave fullscreen cleanly",e);}
+        playerFullscreen=false;playerExpanded=false;
+        try{if(sidebarShell!=null)sidebarShell.setVisibility(View.VISIBLE);if(sidebarScroll!=null)sidebarScroll.setVisibility(View.VISIBLE);if(sidebar!=null)sidebar.setVisibility(View.VISIBLE);if(content!=null)for(int i=0;i<content.getChildCount();i++)content.getChildAt(i).setVisibility(View.VISIBLE);}catch(Exception e){android.util.Log.w("MTv-Player","Unable to restore layout",e);}
+        try{if(oldView!=null){oldView.setPlayer(null);if(oldView.getParent() instanceof ViewGroup)((ViewGroup)oldView.getParent()).removeView(oldView);}}catch(Exception e){android.util.Log.w("MTv-Player","Unable to detach player view",e);}
+        try{if(playerArea!=null)playerArea.setOrientation(LinearLayout.HORIZONTAL);if(catalogScroll!=null&&playerArea!=null&&catalogScroll.getParent()!=playerArea)playerArea.addView(catalogScroll,new LinearLayout.LayoutParams(-1,-1));}catch(Exception e){android.util.Log.w("MTv-Player","Unable to restore catalogue",e);}
+        try{if(oldToolbar!=null&&oldToolbar.getParent() instanceof ViewGroup)((ViewGroup)oldToolbar.getParent()).removeView(oldToolbar);if(playerArea!=null)for(int i=playerArea.getChildCount()-1;i>=0;i--){View child=playerArea.getChildAt(i);if(child instanceof LinearLayout&&child!=catalogScroll&&((LinearLayout)child).getChildCount()==0)playerArea.removeViewAt(i);}}catch(Exception e){android.util.Log.w("MTv-Player","Unable to clean player controls",e);}
+        try{if(oldPlayer!=null)oldPlayer.release();}catch(Exception e){android.util.Log.w("MTv-Player","Player release failed",e);}
     }
     private HttpURLConnection open(String address)throws Exception{URL u=new URL(address);HttpURLConnection c=(HttpURLConnection)u.openConnection();c.setConnectTimeout(10000);c.setReadTimeout(20000);
         c.setRequestProperty("User-Agent","GLOBAL-TV-Android/5.0");
@@ -614,12 +625,12 @@ private void loadAllPlaylists(){
         }
         if(shown==0){TextView empty=text("Aucun historique disponible pour cette source. Les contenus apparaîtront ici après une lecture.",14,MUTED,false);empty.setPadding(dp(12),dp(28),dp(12),dp(20));list.addView(empty);}
     }
-    private void renderList(){if(list==null)return;if(section.equals("HISTORIQUE")){renderHistory();return;}list.removeAllViews();String q=search==null?"":search.getText().toString().toLowerCase(Locale.ROOT);if(section.equals("ACCUEIL")&&q.trim().isEmpty()){renderHome();return;}int shown=0;List<MediaEntry> activeItems=section.equals("MTV")?mtvItems:all;
-         ArrayList<MediaEntry> preferredItems=new ArrayList<>(),otherItems=new ArrayList<>();for(MediaEntry entry:activeItems){if(entry!=null&&entry.url!=null&&recentlyPlayable.contains(entry.url))preferredItems.add(entry);else otherItems.add(entry);}preferredItems.addAll(otherItems);activeItems=preferredItems;
-        for(MediaEntry c:activeItems){if(!matchSection(c))continue;
+    private void renderList(){if(list==null)return;if(section.equals("HISTORIQUE")){renderHistory();return;}list.removeAllViews();String q=search==null?"":search.getText().toString().toLowerCase(Locale.ROOT);if(section.equals("ACCUEIL")&&q.trim().isEmpty()){renderHome();return;}int shown=0;boolean universalSearch=!q.trim().isEmpty();List<MediaEntry> activeItems=universalSearch?all:(section.equals("MTV")?mtvItems:all);
+         ArrayList<MediaEntry> preferredItems=new ArrayList<>(),otherItems=new ArrayList<>();HashSet<String> seenUrls=new HashSet<>();for(MediaEntry entry:activeItems){if(entry==null||entry.url==null||!seenUrls.add(entry.url))continue;if(recentlyPlayable.contains(entry.url))preferredItems.add(entry);else otherItems.add(entry);}if(universalSearch&&section.equals("MTV"))for(MediaEntry entry:mtvItems)if(entry!=null&&entry.url!=null&&seenUrls.add(entry.url)){if(recentlyPlayable.contains(entry.url))preferredItems.add(entry);else otherItems.add(entry);}preferredItems.addAll(otherItems);activeItems=preferredItems;
+        for(MediaEntry c:activeItems){if(!universalSearch&&!matchSection(c))continue;
             if(PROFILE_CHILD.equals(activeProfile) && isAdultEntry(c)) continue;
             String itemName=c.name==null?"":c.name;String itemGroup=c.group==null?"":c.group;
-            if(!q.isEmpty()&&!itemName.toLowerCase(Locale.ROOT).contains(q)&&!itemGroup.toLowerCase(Locale.ROOT).contains(q))continue;if(!filterMatches(activeFilter,itemGroup,itemName))continue;
+            if(!q.isEmpty()&&!itemName.toLowerCase(Locale.ROOT).contains(q)&&!itemGroup.toLowerCase(Locale.ROOT).contains(q))continue;if(!universalSearch&&!filterMatches(activeFilter,itemGroup,itemName))continue;
             LinearLayout item=row();item.setId(View.generateViewId());item.setPadding(dp(13),dp(4),dp(12),dp(4));item.setBackground(bg(PANEL,12));item.setFocusable(true);item.setClickable(true);
             item.setBackground(bg(0xFF17233A,12));
             item.setOnFocusChangeListener((view,hasFocus)->view.setBackground(bg(hasFocus?ACCENT:0xFF17233A,12)));LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(-1,dp(62));ip.bottomMargin=dp(8);list.addView(item,ip);if(chips!=null){for(int ci=0;ci<chips.getChildCount();ci++)chips.getChildAt(ci).setNextFocusDownId(item.getId());item.setNextFocusUpId(chips.getChildAt(0).getId());}
@@ -666,6 +677,9 @@ private void loadAllPlaylists(){
     private boolean isNewsEntry(MediaEntry e){String v=((e.name==null?"":e.name)+" "+(e.group==null?"":e.group)).toLowerCase(Locale.ROOT);String[] keys={"news","info","information","actualité","actualite","journal","france 24","bfm","cnews","lci","euronews","al jazeera","bbc","cnn"};for(String k:keys)if(v.contains(k))return true;return false;}
     // Diagnostic reseau sans journaliser l'URL complete (les URLs Xtream peuvent contenir des identifiants).
     private String safeHost(String address){try{String host=Uri.parse(address).getHost();return host==null?"unknown":host;}catch(Exception ignored){return "unknown";}}
+    private boolean isTransientPlaybackError(int errorCode){
+        return errorCode==2000||errorCode==2001||errorCode==2002;
+    }
     private MediaItem buildCompatibleMediaItem(MediaEntry entry){
         Uri uri=Uri.parse(entry.url);
         String path=uri.getPath()==null?"":uri.getPath().toLowerCase(Locale.ROOT);
@@ -729,7 +743,7 @@ private void loadAllPlaylists(){
                         String failedUrl=(failedIndex>=0&&failedIndex<queue.size())?queue.get(failedIndex).url:(currentEntry==null?c.url:currentEntry.url);
                         if(failedUrl==null)failedUrl=c.url;
                         boolean firstFailure=failedInCurrentRun.add(failedUrl);
-                        if(firstFailure){
+                        if(firstFailure&&isTransientPlaybackError(e.errorCode)){
                             Toast.makeText(MainActivity.this,"Connexion interrompue. Nouvelle tentative…",Toast.LENGTH_SHORT).show();
                             activePlayer.prepare();activePlayer.play();return;
                         }
@@ -753,10 +767,15 @@ private void loadAllPlaylists(){
                     });
                 }
                 @Override public void onMediaItemTransition(MediaItem item,int reason){
-                    String uri=item.localConfiguration==null?"":item.localConfiguration.uri.toString();
-                    for(MediaEntry entry:queue)if(entry.url.equals(uri)){
+                    if(item==null||item.localConfiguration==null||item.localConfiguration.uri==null)return;
+                    String uri=item.localConfiguration.uri.toString();
+                    for(MediaEntry entry:queue)if(entry!=null&&entry.url!=null&&entry.url.equals(uri)){
                         currentEntry=entry;lastPlayedUrl=entry.url;
-                        historyKeysCache.add("history_"+key(entry.url));prefs.edit().putString("last_url",entry.url).putString("history_"+key(entry.url),entry.name==null?"":entry.name).apply();
+                        if(prefs!=null){
+                            String historyKey="history_"+key(entry.url);
+                            historyKeysCache.add(historyKey);
+                            prefs.edit().putString("last_url",entry.url).putString(historyKey,entry.name==null?"":entry.name).apply();
+                        }
                         break;
                     }
                 }
@@ -1050,11 +1069,67 @@ private void showPinEditor(){
 }
     private String hash(String value){try{byte[] b=MessageDigest.getInstance("SHA-256").digest(value.getBytes("UTF-8"));StringBuilder out=new StringBuilder();for(byte x:b)out.append(String.format(Locale.US,"%02x",x));return out.toString();}catch(Exception e){return value;}}
     private String key(String value){if(value==null||value.isEmpty())return "000000000000000000000000";String digest=hash(value);if(digest==null)digest="";if(digest.length()<24){String fallback=Integer.toHexString(value.hashCode());StringBuilder padded=new StringBuilder();while(padded.length()+fallback.length()<24)padded.append("0");padded.append(fallback);digest=padded.toString();}return digest.substring(0,24);}
-    private void savePlaybackPosition(){if(player!=null&&!lastPlayedUrl.isEmpty()){long pos=player.getCurrentPosition();if(pos>0)prefs.edit().putLong("position_"+key(lastPlayedUrl),pos).apply();}}
+    private void savePlaybackPosition(){
+        ExoPlayer active=player;
+        if(active==null||lastPlayedUrl==null||lastPlayedUrl.isEmpty()||prefs==null)return;
+        try{
+            MediaEntry entry=currentEntry;
+            if(entry!=null&&("live".equals(entry.type)||"m3u".equals(entry.type)))return;
+            long position=active.getCurrentPosition();
+            if(position>0L)prefs.edit().putLong("position_"+key(lastPlayedUrl),position).apply();
+        }catch(Exception e){android.util.Log.w("MTv-Player","Unable to save playback position",e);}
+    }
     private void showCreateFavoriteGroup(){EditText name=field("Nom de la liste");new AlertDialog.Builder(this).setTitle("Créer une liste de favoris").setView(name).setNegativeButton("Annuler",null).setPositiveButton("Créer",(d,w)->{String n=name.getText().toString().trim();if(n.isEmpty())return;if(favoriteGroups.containsKey(n)){Toast.makeText(this,"Cette liste existe déjà",Toast.LENGTH_SHORT).show();return;}favoriteGroups.put(n,new LinkedHashSet<>());prefs.edit().putStringSet("favorite_groups",new HashSet<>(favoriteGroups.keySet())).apply();activeFilter=n;updateChips();renderList();}).show();}
     private void showAssignFavoriteGroup(MediaEntry entry){if(favoriteGroups.isEmpty()){Toast.makeText(this,"Crée d’abord une liste de favoris.",Toast.LENGTH_SHORT).show();return;}String[] names=favoriteGroups.keySet().toArray(new String[0]);new AlertDialog.Builder(this).setTitle("Ajouter à une liste").setItems(names,(d,i)->{Set<String> urls=favoriteGroups.get(names[i]);urls.add(entry.url);prefs.edit().putStringSet("favorite_group_"+key(names[i]),new HashSet<>(urls)).apply();Toast.makeText(this,"Ajouté à "+names[i],Toast.LENGTH_SHORT).show();}).setNegativeButton("Annuler",null).show();}
     private void showEpgDialog(){EditText input=field("URL du fichier XMLTV (HTTPS conseillé)");input.setText(epgUrl);new AlertDialog.Builder(this).setTitle("Guide TV XMLTV").setMessage("Ajoute l’URL XMLTV de ton fournisseur ou une source autorisée. Les chaînes doivent avoir un tvg-id correspondant.").setView(input).setNegativeButton("Annuler",null).setPositiveButton("Charger",(d,w)->{String u=input.getText().toString().trim();if(u.startsWith("https://")||u.startsWith("http://")){epgUrl=u;prefs.edit().putString("epg_url",u).apply();loadEpg(u);}else Toast.makeText(this,"URL HTTP/HTTPS requise",Toast.LENGTH_LONG).show();}).show();}
-    private void loadEpg(String url){status.setText("Chargement du guide TV…");executeIo(()->{Map<String,String> now=new HashMap<>(),next=new HashMap<>();String err=null;try{HttpURLConnection c=open(url);try{if(c.getResponseCode()<200||c.getResponseCode()>=300)throw new IOException("HTTP "+c.getResponseCode());XmlPullParser x=XmlPullParserFactory.newInstance().newPullParser();x.setInput(c.getInputStream(),"UTF-8");String channel=null;long start=0,stop=0,nowMs=System.currentTimeMillis();int event=x.getEventType();while(event!=XmlPullParser.END_DOCUMENT){if(event==XmlPullParser.START_TAG&&"programme".equals(x.getName())){channel=x.getAttributeValue(null,"channel");start=parseXmlTvTime(x.getAttributeValue(null,"start"));stop=parseXmlTvTime(x.getAttributeValue(null,"stop"));}else if(event==XmlPullParser.START_TAG&&"title".equals(x.getName())&&channel!=null){String title=x.nextText();if(title!=null&&!title.isEmpty()){if(start<=nowMs&&stop>nowMs)now.put(channel,title);else if(start>nowMs&&!next.containsKey(channel))next.put(channel,title);}}event=x.next();}}finally{c.disconnect();}}catch(Exception e){err=e.getMessage();}final String error=err;epgNow.clear();epgNow.putAll(now);epgNext.clear();epgNext.putAll(next);postUi(()->{status.setText(error==null?now.size()+" programmes en cours • "+next.size()+" à suivre • Guide TV XMLTV":"Erreur EPG : "+error);renderList();});});}
+    private void loadEpg(String url){
+        final int request=++epgRequestId;
+        if(status!=null)status.setText("Chargement du guide TV…");
+        executeIo(()->{
+            Map<String,String> now=new HashMap<>(),next=new HashMap<>();
+            String error=null;
+            try{
+                HttpURLConnection connection=open(url);
+                try{
+                    int response=connection.getResponseCode();
+                    if(response<200||response>=300)throw new IOException("HTTP "+response);
+                    InputStream input=connection.getInputStream();
+                    if(input==null)throw new IOException("Réponse XMLTV vide");
+                    XmlPullParser parser=XmlPullParserFactory.newInstance().newPullParser();
+                    parser.setInput(input,"UTF-8");
+                    String channel=null;long start=0L,stop=0L,nowMs=System.currentTimeMillis();
+                    int event=parser.getEventType(),events=0,programmes=0;
+                    while(event!=XmlPullParser.END_DOCUMENT){
+                        if(++events>500000)throw new IOException("Guide TV trop volumineux");
+                        if(event==XmlPullParser.START_TAG&&"programme".equals(parser.getName())){
+                            if(++programmes>100000)throw new IOException("Trop de programmes dans le guide TV");
+                            channel=parser.getAttributeValue(null,"channel");
+                            start=parseXmlTvTime(parser.getAttributeValue(null,"start"));
+                            stop=parseXmlTvTime(parser.getAttributeValue(null,"stop"));
+                        }else if(event==XmlPullParser.START_TAG&&"title".equals(parser.getName())&&channel!=null){
+                            String title=parser.nextText();
+                            if(title!=null&&!title.trim().isEmpty()){
+                                title=title.trim();
+                                if(title.length()>300)title=title.substring(0,300);
+                                if(start<=nowMs&&stop>nowMs&&now.size()<20000)now.put(channel,title);
+                                else if(start>nowMs&&!next.containsKey(channel)&&next.size()<20000)next.put(channel,title);
+                            }
+                        }
+                        event=parser.next();
+                    }
+                }finally{connection.disconnect();}
+            }catch(Exception e){error=e.getMessage()==null?e.getClass().getSimpleName():e.getMessage();}
+            if(request!=epgRequestId||destroyed)return;
+            final String failure=error;
+            epgNow.clear();epgNow.putAll(now);
+            epgNext.clear();epgNext.putAll(next);
+            postUi(()->{
+                if(request!=epgRequestId)return;
+                if(status!=null)status.setText(failure==null?now.size()+" programmes en cours • "+next.size()+" à suivre • Guide TV XMLTV":"Erreur EPG : "+failure);
+                renderList();
+            });
+        });
+    }
     private long parseXmlTvTime(String value){if(value==null)return 0;try{String v=value.trim();SimpleDateFormat f=new SimpleDateFormat("yyyyMMddHHmmss Z",Locale.US);if(v.length()==14)v+=" +0000";else if(v.length()>14&&v.charAt(14)!=' ')v=v.substring(0,14)+" "+v.substring(14);Date d=f.parse(v);return d==null?0:d.getTime();}catch(Exception e){return 0;}}
     private void showM3uDialog(){EditText input=new EditText(this);input.setSingleLine(true);input.setHint("https://exemple.com/playlist.m3u");input.setTextColor(Color.WHITE);input.setHintTextColor(MUTED);input.setText("");new AlertDialog.Builder(this).setTitle("Ajouter une playlist M3U").setMessage("Ajoute une nouvelle source. Les chaînes des playlists seront réunies dans le même catalogue.").setView(input).setNegativeButton("Annuler",null).setPositiveButton("Ajouter et charger",(d,w)->{String u=input.getText().toString().trim();if(u.startsWith("https://")||u.startsWith("http://")){section="TV EN DIRECT";refreshAllNavStyles();loadPlaylist(u);}else Toast.makeText(this,"Adresse HTTP/HTTPS requise",Toast.LENGTH_LONG).show();}).show();}
     private void showPlaylistManager(){ArrayList<String> urls=new ArrayList<>(playlistSources);if(urls.isEmpty()){new AlertDialog.Builder(this).setTitle("Sources M3U").setMessage("Aucune source enregistrée.").setPositiveButton("Ajouter", (d,w)->showM3uDialog()).show();return;}String[] labels=new String[urls.size()];for(int i=0;i<urls.size();i++)labels[i]=(i+1)+". "+Uri.parse(urls.get(i)).getHost()+" — "+urls.get(i);new AlertDialog.Builder(this).setTitle("Sources M3U • "+urls.size()).setItems(labels,(d,which)->new AlertDialog.Builder(this).setTitle("Gérer cette source").setMessage(urls.get(which)).setNegativeButton("Fermer",null).setNeutralButton("Supprimer",(a,b)->{playlistSources.remove(urls.get(which));prefs.edit().putStringSet("m3u_sources",new HashSet<>(playlistSources)).apply();loadAllPlaylists();}).setPositiveButton("Recharger",(a,b)->loadPlaylist(urls.get(which))).show()).setPositiveButton("Ajouter une source",(d,w)->showM3uDialog()).setNegativeButton("Fermer",null).show();}
@@ -1095,7 +1170,7 @@ private void showPinEditor(){
     @Override protected void onStart(){super.onStart();if(resumePlaybackOnStart&&player!=null){resumePlaybackOnStart=false;player.play();}}
     @Override protected void onStop(){super.onStop();if(player!=null){resumePlaybackOnStart=player.isPlaying();savePlaybackPosition();player.pause();}}
     @Override protected void onDestroy(){
-        destroyed=true;if(pendingSearch!=null)mainHandler.removeCallbacks(pendingSearch);
+        destroyed=true;catalogRequestId++;epgRequestId++;if(pendingSearch!=null)mainHandler.removeCallbacks(pendingSearch);
         if(webCustomView!=null)hideWebCustomView();
         for(WebView popup:new HashSet<>(webPopupViews)){try{popup.stopLoading();popup.destroy();}catch(Exception ignored){}}webPopupViews.clear();
         if(mtvWebView!=null){try{mtvWebView.stopLoading();mtvWebView.loadUrl("about:blank");mtvWebView.clearHistory();if(mtvWebView.getParent() instanceof ViewGroup)((ViewGroup)mtvWebView.getParent()).removeView(mtvWebView);mtvWebView.destroy();}catch(Exception ignored){}mtvWebView=null;}
