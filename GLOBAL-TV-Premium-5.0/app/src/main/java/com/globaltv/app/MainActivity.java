@@ -320,8 +320,8 @@ public class MainActivity extends AppCompatActivity {
         ExoPlayer oldPlayer=player;
         PlayerView oldView=playerView;
         LinearLayout oldToolbar=playerToolbar;
-        player=null;playerView=null;playerToolbar=null;
         try{if(playerFullscreen&&oldView!=null)togglePlayerExpanded();}catch(Exception e){android.util.Log.w("MTv-Player","Unable to leave fullscreen cleanly",e);}
+        player=null;playerView=null;playerToolbar=null;
         playerFullscreen=false;playerExpanded=false;
         try{if(sidebarShell!=null)sidebarShell.setVisibility(View.VISIBLE);if(sidebarScroll!=null)sidebarScroll.setVisibility(View.VISIBLE);if(sidebar!=null)sidebar.setVisibility(View.VISIBLE);if(content!=null)for(int i=0;i<content.getChildCount();i++)content.getChildAt(i).setVisibility(View.VISIBLE);}catch(Exception e){android.util.Log.w("MTv-Player","Unable to restore layout",e);}
         try{if(oldView!=null){oldView.setPlayer(null);if(oldView.getParent() instanceof ViewGroup)((ViewGroup)oldView.getParent()).removeView(oldView);}}catch(Exception e){android.util.Log.w("MTv-Player","Unable to detach player view",e);}
@@ -612,7 +612,7 @@ private void loadAllPlaylists(){
             String type=entry.type==null?"":entry.type;
             long position=0L;
             try{Object stored=saved.get("position_"+key(entry.url));if(stored instanceof Number)position=Math.max(0L,((Number)stored).longValue());}catch(Exception ignored){}
-            String detail=group+"  •  "+(("live".equals(type)||"m3u".equals(type))?"En direct":("series".equals(type)?"Série":"VOD"))+"  •  Reprendre à "+(position/60000)+" min";
+            String detail=group+"  •  "+(("live".equals(type)||"m3u".equals(type))?"En direct":("series".equals(type)?"Série":"VOD"))+(("live".equals(type)||"m3u".equals(type))?"  •  Récemment regardé":"  •  Reprendre à "+(position/60000)+" min");
             LinearLayout item=row();item.setPadding(dp(12),dp(5),dp(12),dp(5));item.setBackground(bg(PANEL,11));item.setFocusable(true);item.setClickable(true);
             LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(-1,dp(64));ip.bottomMargin=dp(7);list.addView(item,ip);if(chips!=null&&chips.getChildCount()>0)item.setNextFocusUpId(chips.getChildAt(0).getId());
             TextView symbol=text(("live".equals(type)||"m3u".equals(type))?"TV":"▶",16,0xFFFFC247,true);symbol.setGravity(Gravity.CENTER);symbol.setBackground(bg(CARD,8));item.addView(symbol,new LinearLayout.LayoutParams(dp(54),dp(48)));
@@ -723,7 +723,7 @@ private void loadAllPlaylists(){
             if(wideLayout)playerArea.addView(catalogScroll,new LinearLayout.LayoutParams(0,-1,0.38f));
             else playerArea.addView(catalogScroll,new LinearLayout.LayoutParams(-1,0,1f));
             final ExoPlayer activePlayer=player;
-            lastPlayedUrl=c.url;long resumePosition=historyPosition(c);pendingResumePosition=0L;
+            lastPlayedUrl=c.url;long resumePosition=("live".equals(c.type)||"m3u".equals(c.type))?0L:historyPosition(c);pendingResumePosition=0L;
             historyKeysCache.add("history_"+key(c.url));prefs.edit().putString("last_url",c.url).putString("history_"+key(c.url),c.name==null?"":c.name).apply();
             List<MediaEntry> queue=playableQueue(c);ArrayList<MediaItem> mediaItems=new ArrayList<>();int startIndex=0;
             for(int i=0;i<queue.size();i++){
