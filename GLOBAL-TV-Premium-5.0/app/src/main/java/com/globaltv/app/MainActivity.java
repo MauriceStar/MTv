@@ -603,9 +603,10 @@ private void loadAllPlaylists(){
             if(!filterMatches(activeFilter,group,name))continue;
             entries.add(entry);
         }
+        final Map<String,?> historySnapshot=saved;
         Collections.sort(entries,(left,right)->{
-            Object leftValue=saved.get("history_time_"+key(left.url));
-            Object rightValue=saved.get("history_time_"+key(right.url));
+            Object leftValue=historySnapshot.get("history_time_"+key(left.url));
+            Object rightValue=historySnapshot.get("history_time_"+key(right.url));
             long leftTime=leftValue instanceof Number?((Number)leftValue).longValue():0L;
             long rightTime=rightValue instanceof Number?((Number)rightValue).longValue():0L;
             return Long.compare(rightTime,leftTime);
