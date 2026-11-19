@@ -664,6 +664,8 @@ private void loadAllPlaylists(){
     }
     private boolean isMusicEntry(MediaEntry e){String v=((e.name==null?"":e.name)+" "+(e.group==null?"":e.group)).toLowerCase(Locale.ROOT);String[] keys={"music","musique","radio","mtv","trace","mezzo","mcm","vevo","concert","hits","clip"};for(String k:keys)if(v.contains(k))return true;return false;}
     private boolean isNewsEntry(MediaEntry e){String v=((e.name==null?"":e.name)+" "+(e.group==null?"":e.group)).toLowerCase(Locale.ROOT);String[] keys={"news","info","information","actualité","actualite","journal","france 24","bfm","cnews","lci","euronews","al jazeera","bbc","cnn"};for(String k:keys)if(v.contains(k))return true;return false;}
+    // Diagnostic reseau sans journaliser l'URL complete (les URLs Xtream peuvent contenir des identifiants).
+    private String safeHost(String address){try{String host=Uri.parse(address).getHost();return host==null?"unknown":host;}catch(Exception ignored){return "unknown";}}
     private MediaItem buildCompatibleMediaItem(MediaEntry entry){
         Uri uri=Uri.parse(entry.url);
         String path=uri.getPath()==null?"":uri.getPath().toLowerCase(Locale.ROOT);
@@ -718,6 +720,9 @@ private void loadAllPlaylists(){
             activePlayer.addListener(new Player.Listener(){
                 @Override public void onPlaybackStateChanged(int state){if(state==Player.STATE_READY){MediaEntry playing=currentEntry;recordSuccessfulStream(playing==null?c.url:playing.url);}}
                 @Override public void onPlayerError(androidx.media3.common.PlaybackException e){
+                    MediaEntry diagnosticEntry=currentEntry;
+                    String diagnosticAddress=diagnosticEntry!=null?diagnosticEntry.url:c.url;
+                    android.util.Log.w("MTv-Player","Playback error code="+e.errorCode+" host="+safeHost(diagnosticAddress)+" type="+e.getClass().getSimpleName());
                     postUi(()->{
                         if(player!=activePlayer||destroyed)return;
                         int failedIndex=activePlayer.getCurrentMediaItemIndex();
@@ -759,7 +764,7 @@ private void loadAllPlaylists(){
             activePlayer.setAudioAttributes(new androidx.media3.common.AudioAttributes.Builder().setUsage(androidx.media3.common.C.USAGE_MEDIA).setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MOVIE).build(),true);
             activePlayer.setMediaItems(mediaItems,startIndex,resumePosition);activePlayer.prepare();activePlayer.play();
             status.setText("Lecture : "+c.name);
-        }catch(Exception e){releasePlayer();Toast.makeText(this,"Impossible de lancer ce flux",Toast.LENGTH_LONG).show();}
+        }catch(Exception e){android.util.Log.w("MTv-Player","Player initialization failed host="+safeHost(c.url)+" type="+e.getClass().getSimpleName());releasePlayer();Toast.makeText(this,"Impossible de lancer ce flux",Toast.LENGTH_LONG).show();}
     }
 
     private void styleFullscreenPlayerControls(){
