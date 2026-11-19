@@ -1351,17 +1351,28 @@ private void loadAllPlaylists(){
  }).show();
 }
 private void showPinEditor(){
- EditText pin=field("Nouveau code PIN (4 à 8 chiffres)");pin.setInputType(2);
- new AlertDialog.Builder(this).setTitle("Contrôle parental").setMessage("Laisse vide pour désactiver le contrôle parental (depuis le profil Adulte uniquement).").setView(pin).setNegativeButton("Annuler",null).setPositiveButton("Enregistrer",(d,w)->{
-  String v=pin.getText().toString();
-  if(v.isEmpty()){
-   if(PROFILE_CHILD.equals(activeProfile))Toast.makeText(this,"Passe d'abord au profil Adulte pour désactiver le code PIN.",Toast.LENGTH_LONG).show();
-   else{prefs.edit().remove("parental_pin_hash").apply();Toast.makeText(this,"Contrôle parental désactivé",Toast.LENGTH_LONG).show();}
-  }else if(v.matches("\\d{4,8}")){
-   prefs.edit().putString("parental_pin_hash",hash(v)).apply();
-   Toast.makeText(this,"Code parental enregistré",Toast.LENGTH_LONG).show();
-  }else Toast.makeText(this,"Utilise 4 à 8 chiffres",Toast.LENGTH_LONG).show();
- }).show();
+ EditText pin=field("Nouveau code PIN (4 à 8 chiffres)");
+ EditText confirm=field("Confirmer le nouveau code PIN");
+ pin.setInputType(2);confirm.setInputType(2);
+ LinearLayout form=column();
+ form.addView(pin,new LinearLayout.LayoutParams(-1,dp(52)));
+ form.addView(confirm,new LinearLayout.LayoutParams(-1,dp(52)));
+ new AlertDialog.Builder(this).setTitle("Contrôle parental")
+  .setMessage("Confirme le nouveau code pour éviter toute erreur. Laisse les deux champs vides pour désactiver le contrôle parental (profil Adulte uniquement).")
+  .setView(form).setNegativeButton("Annuler",null).setPositiveButton("Enregistrer",(d,w)->{
+   String v=pin.getText().toString(), repeated=confirm.getText().toString();
+   if(v.isEmpty()&&repeated.isEmpty()){
+    if(PROFILE_CHILD.equals(activeProfile))Toast.makeText(this,"Passe d'abord au profil Adulte pour désactiver le code PIN.",Toast.LENGTH_LONG).show();
+    else{prefs.edit().remove("parental_pin_hash").apply();Toast.makeText(this,"Contrôle parental désactivé",Toast.LENGTH_LONG).show();}
+   }else if(!v.matches("\\d{4,8}")){
+    Toast.makeText(this,"Utilise un code de 4 à 8 chiffres",Toast.LENGTH_LONG).show();
+   }else if(!v.equals(repeated)){
+    Toast.makeText(this,"Les deux codes PIN ne correspondent pas",Toast.LENGTH_LONG).show();
+   }else{
+    prefs.edit().putString("parental_pin_hash",hash(v)).apply();
+    Toast.makeText(this,"Code parental enregistré",Toast.LENGTH_LONG).show();
+   }
+  }).show();
 }
     private String hash(String value){try{byte[] b=MessageDigest.getInstance("SHA-256").digest(value.getBytes("UTF-8"));StringBuilder out=new StringBuilder();for(byte x:b)out.append(String.format(Locale.US,"%02x",x));return out.toString();}catch(Exception e){return value;}}
     private String key(String value){if(value==null||value.isEmpty())return "000000000000000000000000";String digest=hash(value);if(digest==null)digest="";if(digest.length()<24){String fallback=Integer.toHexString(value.hashCode());StringBuilder padded=new StringBuilder();while(padded.length()+fallback.length()<24)padded.append("0");padded.append(fallback);digest=padded.toString();}return digest.substring(0,24);}
