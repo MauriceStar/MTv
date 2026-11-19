@@ -726,12 +726,12 @@ private void loadAllPlaylists(){
             more.setPadding(dp(8),dp(10),dp(8),dp(10));list.addView(more);
         }
     }
-    private void renderList(){if(list==null)return;if(section.equals("HISTORIQUE")){renderHistory();return;}if(section.equals("GUIDE TV")){renderEpgGuide();return;}list.removeAllViews();String q=search==null?"":search.getText().toString().trim().toLowerCase(Locale.ROOT);String normalizedQuery=epgLookupKey(q);if(section.equals("ACCUEIL")&&q.trim().isEmpty()){renderHome();return;}int shown=0;boolean universalSearch=!q.trim().isEmpty();List<MediaEntry> activeItems=universalSearch?all:(section.equals("MTV")?mtvItems:all);
+    private void renderList(){if(list==null)return;if(section.equals("HISTORIQUE")){renderHistory();return;}if(section.equals("GUIDE TV")){renderEpgGuide();return;}list.removeAllViews();String q=search==null?"":search.getText().toString().trim().toLowerCase(Locale.ROOT);if(section.equals("ACCUEIL")&&q.trim().isEmpty()){renderHome();return;}int shown=0;boolean universalSearch=!q.trim().isEmpty();List<MediaEntry> activeItems=universalSearch?all:(section.equals("MTV")?mtvItems:all);
          ArrayList<MediaEntry> preferredItems=new ArrayList<>(),otherItems=new ArrayList<>();HashSet<String> seenUrls=new HashSet<>();for(MediaEntry entry:activeItems){if(entry==null||entry.url==null||!seenUrls.add(entry.url))continue;if(recentlyPlayable.contains(entry.url))preferredItems.add(entry);else otherItems.add(entry);}if(universalSearch&&section.equals("MTV"))for(MediaEntry entry:mtvItems)if(entry!=null&&entry.url!=null&&seenUrls.add(entry.url)){if(recentlyPlayable.contains(entry.url))preferredItems.add(entry);else otherItems.add(entry);}preferredItems.addAll(otherItems);activeItems=preferredItems;
         for(MediaEntry c:activeItems){if(!universalSearch&&!matchSection(c))continue;
             if(PROFILE_CHILD.equals(activeProfile) && isAdultEntry(c)) continue;
             String itemName=c.name==null?"":c.name;String itemGroup=c.group==null?"":c.group;
-            if(!q.isEmpty()&&!matchesUniversalSearch(c,normalizedQuery))continue;if(!universalSearch&&!filterMatches(activeFilter,itemGroup,itemName))continue;
+            if(!q.isEmpty()&&!matchesUniversalSearch(c,q))continue;if(!universalSearch&&!filterMatches(activeFilter,itemGroup,itemName))continue;
             LinearLayout item=row();item.setId(View.generateViewId());item.setPadding(dp(13),dp(4),dp(12),dp(4));item.setBackground(bg(PANEL,12));item.setFocusable(true);item.setClickable(true);
             item.setBackground(bg(0xFF17233A,12));
             item.setOnFocusChangeListener((view,hasFocus)->view.setBackground(bg(hasFocus?ACCENT:0xFF17233A,12)));LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(-1,dp(62));ip.bottomMargin=dp(8);list.addView(item,ip);if(chips!=null){for(int ci=0;ci<chips.getChildCount();ci++)chips.getChildAt(ci).setNextFocusDownId(item.getId());item.setNextFocusUpId(chips.getChildAt(0).getId());}
