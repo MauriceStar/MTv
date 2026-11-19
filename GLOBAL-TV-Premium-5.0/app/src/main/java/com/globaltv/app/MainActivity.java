@@ -23,6 +23,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.security.MessageDigest;
 import java.text.SimpleDateFormat;
+import java.text.Normalizer;
 import java.util.Date;
 import org.json.*;
 import org.xmlpull.v1.XmlPullParser;
@@ -569,7 +570,7 @@ private void loadAllPlaylists(){
         for(MediaEntry entry:featuredEntries){
             LinearLayout card=column();card.setGravity(Gravity.CENTER_HORIZONTAL);card.setPadding(dp(8),dp(8),dp(8),dp(6));card.setBackground(bg(PANEL,12));card.setFocusable(true);card.setClickable(true);LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(dp(174),dp(172));cp.rightMargin=dp(10);featured.addView(card,cp);
             ImageView logo=new ImageView(this);logo.setScaleType(ImageView.ScaleType.FIT_CENTER);logo.setBackground(bg(CARD,8));card.addView(logo,new LinearLayout.LayoutParams(dp(158),dp(102)));if(entry.logo!=null&&!entry.logo.isEmpty())com.bumptech.glide.Glide.with(this).load(entry.logo).placeholder(bg(CARD,8)).error(bg(CARD,8)).into(logo);
-            TextView label=text(entry.name,12,Color.WHITE,true);label.setGravity(Gravity.CENTER);label.setMaxLines(1);card.addView(label,new LinearLayout.LayoutParams(-1,dp(25)));String programme=entry.tvgId==null?"":epgNow.get(entry.tvgId);String cardDetail=programme!=null&&!programme.isEmpty()?"EN COURS • "+programme:(("live".equals(entry.type)||"m3u".equals(entry.type))?"EN DIRECT":(entry.group==null?"À DÉCOUVRIR":entry.group));TextView sub=text(cardDetail,9,0xFFB8C8DE,true);sub.setGravity(Gravity.CENTER);sub.setMaxLines(1);card.addView(sub,new LinearLayout.LayoutParams(-1,dp(20)));
+            TextView label=text(entry.name,12,Color.WHITE,true);label.setGravity(Gravity.CENTER);label.setMaxLines(1);card.addView(label,new LinearLayout.LayoutParams(-1,dp(25)));String programme=findEpgProgram(epgNow,entry);String cardDetail=!programme.isEmpty()?"EN COURS • "+programme:(("live".equals(entry.type)||"m3u".equals(entry.type))?"EN DIRECT":(entry.group==null?"À DÉCOUVRIR":entry.group));TextView sub=text(cardDetail,9,0xFFB8C8DE,true);sub.setGravity(Gravity.CENTER);sub.setMaxLines(1);card.addView(sub,new LinearLayout.LayoutParams(-1,dp(20)));
             card.setOnFocusChangeListener((v,focus)->{if(focus){GradientDrawable d=bg(0xFF3A315D,12);d.setStroke(dp(2),FOCUS_GOLD);v.setBackground(d);v.animate().scaleX(1.05f).scaleY(1.05f).setDuration(110).start();}else{v.setBackground(bg(PANEL,12));v.animate().scaleX(1f).scaleY(1f).setDuration(110).start();}});
             card.setOnClickListener(v->play(entry));count++;
         }
@@ -636,7 +637,7 @@ private void loadAllPlaylists(){
             item.setBackground(bg(0xFF17233A,12));
             item.setOnFocusChangeListener((view,hasFocus)->view.setBackground(bg(hasFocus?ACCENT:0xFF17233A,12)));LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(-1,dp(62));ip.bottomMargin=dp(8);list.addView(item,ip);if(chips!=null){for(int ci=0;ci<chips.getChildCount();ci++)chips.getChildAt(ci).setNextFocusDownId(item.getId());item.setNextFocusUpId(chips.getChildAt(0).getId());}
             ImageView artwork=new ImageView(this);artwork.setScaleType(ImageView.ScaleType.CENTER_CROP);artwork.setBackground(bg(CARD,8));item.addView(artwork,new LinearLayout.LayoutParams(dp(76),dp(52)));if(c.logo!=null&&!c.logo.isEmpty())com.bumptech.glide.Glide.with(this).load(c.logo).placeholder(bg(CARD,8)).error(bg(CARD,8)).into(artwork);else artwork.setImageDrawable(bg(CARD,8));
-            LinearLayout meta=column();meta.setPadding(dp(12),0,0,0);item.addView(meta,new LinearLayout.LayoutParams(0,-1,1));meta.addView(text(itemName,14,Color.WHITE,true));String entryType=c.type==null?"":c.type;String tvgId=c.tvgId==null?"":c.tvgId;String detail=itemGroup+"  •  "+(entryType.equals("live")||entryType.equals("m3u")?"En direct":entryType.equals("series")?"Série":"VOD");if(!tvgId.isEmpty()&&epgNow.containsKey(tvgId))detail+="  •  En cours : "+epgNow.get(tvgId);if(!tvgId.isEmpty()&&epgNext.containsKey(tvgId))detail+="  •  Ensuite : "+epgNext.get(tvgId);if(section.equals("HISTORIQUE")){long pos=historyPosition(c);detail+="  •  Reprendre à "+(pos/60000)+" min";}meta.addView(text(detail,10,MUTED,false));
+            LinearLayout meta=column();meta.setPadding(dp(12),0,0,0);item.addView(meta,new LinearLayout.LayoutParams(0,-1,1));meta.addView(text(itemName,14,Color.WHITE,true));String entryType=c.type==null?"":c.type;String programmeNow=findEpgProgram(epgNow,c),programmeNext=findEpgProgram(epgNext,c);String detail=itemGroup+"  •  "+(entryType.equals("live")||entryType.equals("m3u")?"En direct":entryType.equals("series")?"Série":"VOD");if(!programmeNow.isEmpty())detail+="  •  En cours : "+programmeNow;if(!programmeNext.isEmpty())detail+="  •  Ensuite : "+programmeNext;if(section.equals("HISTORIQUE")){long pos=historyPosition(c);detail+="  •  Reprendre à "+(pos/60000)+" min";}meta.addView(text(detail,10,MUTED,false));
             TextView fav=text(favorites.contains(c.url)?"♥":"♡",22,0xFFFF7199,true);fav.setGravity(Gravity.CENTER);fav.setId(View.generateViewId());fav.setFocusable(true);fav.setClickable(true);fav.setBackground(bg(CARD,8));fav.setOnFocusChangeListener((v,focus)->v.setBackground(bg(focus?ACCENT:CARD,8)));item.setNextFocusRightId(fav.getId());item.addView(fav,new LinearLayout.LayoutParams(dp(52),-1));fav.setNextFocusLeftId(item.getId());fav.setOnClickListener(v->{if(!favorites.add(c.url))favorites.remove(c.url);getPreferences(0).edit().putStringSet("favorites",new HashSet<>(favorites)).apply();fav.setText(favorites.contains(c.url)?"♥":"♡");fav.setContentDescription(favorites.contains(c.url)?"Retirer des favoris":"Ajouter aux favoris");});fav.setOnLongClickListener(v->{showAssignFavoriteGroup(c);return true;});item.setOnClickListener(v->{if("series".equals(c.type))showSeries(c);else play(c);});shown++;if(shown>=maxRenderItems)break;}
         if(shown>=maxRenderItems){
             TextView more=text("Afficher les chaînes / contenus suivants…",13,Color.WHITE,true);
@@ -1082,6 +1083,18 @@ private void showPinEditor(){
     }
     private void showCreateFavoriteGroup(){EditText name=field("Nom de la liste");new AlertDialog.Builder(this).setTitle("Créer une liste de favoris").setView(name).setNegativeButton("Annuler",null).setPositiveButton("Créer",(d,w)->{String n=name.getText().toString().trim();if(n.isEmpty())return;if(favoriteGroups.containsKey(n)){Toast.makeText(this,"Cette liste existe déjà",Toast.LENGTH_SHORT).show();return;}favoriteGroups.put(n,new LinkedHashSet<>());prefs.edit().putStringSet("favorite_groups",new HashSet<>(favoriteGroups.keySet())).apply();activeFilter=n;updateChips();renderList();}).show();}
     private void showAssignFavoriteGroup(MediaEntry entry){if(favoriteGroups.isEmpty()){Toast.makeText(this,"Crée d’abord une liste de favoris.",Toast.LENGTH_SHORT).show();return;}String[] names=favoriteGroups.keySet().toArray(new String[0]);new AlertDialog.Builder(this).setTitle("Ajouter à une liste").setItems(names,(d,i)->{Set<String> urls=favoriteGroups.get(names[i]);urls.add(entry.url);prefs.edit().putStringSet("favorite_group_"+key(names[i]),new HashSet<>(urls)).apply();Toast.makeText(this,"Ajouté à "+names[i],Toast.LENGTH_SHORT).show();}).setNegativeButton("Annuler",null).show();}
+    private String epgLookupKey(String value){
+        if(value==null)return "";
+        String normalized=Normalizer.normalize(value.trim().toLowerCase(Locale.ROOT),Normalizer.Form.NFD);
+        return normalized.replaceAll("\\p{M}+","").replaceAll("[^a-z0-9]","");
+    }
+    private String findEpgProgram(Map<String,String> programs,MediaEntry entry){
+        if(programs==null||entry==null)return "";
+        String id=epgLookupKey(entry.tvgId);
+        String title=id.isEmpty()?"":programs.get(id);
+        if(title==null||title.isEmpty())title=programs.get(epgLookupKey(entry.name));
+        return title==null?"":title;
+    }
     private void showEpgDialog(){EditText input=field("URL du fichier XMLTV (HTTPS conseillé)");input.setText(epgUrl);new AlertDialog.Builder(this).setTitle("Guide TV XMLTV").setMessage("Ajoute l’URL XMLTV de ton fournisseur ou une source autorisée. Les chaînes doivent avoir un tvg-id correspondant.").setView(input).setNegativeButton("Annuler",null).setPositiveButton("Charger",(d,w)->{String u=input.getText().toString().trim();if(u.startsWith("https://")||u.startsWith("http://")){epgUrl=u;prefs.edit().putString("epg_url",u).apply();loadEpg(u);}else Toast.makeText(this,"URL HTTP/HTTPS requise",Toast.LENGTH_LONG).show();}).show();}
     private void loadEpg(String url){
         final int request=++epgRequestId;
@@ -1112,8 +1125,8 @@ private void showPinEditor(){
                             if(title!=null&&!title.trim().isEmpty()){
                                 title=title.trim();
                                 if(title.length()>300)title=title.substring(0,300);
-                                if(start<=nowMs&&stop>nowMs&&now.size()<20000)now.put(channel,title);
-                                else if(start>nowMs&&!next.containsKey(channel)&&next.size()<20000)next.put(channel,title);
+                                String channelKey=epgLookupKey(channel);if(!channelKey.isEmpty()&&start<=nowMs&&stop>nowMs&&now.size()<20000)now.putIfAbsent(channelKey,title);
+                                else if(!channelKey.isEmpty()&&start>nowMs&&!next.containsKey(channelKey)&&next.size()<20000)next.put(channelKey,title);
                             }
                         }
                         event=parser.next();
