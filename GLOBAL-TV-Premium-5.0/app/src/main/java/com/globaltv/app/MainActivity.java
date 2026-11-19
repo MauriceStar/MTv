@@ -1100,7 +1100,7 @@ private void showPinEditor(){
         final int request=++epgRequestId;
         if(status!=null)status.setText("Chargement du guide TV…");
         executeIo(()->{
-            Map<String,String> now=new HashMap<>(),next=new HashMap<>();
+            Map<String,String> now=new HashMap<>(),next=new HashMap<>();Map<String,Long> nextStart=new HashMap<>();
             String error=null;
             try{
                 HttpURLConnection connection=open(url);
@@ -1126,7 +1126,7 @@ private void showPinEditor(){
                                 title=title.trim();
                                 if(title.length()>300)title=title.substring(0,300);
                                 String channelKey=epgLookupKey(channel);if(!channelKey.isEmpty()&&start<=nowMs&&stop>nowMs&&now.size()<20000)now.putIfAbsent(channelKey,title);
-                                else if(!channelKey.isEmpty()&&start>nowMs&&!next.containsKey(channelKey)&&next.size()<20000)next.put(channelKey,title);
+                                else if(!channelKey.isEmpty()&&start>nowMs&&stop>start&&next.size()<20000){Long previousStart=nextStart.get(channelKey);if(previousStart==null||start<previousStart){nextStart.put(channelKey,start);next.put(channelKey,title);}}
                             }
                         }
                         event=parser.next();
@@ -1144,7 +1144,20 @@ private void showPinEditor(){
             });
         });
     }
-    private long parseXmlTvTime(String value){if(value==null)return 0;try{String v=value.trim();SimpleDateFormat f=new SimpleDateFormat("yyyyMMddHHmmss Z",Locale.US);if(v.length()==14)v+=" +0000";else if(v.length()>14&&v.charAt(14)!=' ')v=v.substring(0,14)+" "+v.substring(14);Date d=f.parse(v);return d==null?0:d.getTime();}catch(Exception e){return 0;}}
+    private long parseXmlTvTime(String value){
+        if(value==null)return 0L;
+        try{
+            String v=value.trim();
+            if(v.length()==14)v+=" +0000";
+            else if(v.length()==15&&v.charAt(14)=='Z')v=v.substring(0,14)+" +0000";
+            else if(v.length()==19&&(v.charAt(14)=='+'||v.charAt(14)=='-'))v=v.substring(0,14)+" "+v.substring(14);
+            if(!v.matches("\\d{14} [+-]\\d{4}"))return 0L;
+            SimpleDateFormat format=new SimpleDateFormat("yyyyMMddHHmmss Z",Locale.US);
+            format.setLenient(false);
+            Date parsed=format.parse(v);
+            return parsed==null?0L:parsed.getTime();
+        }catch(Exception ignored){return 0L;}
+    }
     private void showM3uDialog(){EditText input=new EditText(this);input.setSingleLine(true);input.setHint("https://exemple.com/playlist.m3u");input.setTextColor(Color.WHITE);input.setHintTextColor(MUTED);input.setText("");new AlertDialog.Builder(this).setTitle("Ajouter une playlist M3U").setMessage("Ajoute une nouvelle source. Les chaînes des playlists seront réunies dans le même catalogue.").setView(input).setNegativeButton("Annuler",null).setPositiveButton("Ajouter et charger",(d,w)->{String u=input.getText().toString().trim();if(u.startsWith("https://")||u.startsWith("http://")){section="TV EN DIRECT";refreshAllNavStyles();loadPlaylist(u);}else Toast.makeText(this,"Adresse HTTP/HTTPS requise",Toast.LENGTH_LONG).show();}).show();}
     private void showPlaylistManager(){ArrayList<String> urls=new ArrayList<>(playlistSources);if(urls.isEmpty()){new AlertDialog.Builder(this).setTitle("Sources M3U").setMessage("Aucune source enregistrée.").setPositiveButton("Ajouter", (d,w)->showM3uDialog()).show();return;}String[] labels=new String[urls.size()];for(int i=0;i<urls.size();i++)labels[i]=(i+1)+". "+Uri.parse(urls.get(i)).getHost()+" — "+urls.get(i);new AlertDialog.Builder(this).setTitle("Sources M3U • "+urls.size()).setItems(labels,(d,which)->new AlertDialog.Builder(this).setTitle("Gérer cette source").setMessage(urls.get(which)).setNegativeButton("Fermer",null).setNeutralButton("Supprimer",(a,b)->{playlistSources.remove(urls.get(which));prefs.edit().putStringSet("m3u_sources",new HashSet<>(playlistSources)).apply();loadAllPlaylists();}).setPositiveButton("Recharger",(a,b)->loadPlaylist(urls.get(which))).show()).setPositiveButton("Ajouter une source",(d,w)->showM3uDialog()).setNegativeButton("Fermer",null).show();}
     private void showXtreamDialog(){LinearLayout form=column();form.setPadding(dp(8),dp(4),dp(8),dp(4));EditText host=field("URL du serveur (https://serveur:port)");EditText user=field("Nom d’utilisateur");EditText pass=field("Mot de passe");pass.setInputType(129);form.addView(host);form.addView(user);form.addView(pass);new AlertDialog.Builder(this).setTitle("Connexion Xtream Codes").setMessage("Utilise les identifiants fournis par ton fournisseur IPTV autorisé. HTTPS est recommandé.").setView(form).setNegativeButton("Annuler",null).setPositiveButton("Se connecter",(d,w)->{String h=host.getText().toString().trim(),u=user.getText().toString().trim(),p=pass.getText().toString();try{Uri uri=Uri.parse(h);if((!"https".equalsIgnoreCase(uri.getScheme())&&!("http".equalsIgnoreCase(uri.getScheme())))||uri.getHost()==null||u.isEmpty()||p.isEmpty())throw new Exception();xtreamBase=h;xtreamUser=u;xtreamPass=p;section="ACCUEIL";heading.setText("Bienvenue sur GLOBAL TV");loadXtream();}catch(Exception e){Toast.makeText(this,"Vérifie l’URL et les identifiants",Toast.LENGTH_LONG).show();}}).show();}
