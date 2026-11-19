@@ -55,6 +55,9 @@ public class MainActivity extends AppCompatActivity {
         new ThreadPoolExecutor.AbortPolicy());
     private final Handler mainHandler=new Handler(Looper.getMainLooper());
     private Runnable pendingSearch;
+    // Cache les termes normalisés : ils ne doivent pas être recalculés pour chaque élément du catalogue.
+    private String cachedSearchQuery=null;
+    private String[] cachedSearchTokens=new String[0];
     private volatile boolean destroyed=false;
     private volatile int catalogRequestId=0;
     private volatile int epgRequestId=0;
@@ -257,7 +260,7 @@ public class MainActivity extends AppCompatActivity {
             public void onTextChanged(CharSequence s,int st,int before,int count){
                 if(pendingSearch!=null)mainHandler.removeCallbacks(pendingSearch);
                 pendingSearch=()->{if(!destroyed)renderList();};
-                mainHandler.postDelayed(pendingSearch,180);
+                mainHandler.postDelayed(pendingSearch,300);
             }
             public void afterTextChanged(Editable e){}
         });
@@ -727,8 +730,10 @@ private void loadAllPlaylists(){
         }
     }
     private void renderList(){if(list==null)return;if(section.equals("HISTORIQUE")){renderHistory();return;}if(section.equals("GUIDE TV")){renderEpgGuide();return;}list.removeAllViews();String q=search==null?"":search.getText().toString().trim().toLowerCase(Locale.ROOT);if(section.equals("ACCUEIL")&&q.trim().isEmpty()){renderHome();return;}int shown=0;boolean universalSearch=!q.trim().isEmpty();List<MediaEntry> activeItems=universalSearch?all:(section.equals("MTV")?mtvItems:all);
-         ArrayList<MediaEntry> preferredItems=new ArrayList<>(),otherItems=new ArrayList<>();HashSet<String> seenUrls=new HashSet<>();for(MediaEntry entry:activeItems){if(entry==null||entry.url==null||!seenUrls.add(entry.url))continue;if(recentlyPlayable.contains(entry.url))preferredItems.add(entry);else otherItems.add(entry);}if(universalSearch&&section.equals("MTV"))for(MediaEntry entry:mtvItems)if(entry!=null&&entry.url!=null&&seenUrls.add(entry.url)){if(recentlyPlayable.contains(entry.url))preferredItems.add(entry);else otherItems.add(entry);}preferredItems.addAll(otherItems);activeItems=preferredItems;
-        for(MediaEntry c:activeItems){if(!universalSearch&&!matchSection(c))continue;
+        if(!universalSearch){ArrayList<MediaEntry> preferredItems=new ArrayList<>(),otherItems=new ArrayList<>();HashSet<String> seenUrls=new HashSet<>();for(MediaEntry entry:activeItems){if(entry==null||entry.url==null||!seenUrls.add(entry.url))continue;if(recentlyPlayable.contains(entry.url))preferredItems.add(entry);else otherItems.add(entry);}preferredItems.addAll(otherItems);activeItems=preferredItems;}
+        else if(section.equals("MTV")){ArrayList<MediaEntry> searchItems=new ArrayList<>(activeItems);searchItems.addAll(mtvItems);activeItems=searchItems;}
+        HashSet<String> seenSearchUrls=universalSearch?new HashSet<>():null;
+        for(MediaEntry c:activeItems){if(c==null||c.url==null)continue;if(universalSearch&&!seenSearchUrls.add(c.url))continue;if(!universalSearch&&!matchSection(c))continue;
             if(PROFILE_CHILD.equals(activeProfile) && isAdultEntry(c)) continue;
             String itemName=c.name==null?"":c.name;String itemGroup=c.group==null?"":c.group;
             if(!q.isEmpty()&&!matchesUniversalSearch(c,q))continue;if(!universalSearch&&!filterMatches(activeFilter,itemGroup,itemName))continue;
@@ -1203,18 +1208,27 @@ private void showPinEditor(){
     }
     private void showCreateFavoriteGroup(){EditText name=field("Nom de la liste");new AlertDialog.Builder(this).setTitle("Créer une liste de favoris").setView(name).setNegativeButton("Annuler",null).setPositiveButton("Créer",(d,w)->{String n=name.getText().toString().trim();if(n.isEmpty())return;if(favoriteGroups.containsKey(n)){Toast.makeText(this,"Cette liste existe déjà",Toast.LENGTH_SHORT).show();return;}favoriteGroups.put(n,new LinkedHashSet<>());prefs.edit().putStringSet("favorite_groups",new HashSet<>(favoriteGroups.keySet())).apply();activeFilter=n;updateChips();renderList();}).show();}
     private void showAssignFavoriteGroup(MediaEntry entry){if(favoriteGroups.isEmpty()){Toast.makeText(this,"Crée d’abord une liste de favoris.",Toast.LENGTH_SHORT).show();return;}String[] names=favoriteGroups.keySet().toArray(new String[0]);new AlertDialog.Builder(this).setTitle("Ajouter à une liste").setItems(names,(d,i)->{Set<String> urls=favoriteGroups.get(names[i]);urls.add(entry.url);prefs.edit().putStringSet("favorite_group_"+key(names[i]),new HashSet<>(urls)).apply();Toast.makeText(this,"Ajouté à "+names[i],Toast.LENGTH_SHORT).show();}).setNegativeButton("Annuler",null).show();}
-    // Recherche multi-termes : chaque mot peut correspondre au nom, au groupe,
-    // au programme EPG ou au type, sans dépendre des accents ni de la ponctuation.
+    // Recherche multi-termes : les mots saisis sont normalisés une seule fois par requête.
     private boolean matchesSearchFields(String query,String... values){
         if(query==null||query.trim().isEmpty())return true;
-        String[] rawTokens=query.trim().split("\\s+");
-        ArrayList<String> tokens=new ArrayList<>();
-        for(String token:rawTokens){String normalized=epgLookupKey(token);if(!normalized.isEmpty())tokens.add(normalized);}
-        if(tokens.isEmpty())return true;
-        StringBuilder searchable=new StringBuilder();
-        if(values!=null)for(String value:values){String normalized=epgLookupKey(value);if(!normalized.isEmpty())searchable.append(normalized).append(' ');}
+        String normalizedQuery=query.trim();
+        if(!normalizedQuery.equals(cachedSearchQuery)){
+            cachedSearchQuery=normalizedQuery;
+            ArrayList<String> tokens=new ArrayList<>();
+            for(String token:normalizedQuery.split("\\s+")){
+                String normalized=epgLookupKey(token);
+                if(!normalized.isEmpty())tokens.add(normalized);
+            }
+            cachedSearchTokens=tokens.toArray(new String[0]);
+        }
+        if(cachedSearchTokens.length==0)return true;
+        StringBuilder searchable=new StringBuilder(96);
+        if(values!=null)for(String value:values){
+            String normalized=epgLookupKey(value);
+            if(!normalized.isEmpty())searchable.append(normalized).append(' ');
+        }
         String haystack=searchable.toString();
-        for(String token:tokens)if(!haystack.contains(token))return false;
+        for(String token:cachedSearchTokens)if(!haystack.contains(token))return false;
         return true;
     }
     private boolean matchesUniversalSearch(MediaEntry entry,String query){
@@ -1222,10 +1236,18 @@ private void showPinEditor(){
         String current=findEpgProgram(epgNow,entry),next=findEpgProgram(epgNext,entry);
         return matchesSearchFields(query,entry.name,entry.group,current,next,entry.type);
     }
+    // Normalisation sans expressions régulières : appelée potentiellement des milliers de fois.
     private String epgLookupKey(String value){
-        if(value==null)return "";
+        if(value==null||value.isEmpty())return "";
         String normalized=Normalizer.normalize(value.trim().toLowerCase(Locale.ROOT),Normalizer.Form.NFD);
-        return normalized.replaceAll("\\p{M}+","").replaceAll("[^a-z0-9]","");
+        StringBuilder out=new StringBuilder(normalized.length());
+        for(int i=0;i<normalized.length();i++){
+            char ch=normalized.charAt(i);
+            int kind=Character.getType(ch);
+            if(kind==Character.NON_SPACING_MARK||kind==Character.COMBINING_SPACING_MARK||kind==Character.ENCLOSING_MARK)continue;
+            if((ch>='a'&&ch<='z')||(ch>='0'&&ch<='9'))out.append(ch);
+        }
+        return out.toString();
     }
     private String findEpgProgram(Map<String,String> programs,MediaEntry entry){
         if(programs==null||entry==null)return "";
