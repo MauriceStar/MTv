@@ -124,7 +124,7 @@ public class MainActivity extends AppCompatActivity {
     @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);getWindow().setStatusBarColor(BG);getWindow().setNavigationBarColor(BG);prefs=getPreferences(0);
         activeProfile=prefs.getString("active_profile",PROFILE_ADULT);
         configureMemoryBudget();
-        favorites.addAll(prefs.getStringSet("favorites",new HashSet<>()));Set<String> priorPlayable=prefs.getStringSet("recently_playable",new LinkedHashSet<>());if(priorPlayable!=null)recentlyPlayable.addAll(priorPlayable);while(recentlyPlayable.size()>250)recentlyPlayable.remove(recentlyPlayable.iterator().next());for(String group:prefs.getStringSet("favorite_groups",new HashSet<>()))favoriteGroups.put(group,new LinkedHashSet<>(prefs.getStringSet("favorite_group_"+key(group),new HashSet<>())));playlistSources.addAll(prefs.getStringSet("m3u_sources",new LinkedHashSet<>()));
+        loadProfileFavoriteData();Set<String> priorPlayable=prefs.getStringSet("recently_playable",new LinkedHashSet<>());if(priorPlayable!=null)recentlyPlayable.addAll(priorPlayable);while(recentlyPlayable.size()>250)recentlyPlayable.remove(recentlyPlayable.iterator().next());playlistSources.addAll(prefs.getStringSet("m3u_sources",new LinkedHashSet<>()));
         playlistSources.add(DEFAULT_PLAYLIST);
         playlistSources.addAll(Arrays.asList(BUILT_IN_PLAYLISTS));
         prefs.edit().putStringSet("m3u_sources",new LinkedHashSet<>(playlistSources)).apply();
@@ -782,7 +782,7 @@ private void loadAllPlaylists(){
             item.setOnFocusChangeListener((view,hasFocus)->view.setBackground(bg(hasFocus?ACCENT:0xFF17233A,12)));LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(-1,dp(62));ip.bottomMargin=dp(8);list.addView(item,ip);if(chips!=null){for(int ci=0;ci<chips.getChildCount();ci++)chips.getChildAt(ci).setNextFocusDownId(item.getId());item.setNextFocusUpId(chips.getChildAt(0).getId());}
             ImageView artwork=new ImageView(this);artwork.setScaleType(ImageView.ScaleType.CENTER_CROP);artwork.setBackground(bg(CARD,8));item.addView(artwork,new LinearLayout.LayoutParams(dp(76),dp(52)));if(c.logo!=null&&!c.logo.isEmpty())com.bumptech.glide.Glide.with(this).load(c.logo).placeholder(bg(CARD,8)).error(bg(CARD,8)).into(artwork);else artwork.setImageDrawable(bg(CARD,8));
             LinearLayout meta=column();meta.setPadding(dp(12),0,0,0);item.addView(meta,new LinearLayout.LayoutParams(0,-1,1));meta.addView(text(itemName,14,Color.WHITE,true));String entryType=c.type==null?"":c.type;String programmeNow=findEpgProgram(epgNow,c),programmeNext=findEpgProgram(epgNext,c);String detail=itemGroup+"  •  "+(entryType.equals("live")||entryType.equals("m3u")?"En direct":entryType.equals("series")?"Série":"VOD");if(!programmeNow.isEmpty())detail+="  •  En cours : "+programmeNow;if(!programmeNext.isEmpty())detail+="  •  Ensuite : "+programmeNext;if(section.equals("HISTORIQUE")){long pos=historyPosition(c);detail+="  •  Reprendre à "+(pos/60000)+" min";}meta.addView(text(detail,10,MUTED,false));
-            TextView fav=text(favorites.contains(c.url)?"♥":"♡",22,0xFFFF7199,true);fav.setGravity(Gravity.CENTER);fav.setId(View.generateViewId());fav.setFocusable(true);fav.setClickable(true);fav.setBackground(bg(CARD,8));fav.setOnFocusChangeListener((v,focus)->v.setBackground(bg(focus?ACCENT:CARD,8)));item.setNextFocusRightId(fav.getId());item.addView(fav,new LinearLayout.LayoutParams(dp(52),-1));fav.setNextFocusLeftId(item.getId());fav.setOnClickListener(v->{if(!favorites.add(c.url))favorites.remove(c.url);getPreferences(0).edit().putStringSet("favorites",new HashSet<>(favorites)).apply();fav.setText(favorites.contains(c.url)?"♥":"♡");fav.setContentDescription(favorites.contains(c.url)?"Retirer des favoris":"Ajouter aux favoris");});fav.setOnLongClickListener(v->{showAssignFavoriteGroup(c);return true;});item.setOnClickListener(v->openContent(c));shown++;if(shown>=maxRenderItems)break;}
+            TextView fav=text(favorites.contains(c.url)?"♥":"♡",22,0xFFFF7199,true);fav.setGravity(Gravity.CENTER);fav.setId(View.generateViewId());fav.setFocusable(true);fav.setClickable(true);fav.setBackground(bg(CARD,8));fav.setOnFocusChangeListener((v,focus)->v.setBackground(bg(focus?ACCENT:CARD,8)));item.setNextFocusRightId(fav.getId());item.addView(fav,new LinearLayout.LayoutParams(dp(52),-1));fav.setNextFocusLeftId(item.getId());fav.setOnClickListener(v->{if(!favorites.add(c.url))favorites.remove(c.url);getPreferences(0).edit().putStringSet(profileFavoritesKey(),new HashSet<>(favorites)).apply();fav.setText(favorites.contains(c.url)?"♥":"♡");fav.setContentDescription(favorites.contains(c.url)?"Retirer des favoris":"Ajouter aux favoris");});fav.setOnLongClickListener(v->{showAssignFavoriteGroup(c);return true;});item.setOnClickListener(v->openContent(c));shown++;if(shown>=maxRenderItems)break;}
         if(shown>=maxRenderItems){
             TextView more=text("Afficher les chaînes / contenus suivants…",13,Color.WHITE,true);
             more.setGravity(Gravity.CENTER);more.setFocusable(true);more.setClickable(true);more.setPadding(dp(12),dp(10),dp(12),dp(10));more.setBackground(bg(ACCENT,10));
@@ -1094,6 +1094,28 @@ private void loadAllPlaylists(){
         for(String word:blocked)if(value.contains(word))return true;
         return false;
     }
+    private String profileFavoritesKey(){return PROFILE_CHILD.equals(activeProfile)?"favorites_child":"favorites";}
+    private String profileFavoriteGroupsKey(){return PROFILE_CHILD.equals(activeProfile)?"favorite_groups_child":"favorite_groups";}
+    private String profileFavoriteGroupKey(String group){return (PROFILE_CHILD.equals(activeProfile)?"favorite_group_child_":"favorite_group_")+key(group);}
+    private void loadProfileFavoriteData(){
+        favorites.clear();favoriteGroups.clear();
+        Set<String> savedFavorites=prefs.getStringSet(profileFavoritesKey(),new HashSet<>());
+        if(savedFavorites!=null)favorites.addAll(savedFavorites);
+        Set<String> savedGroups=prefs.getStringSet(profileFavoriteGroupsKey(),new HashSet<>());
+        if(savedGroups!=null)for(String group:savedGroups){
+            Set<String> urls=prefs.getStringSet(profileFavoriteGroupKey(group),new HashSet<>());
+            favoriteGroups.put(group,new LinkedHashSet<>(urls==null?new HashSet<>():urls));
+        }
+    }
+    private void switchProfile(String next){
+        if(next==null||next.equals(activeProfile))return;
+        activeProfile=next;
+        prefs.edit().putString("active_profile",next).apply();
+        loadProfileFavoriteData();
+        activeFilter="Tout";
+        updateChips();
+        renderList();
+    }
     private void showProfileDialog(){
         String[] profiles={"Adulte","Enfant"};
         int selected=PROFILE_CHILD.equals(activeProfile)?1:0;
@@ -1101,9 +1123,8 @@ private void loadAllPlaylists(){
             .setSingleChoiceItems(profiles,selected,(dialog,which)->{
                 String next=profiles[which];
                 if(PROFILE_CHILD.equals(next)){
-                    activeProfile=next;
-                    prefs.edit().putString("active_profile",next).apply();
-                    dialog.dismiss(); renderList();
+                    switchProfile(next);
+                    dialog.dismiss();
                     Toast.makeText(this,"Profil Enfant activé • Filtrage indicatif",Toast.LENGTH_LONG).show();
                 }else if(PROFILE_CHILD.equals(activeProfile)){
                     String pinHash=prefs.getString("parental_pin_hash","");
@@ -1114,16 +1135,12 @@ private void loadAllPlaylists(){
                         new AlertDialog.Builder(this).setTitle("Accès profil Adulte").setView(pin)
                             .setNegativeButton("Annuler",null).setPositiveButton("Valider",(d,w)->{
                                 if(pinHash.equals(hash(pin.getText().toString()))){
-                                    activeProfile=PROFILE_ADULT;
-                                    prefs.edit().putString("active_profile",activeProfile).apply();
-                                    renderList();
+                                    switchProfile(PROFILE_ADULT);
                                 }else Toast.makeText(this,"Code PIN incorrect",Toast.LENGTH_LONG).show();
                             }).show();
                     }
                 }else{
-                    activeProfile=PROFILE_ADULT;
-                    prefs.edit().putString("active_profile",activeProfile).apply();
-                    renderList();
+                    switchProfile(PROFILE_ADULT);
                 }
                 dialog.dismiss();
             }).setNegativeButton("Fermer",null).show();
@@ -1351,8 +1368,8 @@ private void showPinEditor(){
             prefs.edit().putLong(positionKey,position).putLong("duration_"+key(entry.url),duration).apply();
         }catch(Exception e){android.util.Log.w("MTv-Player","Unable to save playback position",e);}
     }
-    private void showCreateFavoriteGroup(){EditText name=field("Nom de la liste");new AlertDialog.Builder(this).setTitle("Créer une liste de favoris").setView(name).setNegativeButton("Annuler",null).setPositiveButton("Créer",(d,w)->{String n=name.getText().toString().trim();if(n.isEmpty())return;if(favoriteGroups.containsKey(n)){Toast.makeText(this,"Cette liste existe déjà",Toast.LENGTH_SHORT).show();return;}favoriteGroups.put(n,new LinkedHashSet<>());prefs.edit().putStringSet("favorite_groups",new HashSet<>(favoriteGroups.keySet())).apply();activeFilter=n;updateChips();renderList();}).show();}
-    private void showAssignFavoriteGroup(MediaEntry entry){if(favoriteGroups.isEmpty()){Toast.makeText(this,"Crée d’abord une liste de favoris.",Toast.LENGTH_SHORT).show();return;}String[] names=favoriteGroups.keySet().toArray(new String[0]);new AlertDialog.Builder(this).setTitle("Ajouter à une liste").setItems(names,(d,i)->{Set<String> urls=favoriteGroups.get(names[i]);urls.add(entry.url);prefs.edit().putStringSet("favorite_group_"+key(names[i]),new HashSet<>(urls)).apply();Toast.makeText(this,"Ajouté à "+names[i],Toast.LENGTH_SHORT).show();}).setNegativeButton("Annuler",null).show();}
+    private void showCreateFavoriteGroup(){EditText name=field("Nom de la liste");new AlertDialog.Builder(this).setTitle("Créer une liste de favoris").setView(name).setNegativeButton("Annuler",null).setPositiveButton("Créer",(d,w)->{String n=name.getText().toString().trim();if(n.isEmpty())return;if(favoriteGroups.containsKey(n)){Toast.makeText(this,"Cette liste existe déjà",Toast.LENGTH_SHORT).show();return;}favoriteGroups.put(n,new LinkedHashSet<>());prefs.edit().putStringSet(profileFavoriteGroupsKey(),new HashSet<>(favoriteGroups.keySet())).apply();activeFilter=n;updateChips();renderList();}).show();}
+    private void showAssignFavoriteGroup(MediaEntry entry){if(favoriteGroups.isEmpty()){Toast.makeText(this,"Crée d’abord une liste de favoris.",Toast.LENGTH_SHORT).show();return;}String[] names=favoriteGroups.keySet().toArray(new String[0]);new AlertDialog.Builder(this).setTitle("Ajouter à une liste").setItems(names,(d,i)->{Set<String> urls=favoriteGroups.get(names[i]);urls.add(entry.url);prefs.edit().putStringSet(profileFavoriteGroupKey(names[i]),new HashSet<>(urls)).apply();Toast.makeText(this,"Ajouté à "+names[i],Toast.LENGTH_SHORT).show();}).setNegativeButton("Annuler",null).show();}
     // Recherche multi-termes : les mots saisis sont normalisés une seule fois par requête.
     private boolean matchesSearchFields(String query,String... values){
         if(query==null||query.trim().isEmpty())return true;
