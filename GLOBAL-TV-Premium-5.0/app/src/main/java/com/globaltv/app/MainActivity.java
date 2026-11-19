@@ -641,7 +641,72 @@ private void loadAllPlaylists(){
         }
         if(shown==0){TextView empty=text("Aucun historique disponible pour cette source. Les contenus apparaîtront ici après une lecture.",14,MUTED,false);empty.setPadding(dp(12),dp(28),dp(12),dp(20));list.addView(empty);}
     }
-    private void renderList(){if(list==null)return;if(section.equals("HISTORIQUE")){renderHistory();return;}list.removeAllViews();String q=search==null?"":search.getText().toString().toLowerCase(Locale.ROOT);if(section.equals("ACCUEIL")&&q.trim().isEmpty()){renderHome();return;}int shown=0;boolean universalSearch=!q.trim().isEmpty();List<MediaEntry> activeItems=universalSearch?all:(section.equals("MTV")?mtvItems:all);
+    private void renderEpgGuide(){
+        if(list==null)return;
+        list.removeAllViews();
+        String query=search==null?"":search.getText().toString().trim().toLowerCase(Locale.ROOT);
+        LinearLayout header=row();
+        TextView title=text("GUIDE TV",17,Color.WHITE,true);
+        header.addView(title,new LinearLayout.LayoutParams(0,dp(42),1f));
+        TextView refresh=text("↻  Actualiser",11,Color.WHITE,true);
+        refresh.setGravity(Gravity.CENTER);refresh.setPadding(dp(12),0,dp(12),0);
+        refresh.setBackground(bg(CARD,9));refresh.setFocusable(true);refresh.setClickable(true);
+        header.addView(refresh,new LinearLayout.LayoutParams(-2,dp(36)));
+        refresh.setOnFocusChangeListener((v,focused)->v.setBackground(bg(focused?FOCUS_GOLD:CARD,9)));
+        refresh.setOnClickListener(v->{if(epgUrl!=null&&!epgUrl.isEmpty())loadEpg(epgUrl);else showEpgDialog();});
+        TextView source=text(epgUrl==null||epgUrl.isEmpty()?"Configurer XMLTV":"Source XMLTV",11,Color.WHITE,true);
+        source.setGravity(Gravity.CENTER);source.setPadding(dp(12),0,dp(12),0);source.setBackground(bg(CARD,9));
+        source.setFocusable(true);source.setClickable(true);
+        LinearLayout.LayoutParams sourceParams=new LinearLayout.LayoutParams(-2,dp(36));sourceParams.leftMargin=dp(8);header.addView(source,sourceParams);
+        source.setOnFocusChangeListener((v,focused)->v.setBackground(bg(focused?FOCUS_GOLD:CARD,9)));
+        source.setOnClickListener(v->showEpgDialog());
+        list.addView(header,new LinearLayout.LayoutParams(-1,dp(48)));
+        int mappedNow=epgNow.size(),mappedNext=epgNext.size();
+        String guideStatus=epgUrl==null||epgUrl.isEmpty()?"Aucune source XMLTV configurée.":"Programmes disponibles : "+mappedNow+" en cours • "+mappedNext+" à suivre";
+        TextView summary=text(guideStatus,11,MUTED,false);summary.setPadding(0,0,0,dp(8));
+        list.addView(summary,new LinearLayout.LayoutParams(-1,dp(30)));
+        if(all==null||all.isEmpty()){
+            TextView empty=text("Charge une playlist pour afficher les chaînes dans le Guide TV.",13,MUTED,false);
+            empty.setPadding(dp(8),dp(20),dp(8),dp(20));list.addView(empty);return;
+        }
+        int shown=0,matched=0;HashSet<String> seen=new HashSet<>();
+        for(MediaEntry entry:all){
+            if(entry==null||entry.url==null||entry.name==null)continue;
+            if(!"live".equals(entry.type)&&!"m3u".equals(entry.type))continue;
+            if(!seen.add(entry.url))continue;
+            if(PROFILE_CHILD.equals(activeProfile)&&isAdultEntry(entry))continue;
+            String name=entry.name.trim();
+            if(!query.isEmpty()&&!name.toLowerCase(Locale.ROOT).contains(query)&&!(entry.group!=null&&entry.group.toLowerCase(Locale.ROOT).contains(query)))continue;
+            if(!filterMatches(activeFilter,entry.group,entry.name))continue;
+            matched++;if(shown>=maxRenderItems)continue;
+            LinearLayout card=row();card.setPadding(dp(10),dp(7),dp(10),dp(7));
+            card.setBackground(bg(PANEL,11));card.setFocusable(true);card.setClickable(true);
+            LinearLayout.LayoutParams cardParams=new LinearLayout.LayoutParams(-1,dp(78));cardParams.bottomMargin=dp(7);list.addView(card,cardParams);
+            ImageView logo=new ImageView(this);logo.setScaleType(ImageView.ScaleType.FIT_CENTER);logo.setBackground(bg(CARD,8));
+            card.addView(logo,new LinearLayout.LayoutParams(dp(64),dp(58)));
+            if(entry.logo!=null&&!entry.logo.isEmpty())com.bumptech.glide.Glide.with(this).load(entry.logo).placeholder(bg(CARD,8)).error(bg(CARD,8)).into(logo);
+            LinearLayout details=column();details.setGravity(Gravity.CENTER_VERTICAL);details.setPadding(dp(11),0,dp(4),0);
+            card.addView(details,new LinearLayout.LayoutParams(0,-1,1f));
+            TextView channelName=text(name,13,Color.WHITE,true);channelName.setMaxLines(1);
+            details.addView(channelName,new LinearLayout.LayoutParams(-1,dp(21)));
+            String current=findEpgProgram(epgNow,entry),next=findEpgProgram(epgNext,entry);
+            TextView nowLine=text(current.isEmpty()?"EN COURS  •  Programme non renseigné":"EN COURS  •  "+current,10,current.isEmpty()?MUTED:0xFFFFD16B,true);
+            nowLine.setMaxLines(1);details.addView(nowLine,new LinearLayout.LayoutParams(-1,dp(19)));
+            TextView nextLine=text(next.isEmpty()?"ENSUITE  •  Programme non renseigné":"ENSUITE  •  "+next,9,MUTED,false);
+            nextLine.setMaxLines(1);details.addView(nextLine,new LinearLayout.LayoutParams(-1,dp(17)));
+            TextView playIcon=text("▶",16,0xFFFFC247,true);playIcon.setGravity(Gravity.CENTER);card.addView(playIcon,new LinearLayout.LayoutParams(dp(34),-1));
+            card.setOnFocusChangeListener((v,focused)->{if(focused){GradientDrawable d=bg(0xFF3A315D,11);d.setStroke(dp(2),FOCUS_GOLD);v.setBackground(d);}else v.setBackground(bg(PANEL,11));});
+            card.setOnClickListener(v->play(entry));shown++;
+        }
+        if(matched==0){
+            TextView empty=text(query.isEmpty()?"Aucune chaîne en direct disponible pour le guide.":"Aucune chaîne ne correspond à cette recherche ou à ce filtre.",13,MUTED,false);
+            empty.setPadding(dp(8),dp(22),dp(8),dp(20));list.addView(empty);
+        }else if(matched>shown){
+            TextView more=text("Affichage limité à "+shown+" chaînes pour préserver la fluidité de l'appareil.",10,MUTED,false);
+            more.setPadding(dp(8),dp(10),dp(8),dp(10));list.addView(more);
+        }
+    }
+    private void renderList(){if(list==null)return;if(section.equals("HISTORIQUE")){renderHistory();return;}if(section.equals("GUIDE TV")){renderEpgGuide();return;}list.removeAllViews();String q=search==null?"":search.getText().toString().toLowerCase(Locale.ROOT);if(section.equals("ACCUEIL")&&q.trim().isEmpty()){renderHome();return;}int shown=0;boolean universalSearch=!q.trim().isEmpty();List<MediaEntry> activeItems=universalSearch?all:(section.equals("MTV")?mtvItems:all);
          ArrayList<MediaEntry> preferredItems=new ArrayList<>(),otherItems=new ArrayList<>();HashSet<String> seenUrls=new HashSet<>();for(MediaEntry entry:activeItems){if(entry==null||entry.url==null||!seenUrls.add(entry.url))continue;if(recentlyPlayable.contains(entry.url))preferredItems.add(entry);else otherItems.add(entry);}if(universalSearch&&section.equals("MTV"))for(MediaEntry entry:mtvItems)if(entry!=null&&entry.url!=null&&seenUrls.add(entry.url)){if(recentlyPlayable.contains(entry.url))preferredItems.add(entry);else otherItems.add(entry);}preferredItems.addAll(otherItems);activeItems=preferredItems;
         for(MediaEntry c:activeItems){if(!universalSearch&&!matchSection(c))continue;
             if(PROFILE_CHILD.equals(activeProfile) && isAdultEntry(c)) continue;
