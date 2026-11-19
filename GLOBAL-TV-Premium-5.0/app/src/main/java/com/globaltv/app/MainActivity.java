@@ -989,8 +989,90 @@ private void loadAllPlaylists(){
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
     }
 
-    private void showSeries(MediaEntry s){if(!"XTREAM".equals(sourceMode)||s==null||s.id==null||s.id.isEmpty()){Toast.makeText(this,"Les saisons et épisodes nécessitent une source Xtream compatible.",Toast.LENGTH_LONG).show();return;}executeIo(()->{String err=null;final TreeMap<Integer,ArrayList<MediaEntry>> seasons=new TreeMap<>();try{JSONObject data=new JSONObject(get(api("get_series_info","&series_id="+enc(s.id))));JSONObject info=data.optJSONObject("info");if(info!=null){s.plot=info.optString("plot",s.plot);s.genre=info.optString("genre",s.genre);s.cast=info.optString("cast",s.cast);s.director=info.optString("director",s.director);s.rating=info.optString("rating",s.rating);s.year=info.optString("releaseDate",s.year);}JSONObject episodes=data.optJSONObject("episodes");if(episodes!=null){Iterator<String> keys=episodes.keys();while(keys.hasNext()){String key=keys.next();int seasonNo;try{seasonNo=Integer.parseInt(key);}catch(Exception ignored){seasonNo=0;}JSONArray arr=episodes.optJSONArray(key);if(arr==null)continue;ArrayList<MediaEntry> bucket=seasons.get(seasonNo);if(bucket==null){bucket=new ArrayList<>();seasons.put(seasonNo,bucket);}for(int i=0;i<arr.length();i++){JSONObject o=arr.optJSONObject(i);if(o==null)continue;String id=o.optString("id","");if(id.isEmpty())continue;String ext=o.optString("container_extension","mp4");String url=xtreamBase+(xtreamBase.endsWith("/")?"":"/")+"series/"+enc(xtreamUser)+"/"+enc(xtreamPass)+"/"+id+"."+ext;MediaEntry ep=new MediaEntry(o.optString("title","Épisode "+(i+1)),url,"Saison "+(seasonNo>0?seasonNo:key),"","episode");ep.episodeNumber=o.optInt("episode_num",i+1);ep.seasonNumber=seasonNo;ep.seriesTitle=s.name==null?"":s.name;ep.duration=o.optString("info", "");bucket.add(ep);}}}for(ArrayList<MediaEntry> bucket:seasons.values())Collections.sort(bucket,(a,b)->Integer.compare(a.episodeNumber,b.episodeNumber));}catch(Exception e){err=e.getMessage();}final String error=err;postUi(()->{if(destroyed)return;if(error!=null||seasons.isEmpty()){Toast.makeText(this,"Impossible de charger les épisodes de cette série.",Toast.LENGTH_LONG).show();return;}String[] seasonNames=new String[seasons.size()];ArrayList<Integer> seasonKeys=new ArrayList<>(seasons.keySet());for(int i=0;i<seasonKeys.size();i++)seasonNames[i]=seasonKeys.get(i)>0?"Saison "+seasonKeys.get(i):"Autres épisodes";new AlertDialog.Builder(this).setTitle(s.name).setItems(seasonNames,(dialog,which)->{ArrayList<MediaEntry> eps=seasons.get(seasonKeys.get(which));String[] labels=new String[eps.size()];for(int i=0;i<eps.size();i++){MediaEntry ep=eps.get(i);labels[i]="Épisode "+ep.episodeNumber+" — "+ep.name;}new AlertDialog.Builder(this).setTitle(seasonNames[which]).setItems(labels,(d,index)->play(eps.get(index))).setNegativeButton("Retour",null).show();}).setNegativeButton("Fermer",null).show();});});}
-    private void showMovieDetails(MediaEntry movie){if(movie==null)return;if(!"XTREAM".equals(sourceMode)||movie.id==null||movie.id.isEmpty()){play(movie);return;}executeIo(()->{String plot=movie.plot,genre=movie.genre,cast=movie.cast,director=movie.director,rating=movie.rating,year=movie.year,duration=movie.duration;try{JSONObject root=new JSONObject(get(api("get_vod_info","&vod_id="+enc(movie.id))));JSONObject info=root.optJSONObject("info");if(info!=null){plot=info.optString("plot",plot);genre=info.optString("genre",genre);cast=info.optString("cast",cast);director=info.optString("director",director);rating=info.optString("rating",rating);year=info.optString("releasedate",info.optString("releaseDate",year));duration=info.optString("duration",duration);String image=info.optString("movie_image","");if(movie.logo==null||movie.logo.isEmpty())movie.logo=image;}}catch(Exception ignored){}final String details=buildMediaDetails(movie,plot,genre,year,duration,rating,director,cast);postUi(()->{if(destroyed)return;new AlertDialog.Builder(this).setTitle(movie.name==null?"Film":movie.name).setMessage(details).setPositiveButton("Lire",(d,w)->play(movie)).setNegativeButton("Fermer",null).show();});});}
+    private void showMediaDetailDialog(MediaEntry entry,String plot,String genre,String year,String duration,String rating,String director,String cast,String actionLabel,Runnable action){
+        if(entry==null||destroyed)return;
+        final AlertDialog[] dialogRef=new AlertDialog[1];
+        LinearLayout panel=column();panel.setPadding(dp(18),dp(14),dp(18),dp(12));panel.setBackgroundColor(BG);
+        LinearLayout hero=row();hero.setGravity(Gravity.TOP);panel.addView(hero,new LinearLayout.LayoutParams(-1,-2));
+        ImageView poster=new ImageView(this);poster.setScaleType(ImageView.ScaleType.CENTER_CROP);poster.setBackground(bg(CARD,10));
+        LinearLayout.LayoutParams posterParams=new LinearLayout.LayoutParams(dp(126),dp(178));posterParams.rightMargin=dp(15);hero.addView(poster,posterParams);
+        if(entry.logo!=null&&!entry.logo.isEmpty())com.bumptech.glide.Glide.with(this).load(entry.logo).placeholder(bg(CARD,10)).error(bg(CARD,10)).into(poster);
+        LinearLayout summary=column();summary.setGravity(Gravity.CENTER_VERTICAL);hero.addView(summary,new LinearLayout.LayoutParams(0,-2,1f));
+        TextView typeLabel=text("series".equals(entry.type)?"SÉRIE":"movie".equals(entry.type)?"FILM":"CONTENU",10,FOCUS_GOLD,true);summary.addView(typeLabel,new LinearLayout.LayoutParams(-1,dp(22)));
+        TextView title=text(entry.name==null?"Contenu":entry.name,19,Color.WHITE,true);title.setMaxLines(3);summary.addView(title,new LinearLayout.LayoutParams(-1,-2));
+        String meta="";if(year!=null&&!year.isEmpty())meta+=year;if(duration!=null&&!duration.isEmpty())meta+=(meta.isEmpty()?"":"  •  ")+duration;if(rating!=null&&!rating.isEmpty())meta+=(meta.isEmpty()?"":"  •  ")+"★ "+rating;
+        if(!meta.isEmpty()){TextView metaView=text(meta,11,0xFFFFD16B,true);metaView.setPadding(0,dp(8),0,0);summary.addView(metaView,new LinearLayout.LayoutParams(-1,-2));}
+        if(genre!=null&&!genre.isEmpty()){TextView genreView=text(genre,11,0xFFB8C8DE,false);genreView.setMaxLines(2);genreView.setPadding(0,dp(6),0,0);summary.addView(genreView,new LinearLayout.LayoutParams(-1,-2));}
+        if(plot!=null&&!plot.trim().isEmpty()){TextView synopsisTitle=text("SYNOPSIS",11,FOCUS_GOLD,true);synopsisTitle.setPadding(0,dp(16),0,dp(5));panel.addView(synopsisTitle);TextView synopsis=text(plot.trim(),12,0xFFE1E7F0,false);synopsis.setLineSpacing(dp(2),1f);panel.addView(synopsis,new LinearLayout.LayoutParams(-1,-2));}
+        if((director!=null&&!director.isEmpty())||(cast!=null&&!cast.isEmpty())){TextView credits=text((director==null||director.isEmpty()?"":"Réalisation : "+director)+(cast==null||cast.isEmpty()?"":"\nAvec : "+cast),10,MUTED,false);credits.setPadding(0,dp(10),0,0);panel.addView(credits,new LinearLayout.LayoutParams(-1,-2));}
+        ArrayList<MediaEntry> recommendations=new ArrayList<>();String targetType=entry.type==null?"":entry.type;String targetGroup=entry.group==null?"":entry.group.trim();
+        if(!targetGroup.isEmpty())for(MediaEntry candidate:all){
+            if(candidate==null||candidate==entry||candidate.url==null||candidate.url.isEmpty()||candidate.url.equals(entry.url))continue;
+            if(!targetType.equals(candidate.type)||(PROFILE_CHILD.equals(activeProfile)&&isAdultEntry(candidate)))continue;
+            if(candidate.group==null||!targetGroup.equalsIgnoreCase(candidate.group.trim()))continue;
+            boolean duplicate=false;for(MediaEntry picked:recommendations)if(picked.url.equals(candidate.url)){duplicate=true;break;}
+            if(!duplicate)recommendations.add(candidate);if(recommendations.size()>=6)break;
+        }
+        if(!recommendations.isEmpty()){
+            TextView recommendationTitle=text("À DÉCOUVRIR AUSSI",11,FOCUS_GOLD,true);recommendationTitle.setPadding(0,dp(18),0,dp(8));panel.addView(recommendationTitle);
+            HorizontalScrollView horizontal=new HorizontalScrollView(this);horizontal.setHorizontalScrollBarEnabled(false);horizontal.setOverScrollMode(View.OVER_SCROLL_NEVER);
+            LinearLayout cards=row();horizontal.addView(cards);panel.addView(horizontal,new LinearLayout.LayoutParams(-1,dp(154)));
+            for(MediaEntry candidate:recommendations){
+                LinearLayout card=column();card.setGravity(Gravity.CENTER_HORIZONTAL);card.setPadding(dp(6),dp(6),dp(6),dp(5));card.setBackground(bg(PANEL,9));card.setFocusable(true);card.setClickable(true);
+                LinearLayout.LayoutParams cardParams=new LinearLayout.LayoutParams(dp(112),dp(146));cardParams.rightMargin=dp(8);cards.addView(card,cardParams);
+                ImageView image=new ImageView(this);image.setScaleType(ImageView.ScaleType.CENTER_CROP);image.setBackground(bg(CARD,7));card.addView(image,new LinearLayout.LayoutParams(dp(98),dp(102)));
+                if(candidate.logo!=null&&!candidate.logo.isEmpty())com.bumptech.glide.Glide.with(this).load(candidate.logo).placeholder(bg(CARD,7)).error(bg(CARD,7)).into(image);
+                TextView candidateName=text(candidate.name==null?"Contenu":candidate.name,10,Color.WHITE,true);candidateName.setGravity(Gravity.CENTER);candidateName.setMaxLines(2);candidateName.setPadding(0,dp(5),0,0);card.addView(candidateName,new LinearLayout.LayoutParams(-1,-2));
+                card.setOnFocusChangeListener((v,focused)->{GradientDrawable d=bg(focused?ACCENT:PANEL,9);if(focused)d.setStroke(dp(2),FOCUS_GOLD);v.setBackground(d);});
+                card.setOnClickListener(v->{if(dialogRef[0]!=null)dialogRef[0].dismiss();openContent(candidate);});
+            }
+        }
+        LinearLayout actions=row();actions.setGravity(Gravity.CENTER_VERTICAL);actions.setPadding(0,dp(14),0,0);panel.addView(actions,new LinearLayout.LayoutParams(-1,dp(48)));
+        TextView primary=text(actionLabel,13,Color.BLACK,true);primary.setGravity(Gravity.CENTER);primary.setBackground(bg(0xFFFFC247,9));primary.setFocusable(true);primary.setClickable(true);actions.addView(primary,new LinearLayout.LayoutParams(0,-1,1f));
+        TextView close=text("Fermer",12,Color.WHITE,true);close.setGravity(Gravity.CENTER);close.setBackground(bg(CARD,9));close.setFocusable(true);close.setClickable(true);LinearLayout.LayoutParams closeParams=new LinearLayout.LayoutParams(dp(100),-1);closeParams.leftMargin=dp(9);actions.addView(close,closeParams);
+        AlertDialog dialog=new AlertDialog.Builder(this).setView(panel).create();dialogRef[0]=dialog;
+        primary.setOnFocusChangeListener((v,focused)->{GradientDrawable d=bg(focused?0xFFFFD36A:0xFFFFC247,9);if(focused)d.setStroke(dp(2),FOCUS_RED);v.setBackground(d);});
+        close.setOnFocusChangeListener((v,focused)->{GradientDrawable d=bg(focused?ACCENT:CARD,9);if(focused)d.setStroke(dp(2),FOCUS_GOLD);v.setBackground(d);});
+        primary.setOnClickListener(v->{dialog.dismiss();if(action!=null)action.run();});close.setOnClickListener(v->dialog.dismiss());
+        dialog.setOnShowListener(d->{if(dialog.getWindow()!=null){dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);dialog.getWindow().setLayout((int)(getResources().getDisplayMetrics().widthPixels*0.88f),-2);}primary.requestFocus();});
+        dialog.show();
+    }
+    private void showSeasonPicker(MediaEntry series,TreeMap<Integer,ArrayList<MediaEntry>> seasons){
+        if(seasons==null||seasons.isEmpty())return;ArrayList<Integer> seasonKeys=new ArrayList<>(seasons.keySet());String[] seasonNames=new String[seasonKeys.size()];
+        for(int i=0;i<seasonKeys.size();i++)seasonNames[i]=seasonKeys.get(i)>0?"Saison "+seasonKeys.get(i):"Autres épisodes";
+        new AlertDialog.Builder(this).setTitle(series.name).setItems(seasonNames,(dialog,which)->{
+            ArrayList<MediaEntry> episodes=seasons.get(seasonKeys.get(which));if(episodes==null)return;String[] labels=new String[episodes.size()];
+            for(int i=0;i<episodes.size();i++){MediaEntry episode=episodes.get(i);long position=historyPosition(episode);labels[i]="Épisode "+episode.episodeNumber+" — "+episode.name+(position>0L?"  •  Reprendre à "+(position/60000)+" min":"");}
+            new AlertDialog.Builder(this).setTitle(seasonNames[which]).setItems(labels,(d,index)->play(episodes.get(index))).setNegativeButton("Retour",null).show();
+        }).setNegativeButton("Fermer",null).show();
+    }
+    private void showSeries(MediaEntry s){
+        if(!"XTREAM".equals(sourceMode)||s==null||s.id==null||s.id.isEmpty()){Toast.makeText(this,"Les saisons et épisodes nécessitent une source Xtream compatible.",Toast.LENGTH_LONG).show();return;}
+        executeIo(()->{
+            String err=null;final TreeMap<Integer,ArrayList<MediaEntry>> seasons=new TreeMap<>();
+            try{
+                JSONObject data=new JSONObject(get(api("get_series_info","&series_id="+enc(s.id))));JSONObject info=data.optJSONObject("info");
+                if(info!=null){s.plot=info.optString("plot",s.plot);s.genre=info.optString("genre",s.genre);s.cast=info.optString("cast",s.cast);s.director=info.optString("director",s.director);s.rating=info.optString("rating",s.rating);s.year=info.optString("releaseDate",s.year);String cover=info.optString("cover","");if((s.logo==null||s.logo.isEmpty())&&!cover.isEmpty())s.logo=cover;}
+                JSONObject episodes=data.optJSONObject("episodes");
+                if(episodes!=null){Iterator<String> keys=episodes.keys();while(keys.hasNext()){
+                    String key=keys.next();int seasonNo;try{seasonNo=Integer.parseInt(key);}catch(Exception ignored){seasonNo=0;}JSONArray arr=episodes.optJSONArray(key);if(arr==null)continue;
+                    ArrayList<MediaEntry> bucket=seasons.get(seasonNo);if(bucket==null){bucket=new ArrayList<>();seasons.put(seasonNo,bucket);}
+                    for(int i=0;i<arr.length();i++){JSONObject o=arr.optJSONObject(i);if(o==null)continue;String id=o.optString("id","");if(id.isEmpty())continue;String ext=o.optString("container_extension","mp4");String url=xtreamBase+(xtreamBase.endsWith("/")?"":"/")+"series/"+enc(xtreamUser)+"/"+enc(xtreamPass)+"/"+id+"."+ext;MediaEntry ep=new MediaEntry(o.optString("title","Épisode "+(i+1)),url,"Saison "+(seasonNo>0?seasonNo:key),"","episode");ep.episodeNumber=o.optInt("episode_num",i+1);ep.seasonNumber=seasonNo;ep.seriesTitle=s.name==null?"":s.name;ep.duration=o.optString("info","");bucket.add(ep);}
+                }}
+                for(ArrayList<MediaEntry> bucket:seasons.values())Collections.sort(bucket,(a,b)->Integer.compare(a.episodeNumber,b.episodeNumber));
+            }catch(Exception e){err=e.getMessage();}
+            final String error=err;postUi(()->{if(destroyed)return;if(error!=null||seasons.isEmpty()){Toast.makeText(this,"Impossible de charger les épisodes de cette série.",Toast.LENGTH_LONG).show();return;}showMediaDetailDialog(s,s.plot,s.genre,s.year,"",s.rating,s.director,s.cast,"Voir les saisons",()->showSeasonPicker(s,seasons));});
+        });
+    }
+    private void showMovieDetails(MediaEntry movie){
+        if(movie==null)return;if(!"XTREAM".equals(sourceMode)||movie.id==null||movie.id.isEmpty()){play(movie);return;}
+        executeIo(()->{
+            String plot=movie.plot,genre=movie.genre,cast=movie.cast,director=movie.director,rating=movie.rating,year=movie.year,duration=movie.duration;
+            try{JSONObject root=new JSONObject(get(api("get_vod_info","&vod_id="+enc(movie.id))));JSONObject info=root.optJSONObject("info");if(info!=null){plot=info.optString("plot",plot);genre=info.optString("genre",genre);cast=info.optString("cast",cast);director=info.optString("director",director);rating=info.optString("rating",rating);year=info.optString("releasedate",info.optString("releaseDate",year));duration=info.optString("duration",duration);String image=info.optString("movie_image","");if((movie.logo==null||movie.logo.isEmpty())&&!image.isEmpty())movie.logo=image;}}catch(Exception ignored){}
+            final String fPlot=plot,fGenre=genre,fCast=cast,fDirector=director,fRating=rating,fYear=year,fDuration=duration;
+            postUi(()->{if(destroyed)return;showMediaDetailDialog(movie,fPlot,fGenre,fYear,fDuration,fRating,fDirector,fCast,"Lire le film",()->play(movie));});
+        });
+    }
     private String buildMediaDetails(MediaEntry entry,String plot,String genre,String year,String duration,String rating,String director,String cast){StringBuilder b=new StringBuilder();if(genre!=null&&!genre.isEmpty())b.append(genre).append("\n");if(year!=null&&!year.isEmpty())b.append(year).append("  •  ");if(duration!=null&&!duration.isEmpty())b.append(duration).append("  •  ");if(rating!=null&&!rating.isEmpty())b.append("Note ").append(rating);if(director!=null&&!director.isEmpty())b.append("\nRéalisation : ").append(director);if(cast!=null&&!cast.isEmpty())b.append("\nAvec : ").append(cast);if(plot!=null&&!plot.isEmpty())b.append("\n\n").append(plot);if(b.length()==0)b.append(entry.group==null?"Informations non fournies par la source.":entry.group+"\nInformations détaillées non fournies par la source.");return b.toString();}
     private void openContent(MediaEntry entry){if(entry==null)return;if("series".equals(entry.type))showSeries(entry);else if("movie".equals(entry.type))showMovieDetails(entry);else play(entry);}
 
