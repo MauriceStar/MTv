@@ -603,6 +603,13 @@ private void loadAllPlaylists(){
             if(!filterMatches(activeFilter,group,name))continue;
             entries.add(entry);
         }
+        Collections.sort(entries,(left,right)->{
+            Object leftValue=saved.get("history_time_"+key(left.url));
+            Object rightValue=saved.get("history_time_"+key(right.url));
+            long leftTime=leftValue instanceof Number?((Number)leftValue).longValue():0L;
+            long rightTime=rightValue instanceof Number?((Number)rightValue).longValue():0L;
+            return Long.compare(rightTime,leftTime);
+        });
         String last=saved.get("last_url") instanceof String?(String)saved.get("last_url"):"";
         if(!last.isEmpty())for(int i=0;i<entries.size();i++)if(last.equals(entries.get(i).url)){MediaEntry mostRecent=entries.remove(i);entries.add(0,mostRecent);break;}
         TextView heading=text("REPRENDRE LA LECTURE",12,0xFFFFC45C,true);heading.setLetterSpacing(0.06f);LinearLayout.LayoutParams hp=new LinearLayout.LayoutParams(-1,dp(32));hp.bottomMargin=dp(5);list.addView(heading,hp);
@@ -614,7 +621,13 @@ private void loadAllPlaylists(){
             String type=entry.type==null?"":entry.type;
             long position=0L;
             try{Object stored=saved.get("position_"+key(entry.url));if(stored instanceof Number)position=Math.max(0L,((Number)stored).longValue());}catch(Exception ignored){}
-            String detail=group+"  •  "+(("live".equals(type)||"m3u".equals(type))?"En direct":("series".equals(type)?"Série":"VOD"))+(("live".equals(type)||"m3u".equals(type))?"  •  Récemment regardé":"  •  Reprendre à "+(position/60000)+" min");
+            String detail;
+            if("live".equals(type)||"m3u".equals(type)){
+                detail=group+"  •  En direct  •  Récemment regardé";
+            }else{
+                detail=group+"  •  "+("series".equals(type)||"episode".equals(type)?"Série":"VOD")
+                    +(position>0L?"  •  Reprendre à "+(position/60000)+" min":"  •  À regarder");
+            }
             LinearLayout item=row();item.setPadding(dp(12),dp(5),dp(12),dp(5));item.setBackground(bg(PANEL,11));item.setFocusable(true);item.setClickable(true);
             LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(-1,dp(64));ip.bottomMargin=dp(7);list.addView(item,ip);if(chips!=null&&chips.getChildCount()>0)item.setNextFocusUpId(chips.getChildAt(0).getId());
             TextView symbol=text(("live".equals(type)||"m3u".equals(type))?"TV":"▶",16,0xFFFFC247,true);symbol.setGravity(Gravity.CENTER);symbol.setBackground(bg(CARD,8));item.addView(symbol,new LinearLayout.LayoutParams(dp(54),dp(48)));
@@ -726,7 +739,7 @@ private void loadAllPlaylists(){
             else playerArea.addView(catalogScroll,new LinearLayout.LayoutParams(-1,0,1f));
             final ExoPlayer activePlayer=player;
             lastPlayedUrl=c.url;long resumePosition=("live".equals(c.type)||"m3u".equals(c.type))?0L:historyPosition(c);pendingResumePosition=0L;
-            historyKeysCache.add("history_"+key(c.url));prefs.edit().putString("last_url",c.url).putString("history_"+key(c.url),c.name==null?"":c.name).apply();
+            recordHistoryEntry(c);
             List<MediaEntry> queue=playableQueue(c);ArrayList<MediaItem> mediaItems=new ArrayList<>();int startIndex=0;
             for(int i=0;i<queue.size();i++){
                 MediaEntry entry=queue.get(i);
@@ -734,7 +747,10 @@ private void loadAllPlaylists(){
                 if(entry.url.equals(c.url))startIndex=i;
             }
             activePlayer.addListener(new Player.Listener(){
-                @Override public void onPlaybackStateChanged(int state){if(state==Player.STATE_READY){MediaEntry playing=currentEntry;recordSuccessfulStream(playing==null?c.url:playing.url);}}
+                @Override public void onPlaybackStateChanged(int state){
+                    if(state==Player.STATE_READY){MediaEntry playing=currentEntry;recordSuccessfulStream(playing==null?c.url:playing.url);}
+                    else if(state==Player.STATE_ENDED){clearPlaybackPosition(currentEntry);}
+                }
                 @Override public void onPlayerError(androidx.media3.common.PlaybackException e){
                     MediaEntry diagnosticEntry=currentEntry;
                     String diagnosticAddress=diagnosticEntry!=null?diagnosticEntry.url:c.url;
@@ -773,11 +789,7 @@ private void loadAllPlaylists(){
                     String uri=item.localConfiguration.uri.toString();
                     for(MediaEntry entry:queue)if(entry!=null&&entry.url!=null&&entry.url.equals(uri)){
                         currentEntry=entry;lastPlayedUrl=entry.url;
-                        if(prefs!=null){
-                            String historyKey="history_"+key(entry.url);
-                            historyKeysCache.add(historyKey);
-                            prefs.edit().putString("last_url",entry.url).putString(historyKey,entry.name==null?"":entry.name).apply();
-                        }
+                        recordHistoryEntry(entry);
                         break;
                     }
                 }
@@ -1071,14 +1083,36 @@ private void showPinEditor(){
 }
     private String hash(String value){try{byte[] b=MessageDigest.getInstance("SHA-256").digest(value.getBytes("UTF-8"));StringBuilder out=new StringBuilder();for(byte x:b)out.append(String.format(Locale.US,"%02x",x));return out.toString();}catch(Exception e){return value;}}
     private String key(String value){if(value==null||value.isEmpty())return "000000000000000000000000";String digest=hash(value);if(digest==null)digest="";if(digest.length()<24){String fallback=Integer.toHexString(value.hashCode());StringBuilder padded=new StringBuilder();while(padded.length()+fallback.length()<24)padded.append("0");padded.append(fallback);digest=padded.toString();}return digest.substring(0,24);}
+    private boolean isResumableEntry(MediaEntry entry){
+        return entry!=null&&entry.url!=null&&!entry.url.isEmpty()
+            &&!("live".equals(entry.type)||"m3u".equals(entry.type));
+    }
+    private void recordHistoryEntry(MediaEntry entry){
+        if(entry==null||entry.url==null||entry.url.isEmpty()||prefs==null)return;
+        String historyKey="history_"+key(entry.url);
+        historyKeysCache.add(historyKey);
+        prefs.edit().putString("last_url",entry.url)
+            .putString(historyKey,entry.name==null?"":entry.name)
+            .putLong("history_time_"+key(entry.url),System.currentTimeMillis()).apply();
+    }
+    private void clearPlaybackPosition(MediaEntry entry){
+        if(!isResumableEntry(entry)||prefs==null)return;
+        prefs.edit().remove("position_"+key(entry.url)).apply();
+    }
     private void savePlaybackPosition(){
         ExoPlayer active=player;
-        if(active==null||lastPlayedUrl==null||lastPlayedUrl.isEmpty()||prefs==null)return;
+        MediaEntry entry=currentEntry;
+        if(active==null||!isResumableEntry(entry)||prefs==null)return;
         try{
-            MediaEntry entry=currentEntry;
-            if(entry!=null&&("live".equals(entry.type)||"m3u".equals(entry.type)))return;
             long position=active.getCurrentPosition();
-            if(position>0L)prefs.edit().putLong("position_"+key(lastPlayedUrl),position).apply();
+            long duration=active.getDuration();
+            if(duration<=0L||duration==androidx.media3.common.C.TIME_UNSET)return;
+            String positionKey="position_"+key(entry.url);
+            if(position<=5000L||position>=duration-15000L){
+                prefs.edit().remove(positionKey).apply();
+                return;
+            }
+            prefs.edit().putLong(positionKey,position).putLong("duration_"+key(entry.url),duration).apply();
         }catch(Exception e){android.util.Log.w("MTv-Player","Unable to save playback position",e);}
     }
     private void showCreateFavoriteGroup(){EditText name=field("Nom de la liste");new AlertDialog.Builder(this).setTitle("Créer une liste de favoris").setView(name).setNegativeButton("Annuler",null).setPositiveButton("Créer",(d,w)->{String n=name.getText().toString().trim();if(n.isEmpty())return;if(favoriteGroups.containsKey(n)){Toast.makeText(this,"Cette liste existe déjà",Toast.LENGTH_SHORT).show();return;}favoriteGroups.put(n,new LinkedHashSet<>());prefs.edit().putStringSet("favorite_groups",new HashSet<>(favoriteGroups.keySet())).apply();activeFilter=n;updateChips();renderList();}).show();}
