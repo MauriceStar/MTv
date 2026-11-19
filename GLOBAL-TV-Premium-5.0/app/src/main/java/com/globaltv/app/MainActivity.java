@@ -838,6 +838,9 @@ private void loadAllPlaylists(){
         return builder.build();
     }
     private void startPlayer(MediaEntry c){
+        if(PROFILE_CHILD.equals(activeProfile)&&isAdultEntry(c)){
+            Toast.makeText(this,"Ce contenu est masqué par le profil Enfant.",Toast.LENGTH_SHORT).show();return;
+        }
         if(c==null||c.url==null||!(c.url.startsWith("https://")||c.url.startsWith("http://"))){
             Toast.makeText(this,"Adresse du flux invalide",Toast.LENGTH_LONG).show();return;
         }
@@ -1074,13 +1077,21 @@ private void loadAllPlaylists(){
         });
     }
     private String buildMediaDetails(MediaEntry entry,String plot,String genre,String year,String duration,String rating,String director,String cast){StringBuilder b=new StringBuilder();if(genre!=null&&!genre.isEmpty())b.append(genre).append("\n");if(year!=null&&!year.isEmpty())b.append(year).append("  •  ");if(duration!=null&&!duration.isEmpty())b.append(duration).append("  •  ");if(rating!=null&&!rating.isEmpty())b.append("Note ").append(rating);if(director!=null&&!director.isEmpty())b.append("\nRéalisation : ").append(director);if(cast!=null&&!cast.isEmpty())b.append("\nAvec : ").append(cast);if(plot!=null&&!plot.isEmpty())b.append("\n\n").append(plot);if(b.length()==0)b.append(entry.group==null?"Informations non fournies par la source.":entry.group+"\nInformations détaillées non fournies par la source.");return b.toString();}
-    private void openContent(MediaEntry entry){if(entry==null)return;if("series".equals(entry.type))showSeries(entry);else if("movie".equals(entry.type))showMovieDetails(entry);else play(entry);}
+    private void openContent(MediaEntry entry){if(entry==null)return;if(PROFILE_CHILD.equals(activeProfile)&&isAdultEntry(entry)){Toast.makeText(this,"Ce contenu est masqué par le profil Enfant.",Toast.LENGTH_SHORT).show();return;}if("series".equals(entry.type))showSeries(entry);else if("movie".equals(entry.type))showMovieDetails(entry);else play(entry);}
 
     private boolean isAdultEntry(MediaEntry item){
         if(item==null)return false;
-        String value=((item.name==null?"":item.name)+" "+(item.group==null?"":item.group)).toLowerCase(Locale.ROOT);
-        String[] blocked={"adult","xxx","18+","porn","erotic","adulte"};
-        for(String word:blocked) if(value.contains(word)) return true;
+        StringBuilder metadata=new StringBuilder(256);
+        if(item.name!=null)metadata.append(item.name).append(' ');
+        if(item.group!=null)metadata.append(item.group).append(' ');
+        if(item.plot!=null)metadata.append(item.plot).append(' ');
+        if(item.genre!=null)metadata.append(item.genre).append(' ');
+        if(item.cast!=null)metadata.append(item.cast).append(' ');
+        if(item.director!=null)metadata.append(item.director).append(' ');
+        if(item.seriesTitle!=null)metadata.append(item.seriesTitle);
+        String value=metadata.toString().toLowerCase(Locale.ROOT);
+        String[] blocked={"adult","xxx","18+","18 plus","porn","erotic","adulte","hentai","onlyfans","explicit","nude"};
+        for(String word:blocked)if(value.contains(word))return true;
         return false;
     }
     private void showProfileDialog(){
