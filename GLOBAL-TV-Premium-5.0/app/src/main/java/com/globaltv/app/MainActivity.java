@@ -1378,6 +1378,7 @@ private void loadAllPlaylists(){
 }
     private void showPinDialog(){
  String existing=prefs.getString("parental_pin_hash","");
+ if(PROFILE_CHILD.equals(activeProfile)&&existing.isEmpty()){Toast.makeText(this,"Le code parental ne peut être configuré ou réinitialisé depuis le profil Enfant.",Toast.LENGTH_LONG).show();return;}
  if(existing.isEmpty()){showPinEditor();return;}
  EditText current=field("Code PIN actuel");current.setInputType(2);
  new AlertDialog.Builder(this).setTitle("Vérification du code parental").setMessage("Entre le code actuel avant de le modifier ou de le désactiver.").setView(current).setNegativeButton("Annuler",null).setPositiveButton("Continuer",(d,w)->{
