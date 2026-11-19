@@ -62,6 +62,7 @@ public class MainActivity extends AppCompatActivity {
     private volatile int catalogRequestId=0;
     private volatile int epgRequestId=0;
     private String parentalAuthorizedTarget="";
+    private boolean parentalSettingsAccessGranted=false;
     private boolean resumePlaybackOnStart=false;
     private BrandSplash brandSplash;
     private long splashStartedAt=0L;
@@ -1285,7 +1286,7 @@ private void loadAllPlaylists(){
         if(mtvWebView!=null){mtvWebView.setVisibility(View.GONE);}if(webContainer!=null){webContainer.setVisibility(View.GONE);if(webContainer.getParent()==content)content.removeView(webContainer);}
         chipScroll.setVisibility(View.VISIBLE);status.setVisibility(View.GONE);catalogScroll.setVisibility(View.VISIBLE);if(playerArea!=null)playerArea.setVisibility(View.VISIBLE);
     }
-    private void showMtvPlaylistDialog(){
+    private void showMtvPlaylistDialog(){if(!consumeAdultSettingsAccess()){runAdultSettingsAction(()->showMtvPlaylistDialog());return;}
         EditText url=field("URL de playlist M3U autorisée pour MTV");
         url.setText(mtvPlaylistUrl);
         new AlertDialog.Builder(this).setTitle("Source MTV")
@@ -1333,7 +1334,40 @@ private void loadAllPlaylists(){
             });
         });
     }
-    private void showSettings(){String[] options={"Changer de profil (Adulte / Enfant)","Ajouter une playlist M3U","Gérer les playlists M3U","Connexion Xtream Codes","Configurer le guide TV (XMLTV)","Définir / modifier le code parental","Effacer l’historique et les reprises","Configurer la source MTV"};new AlertDialog.Builder(this).setTitle("GLOBAL TV • Paramètres").setItems(options,(d,w)->{if(w==0)showProfileDialog();else if(w==1)showM3uDialog();else if(w==2)showPlaylistManager();else if(w==3)showXtreamDialog();else if(w==4)showEpgDialog();else if(w==5)showPinDialog();else if(w==6)new AlertDialog.Builder(this).setTitle("Effacer l’historique ?").setMessage("Les positions de lecture et l’historique seront supprimés.").setNegativeButton("Annuler",null).setPositiveButton("Effacer",(a,b)->{Map<String,?> allPrefs=prefs.getAll();SharedPreferences.Editor ed=prefs.edit();for(String k:allPrefs.keySet())if(k.startsWith("history_")||k.startsWith("position_"))ed.remove(k);ed.apply();renderList();}).show();else if(w==7)showMtvPlaylistDialog();}).show();}
+    private boolean consumeAdultSettingsAccess(){
+        if(!PROFILE_CHILD.equals(activeProfile))return true;
+        if(parentalSettingsAccessGranted){parentalSettingsAccessGranted=false;return true;}
+        return false;
+    }
+    private void runAdultSettingsAction(Runnable action){
+        if(!PROFILE_CHILD.equals(activeProfile)){action.run();return;}
+        String expected=prefs.getString("parental_pin_hash","");
+        if(expected.isEmpty()){
+            Toast.makeText(this,"Action indisponible : configure le code parental depuis le profil Adulte.",Toast.LENGTH_LONG).show();
+            return;
+        }
+        EditText pin=field("Code PIN parental");
+        pin.setInputType(2);
+        new AlertDialog.Builder(this).setTitle("Accès aux paramètres sensibles")
+            .setMessage("Entre le code PIN pour modifier les sources ou les réglages.")
+            .setView(pin).setNegativeButton("Annuler",null).setPositiveButton("Valider",(d,w)->{
+                if(expected.equals(hash(pin.getText().toString()))){
+                    parentalSettingsAccessGranted=true;
+                    action.run();
+                }else Toast.makeText(this,"Code PIN incorrect",Toast.LENGTH_LONG).show();
+            }).show();
+    }
+    private void showClearHistoryDialog(){
+        if(!consumeAdultSettingsAccess()){runAdultSettingsAction(()->showClearHistoryDialog());return;}
+        new AlertDialog.Builder(this).setTitle("Effacer l’historique ?")
+            .setMessage("Les positions de lecture et l’historique seront supprimés.")
+            .setNegativeButton("Annuler",null).setPositiveButton("Effacer",(a,b)->{
+                Map<String,?> allPrefs=prefs.getAll();SharedPreferences.Editor ed=prefs.edit();
+                for(String k:allPrefs.keySet())if(k.startsWith("history_")||k.startsWith("position_"))ed.remove(k);
+                ed.apply();renderList();
+            }).show();
+    }
+    private void showSettings(){String[] options={"Changer de profil (Adulte / Enfant)","Ajouter une playlist M3U","Gérer les playlists M3U","Connexion Xtream Codes","Configurer le guide TV (XMLTV)","Définir / modifier le code parental","Effacer l’historique et les reprises","Configurer la source MTV"};new AlertDialog.Builder(this).setTitle("GLOBAL TV • Paramètres").setItems(options,(d,w)->{if(w==0)showProfileDialog();else if(w==5)showPinDialog();else runAdultSettingsAction(()->{if(w==1)showM3uDialog();else if(w==2)showPlaylistManager();else if(w==3)showXtreamDialog();else if(w==4)showEpgDialog();else if(w==6)showClearHistoryDialog();else if(w==7)showMtvPlaylistDialog();});}).show();}
     private boolean isAdultWebSection(String target){return "MTV".equals(target)||"EPI XTV".equals(target)||"DUDETV".equals(target);}
     private boolean isProtectedSection(String target){return target.equals("FILMS")||target.equals("SÉRIES")||target.equals("ANIMÉS")||isAdultWebSection(target);}
     private void requestParentalAccess(String target){
@@ -1479,7 +1513,7 @@ private void showPinEditor(){
         if(value==null)value=times.get(epgLookupKey(entry.name));
         return value==null?0L:value;
     }
-    private void showEpgDialog(){EditText input=field("URL du fichier XMLTV (HTTPS conseillé)");input.setText(epgUrl);new AlertDialog.Builder(this).setTitle("Guide TV XMLTV").setMessage("Ajoute l’URL XMLTV de ton fournisseur ou une source autorisée. Les chaînes doivent avoir un tvg-id correspondant.").setView(input).setNegativeButton("Annuler",null).setPositiveButton("Charger",(d,w)->{String u=input.getText().toString().trim();if(u.startsWith("https://")||u.startsWith("http://")){epgUrl=u;prefs.edit().putString("epg_url",u).apply();loadEpg(u);}else Toast.makeText(this,"URL HTTP/HTTPS requise",Toast.LENGTH_LONG).show();}).show();}
+    private void showEpgDialog(){if(!consumeAdultSettingsAccess()){runAdultSettingsAction(()->showEpgDialog());return;}EditText input=field("URL du fichier XMLTV (HTTPS conseillé)");input.setText(epgUrl);new AlertDialog.Builder(this).setTitle("Guide TV XMLTV").setMessage("Ajoute l’URL XMLTV de ton fournisseur ou une source autorisée. Les chaînes doivent avoir un tvg-id correspondant.").setView(input).setNegativeButton("Annuler",null).setPositiveButton("Charger",(d,w)->{String u=input.getText().toString().trim();if(u.startsWith("https://")||u.startsWith("http://")){epgUrl=u;prefs.edit().putString("epg_url",u).apply();loadEpg(u);}else Toast.makeText(this,"URL HTTP/HTTPS requise",Toast.LENGTH_LONG).show();}).show();}
     private void loadEpg(String url){
         final int request=++epgRequestId;
         if(status!=null)status.setText("Chargement du guide TV…");
@@ -1542,9 +1576,9 @@ private void showPinEditor(){
             return parsed==null?0L:parsed.getTime();
         }catch(Exception ignored){return 0L;}
     }
-    private void showM3uDialog(){EditText input=new EditText(this);input.setSingleLine(true);input.setHint("https://exemple.com/playlist.m3u");input.setTextColor(Color.WHITE);input.setHintTextColor(MUTED);input.setText("");new AlertDialog.Builder(this).setTitle("Ajouter une playlist M3U").setMessage("Ajoute une nouvelle source. Les chaînes des playlists seront réunies dans le même catalogue.").setView(input).setNegativeButton("Annuler",null).setPositiveButton("Ajouter et charger",(d,w)->{String u=input.getText().toString().trim();if(u.startsWith("https://")||u.startsWith("http://")){section="TV EN DIRECT";refreshAllNavStyles();loadPlaylist(u);}else Toast.makeText(this,"Adresse HTTP/HTTPS requise",Toast.LENGTH_LONG).show();}).show();}
-    private void showPlaylistManager(){ArrayList<String> urls=new ArrayList<>(playlistSources);if(urls.isEmpty()){new AlertDialog.Builder(this).setTitle("Sources M3U").setMessage("Aucune source enregistrée.").setPositiveButton("Ajouter", (d,w)->showM3uDialog()).show();return;}String[] labels=new String[urls.size()];for(int i=0;i<urls.size();i++)labels[i]=(i+1)+". "+Uri.parse(urls.get(i)).getHost()+" — "+urls.get(i);new AlertDialog.Builder(this).setTitle("Sources M3U • "+urls.size()).setItems(labels,(d,which)->new AlertDialog.Builder(this).setTitle("Gérer cette source").setMessage(urls.get(which)).setNegativeButton("Fermer",null).setNeutralButton("Supprimer",(a,b)->{playlistSources.remove(urls.get(which));prefs.edit().putStringSet("m3u_sources",new HashSet<>(playlistSources)).apply();loadAllPlaylists();}).setPositiveButton("Recharger",(a,b)->loadPlaylist(urls.get(which))).show()).setPositiveButton("Ajouter une source",(d,w)->showM3uDialog()).setNegativeButton("Fermer",null).show();}
-    private void showXtreamDialog(){LinearLayout form=column();form.setPadding(dp(8),dp(4),dp(8),dp(4));EditText host=field("URL du serveur (https://serveur:port)");EditText user=field("Nom d’utilisateur");EditText pass=field("Mot de passe");pass.setInputType(129);form.addView(host);form.addView(user);form.addView(pass);new AlertDialog.Builder(this).setTitle("Connexion Xtream Codes").setMessage("Utilise les identifiants fournis par ton fournisseur IPTV autorisé. HTTPS est recommandé.").setView(form).setNegativeButton("Annuler",null).setPositiveButton("Se connecter",(d,w)->{String h=host.getText().toString().trim(),u=user.getText().toString().trim(),p=pass.getText().toString();try{Uri uri=Uri.parse(h);if((!"https".equalsIgnoreCase(uri.getScheme())&&!("http".equalsIgnoreCase(uri.getScheme())))||uri.getHost()==null||u.isEmpty()||p.isEmpty())throw new Exception();xtreamBase=h;xtreamUser=u;xtreamPass=p;section="ACCUEIL";heading.setText("Bienvenue sur GLOBAL TV");loadXtream();}catch(Exception e){Toast.makeText(this,"Vérifie l’URL et les identifiants",Toast.LENGTH_LONG).show();}}).show();}
+    private void showM3uDialog(){if(!consumeAdultSettingsAccess()){runAdultSettingsAction(()->showM3uDialog());return;}EditText input=new EditText(this);input.setSingleLine(true);input.setHint("https://exemple.com/playlist.m3u");input.setTextColor(Color.WHITE);input.setHintTextColor(MUTED);input.setText("");new AlertDialog.Builder(this).setTitle("Ajouter une playlist M3U").setMessage("Ajoute une nouvelle source. Les chaînes des playlists seront réunies dans le même catalogue.").setView(input).setNegativeButton("Annuler",null).setPositiveButton("Ajouter et charger",(d,w)->{String u=input.getText().toString().trim();if(u.startsWith("https://")||u.startsWith("http://")){section="TV EN DIRECT";refreshAllNavStyles();loadPlaylist(u);}else Toast.makeText(this,"Adresse HTTP/HTTPS requise",Toast.LENGTH_LONG).show();}).show();}
+    private void showPlaylistManager(){if(!consumeAdultSettingsAccess()){runAdultSettingsAction(()->showPlaylistManager());return;}ArrayList<String> urls=new ArrayList<>(playlistSources);if(urls.isEmpty()){new AlertDialog.Builder(this).setTitle("Sources M3U").setMessage("Aucune source enregistrée.").setPositiveButton("Ajouter", (d,w)->showM3uDialog()).show();return;}String[] labels=new String[urls.size()];for(int i=0;i<urls.size();i++)labels[i]=(i+1)+". "+Uri.parse(urls.get(i)).getHost()+" — "+urls.get(i);new AlertDialog.Builder(this).setTitle("Sources M3U • "+urls.size()).setItems(labels,(d,which)->new AlertDialog.Builder(this).setTitle("Gérer cette source").setMessage(urls.get(which)).setNegativeButton("Fermer",null).setNeutralButton("Supprimer",(a,b)->{playlistSources.remove(urls.get(which));prefs.edit().putStringSet("m3u_sources",new HashSet<>(playlistSources)).apply();loadAllPlaylists();}).setPositiveButton("Recharger",(a,b)->loadPlaylist(urls.get(which))).show()).setPositiveButton("Ajouter une source",(d,w)->showM3uDialog()).setNegativeButton("Fermer",null).show();}
+    private void showXtreamDialog(){if(!consumeAdultSettingsAccess()){runAdultSettingsAction(()->showXtreamDialog());return;}LinearLayout form=column();form.setPadding(dp(8),dp(4),dp(8),dp(4));EditText host=field("URL du serveur (https://serveur:port)");EditText user=field("Nom d’utilisateur");EditText pass=field("Mot de passe");pass.setInputType(129);form.addView(host);form.addView(user);form.addView(pass);new AlertDialog.Builder(this).setTitle("Connexion Xtream Codes").setMessage("Utilise les identifiants fournis par ton fournisseur IPTV autorisé. HTTPS est recommandé.").setView(form).setNegativeButton("Annuler",null).setPositiveButton("Se connecter",(d,w)->{String h=host.getText().toString().trim(),u=user.getText().toString().trim(),p=pass.getText().toString();try{Uri uri=Uri.parse(h);if((!"https".equalsIgnoreCase(uri.getScheme())&&!("http".equalsIgnoreCase(uri.getScheme())))||uri.getHost()==null||u.isEmpty()||p.isEmpty())throw new Exception();xtreamBase=h;xtreamUser=u;xtreamPass=p;section="ACCUEIL";heading.setText("Bienvenue sur GLOBAL TV");loadXtream();}catch(Exception e){Toast.makeText(this,"Vérifie l’URL et les identifiants",Toast.LENGTH_LONG).show();}}).show();}
     private EditText field(String hint){EditText e=new EditText(this);e.setSingleLine(true);e.setTextColor(Color.WHITE);e.setHintTextColor(MUTED);e.setHint(hint);e.setPadding(dp(10),dp(6),dp(10),dp(6));return e;}
     @Override public boolean dispatchKeyEvent(android.view.KeyEvent event){
         if(event.getAction()==KeyEvent.ACTION_DOWN&&event.getRepeatCount()==0&&player!=null&&playerView!=null){
