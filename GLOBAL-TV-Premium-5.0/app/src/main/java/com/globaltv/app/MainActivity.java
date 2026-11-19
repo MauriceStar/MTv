@@ -78,6 +78,9 @@ public class MainActivity extends AppCompatActivity {
     private final Map<String,String> epgNow=new ConcurrentHashMap<>();
     private final LinkedHashMap<String,Set<String>> favoriteGroups=new LinkedHashMap<>();
     private final Map<String,String> epgNext=new ConcurrentHashMap<>();
+    private final Map<String,Long> epgNowStart=new ConcurrentHashMap<>();
+    private final Map<String,Long> epgNowStop=new ConcurrentHashMap<>();
+    private final Map<String,Long> epgNextStart=new ConcurrentHashMap<>();
     private SharedPreferences prefs;
     private String epgUrl="";
     private final LinkedHashSet<String> playlistSources=new LinkedHashSet<>();
@@ -690,9 +693,17 @@ private void loadAllPlaylists(){
             TextView channelName=text(name,13,Color.WHITE,true);channelName.setMaxLines(1);
             details.addView(channelName,new LinearLayout.LayoutParams(-1,dp(21)));
             String current=findEpgProgram(epgNow,entry),next=findEpgProgram(epgNext,entry);
-            TextView nowLine=text(current.isEmpty()?"EN COURS  •  Programme non renseigné":"EN COURS  •  "+current,10,current.isEmpty()?MUTED:0xFFFFD16B,true);
+            String currentStart=epgTimeLabel(epgNowStart,entry),currentStop=epgTimeLabel(epgNowStop,entry),nextStartLabel=epgTimeLabel(epgNextStart,entry);
+            String currentTime=currentStart.isEmpty()||currentStop.isEmpty()?"":currentStart+"–"+currentStop+"  •  ";
+            TextView nowLine=text(current.isEmpty()?"EN COURS  •  Programme non renseigné":"EN COURS  •  "+currentTime+current,10,current.isEmpty()?MUTED:0xFFFFD16B,true);
             nowLine.setMaxLines(1);details.addView(nowLine,new LinearLayout.LayoutParams(-1,dp(19)));
-            TextView nextLine=text(next.isEmpty()?"ENSUITE  •  Programme non renseigné":"ENSUITE  •  "+next,9,MUTED,false);
+            android.widget.ProgressBar progressBar=new android.widget.ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);
+            progressBar.setMax(100);long startMs=epgTimeValue(epgNowStart,entry),stopMs=epgTimeValue(epgNowStop,entry),nowTime=System.currentTimeMillis();
+            int progress=startMs>0L&&stopMs>startMs?(int)Math.max(0L,Math.min(100L,(nowTime-startMs)*100L/(stopMs-startMs))):0;
+            progressBar.setProgress(progress);progressBar.setIndeterminate(false);
+            LinearLayout.LayoutParams progressParams=new LinearLayout.LayoutParams(-1,dp(4));progressParams.topMargin=dp(1);progressParams.bottomMargin=dp(1);
+            details.addView(progressBar,progressParams);
+            TextView nextLine=text(next.isEmpty()?"ENSUITE  •  Programme non renseigné":"ENSUITE  •  "+(nextStartLabel.isEmpty()?"":nextStartLabel+"  •  ")+next,9,MUTED,false);
             nextLine.setMaxLines(1);details.addView(nextLine,new LinearLayout.LayoutParams(-1,dp(17)));
             TextView playIcon=text("▶",16,0xFFFFC247,true);playIcon.setGravity(Gravity.CENTER);card.addView(playIcon,new LinearLayout.LayoutParams(dp(34),-1));
             card.setOnFocusChangeListener((v,focused)->{if(focused){GradientDrawable d=bg(0xFF3A315D,11);d.setStroke(dp(2),FOCUS_GOLD);v.setBackground(d);}else v.setBackground(bg(PANEL,11));});
@@ -1195,12 +1206,26 @@ private void showPinEditor(){
         if(title==null||title.isEmpty())title=programs.get(epgLookupKey(entry.name));
         return title==null?"":title;
     }
+    private String epgTimeLabel(Map<String,Long> times,MediaEntry entry){
+        if(times==null||entry==null)return "";
+        String id=epgLookupKey(entry.tvgId);
+        Long value=id.isEmpty()?null:times.get(id);
+        if(value==null)value=times.get(epgLookupKey(entry.name));
+        return value==null?"":new java.text.SimpleDateFormat("HH:mm",Locale.getDefault()).format(new java.util.Date(value));
+    }
+    private long epgTimeValue(Map<String,Long> times,MediaEntry entry){
+        if(times==null||entry==null)return 0L;
+        String id=epgLookupKey(entry.tvgId);
+        Long value=id.isEmpty()?null:times.get(id);
+        if(value==null)value=times.get(epgLookupKey(entry.name));
+        return value==null?0L:value;
+    }
     private void showEpgDialog(){EditText input=field("URL du fichier XMLTV (HTTPS conseillé)");input.setText(epgUrl);new AlertDialog.Builder(this).setTitle("Guide TV XMLTV").setMessage("Ajoute l’URL XMLTV de ton fournisseur ou une source autorisée. Les chaînes doivent avoir un tvg-id correspondant.").setView(input).setNegativeButton("Annuler",null).setPositiveButton("Charger",(d,w)->{String u=input.getText().toString().trim();if(u.startsWith("https://")||u.startsWith("http://")){epgUrl=u;prefs.edit().putString("epg_url",u).apply();loadEpg(u);}else Toast.makeText(this,"URL HTTP/HTTPS requise",Toast.LENGTH_LONG).show();}).show();}
     private void loadEpg(String url){
         final int request=++epgRequestId;
         if(status!=null)status.setText("Chargement du guide TV…");
         executeIo(()->{
-            Map<String,String> now=new HashMap<>(),next=new HashMap<>();Map<String,Long> nextStart=new HashMap<>();
+            Map<String,String> now=new HashMap<>(),next=new HashMap<>();Map<String,Long> nowStart=new HashMap<>(),nowStop=new HashMap<>(),nextStart=new HashMap<>();
             String error=null;
             try{
                 HttpURLConnection connection=open(url);
@@ -1225,7 +1250,7 @@ private void showPinEditor(){
                             if(title!=null&&!title.trim().isEmpty()){
                                 title=title.trim();
                                 if(title.length()>300)title=title.substring(0,300);
-                                String channelKey=epgLookupKey(channel);if(!channelKey.isEmpty()&&start<=nowMs&&stop>nowMs&&now.size()<20000)now.putIfAbsent(channelKey,title);
+                                String channelKey=epgLookupKey(channel);if(!channelKey.isEmpty()&&start<=nowMs&&stop>nowMs&&now.size()<20000){if(!now.containsKey(channelKey)){now.put(channelKey,title);nowStart.put(channelKey,start);nowStop.put(channelKey,stop);}}
                                 else if(!channelKey.isEmpty()&&start>nowMs&&stop>start&&next.size()<20000){Long previousStart=nextStart.get(channelKey);if(previousStart==null||start<previousStart){nextStart.put(channelKey,start);next.put(channelKey,title);}}
                             }
                         }
@@ -1235,8 +1260,8 @@ private void showPinEditor(){
             }catch(Exception e){error=e.getMessage()==null?e.getClass().getSimpleName():e.getMessage();}
             if(request!=epgRequestId||destroyed)return;
             final String failure=error;
-            epgNow.clear();epgNow.putAll(now);
-            epgNext.clear();epgNext.putAll(next);
+            epgNow.clear();epgNow.putAll(now);epgNowStart.clear();epgNowStart.putAll(nowStart);epgNowStop.clear();epgNowStop.putAll(nowStop);
+            epgNext.clear();epgNext.putAll(next);epgNextStart.clear();epgNextStart.putAll(nextStart);
             postUi(()->{
                 if(request!=epgRequestId)return;
                 if(status!=null)status.setText(failure==null?now.size()+" programmes en cours • "+next.size()+" à suivre • Guide TV XMLTV":"Erreur EPG : "+failure);
