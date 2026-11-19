@@ -81,6 +81,7 @@ public class MainActivity extends AppCompatActivity {
     private final Map<String,Long> epgNowStart=new ConcurrentHashMap<>();
     private final Map<String,Long> epgNowStop=new ConcurrentHashMap<>();
     private final Map<String,Long> epgNextStart=new ConcurrentHashMap<>();
+    private boolean showOnlyEpgChannels=false;
     private SharedPreferences prefs;
     private String epgUrl="";
     private final LinkedHashSet<String> playlistSources=new LinkedHashSet<>();
@@ -657,6 +658,11 @@ private void loadAllPlaylists(){
         header.addView(refresh,new LinearLayout.LayoutParams(-2,dp(36)));
         refresh.setOnFocusChangeListener((v,focused)->v.setBackground(bg(focused?FOCUS_GOLD:CARD,9)));
         refresh.setOnClickListener(v->{if(epgUrl!=null&&!epgUrl.isEmpty())loadEpg(epgUrl);else showEpgDialog();});
+        TextView epgFilter=text(showOnlyEpgChannels?"✓ Avec EPG":"Toutes",10,Color.WHITE,true);
+        epgFilter.setGravity(Gravity.CENTER);epgFilter.setPadding(dp(10),0,dp(10),0);epgFilter.setBackground(bg(showOnlyEpgChannels?0xFF76551C:CARD,9));epgFilter.setFocusable(true);epgFilter.setClickable(true);
+        LinearLayout.LayoutParams epgFilterParams=new LinearLayout.LayoutParams(-2,dp(36));epgFilterParams.leftMargin=dp(7);header.addView(epgFilter,epgFilterParams);
+        epgFilter.setOnFocusChangeListener((v,focused)->v.setBackground(bg(focused?FOCUS_GOLD:(showOnlyEpgChannels?0xFF76551C:CARD),9)));
+        epgFilter.setOnClickListener(v->{showOnlyEpgChannels=!showOnlyEpgChannels;renderEpgGuide();});
         TextView source=text(epgUrl==null||epgUrl.isEmpty()?"Configurer XMLTV":"Source XMLTV",11,Color.WHITE,true);
         source.setGravity(Gravity.CENTER);source.setPadding(dp(12),0,dp(12),0);source.setBackground(bg(CARD,9));
         source.setFocusable(true);source.setClickable(true);
@@ -679,7 +685,10 @@ private void loadAllPlaylists(){
             if(!seen.add(entry.url))continue;
             if(PROFILE_CHILD.equals(activeProfile)&&isAdultEntry(entry))continue;
             String name=entry.name.trim();
-            if(!query.isEmpty()&&!name.toLowerCase(Locale.ROOT).contains(query)&&!(entry.group!=null&&entry.group.toLowerCase(Locale.ROOT).contains(query)))continue;
+            String current=findEpgProgram(epgNow,entry),next=findEpgProgram(epgNext,entry);
+            boolean hasEpg=!current.isEmpty()||!next.isEmpty();
+            if(showOnlyEpgChannels&&!hasEpg)continue;
+            if(!query.isEmpty()&&!name.toLowerCase(Locale.ROOT).contains(query)&&!(entry.group!=null&&entry.group.toLowerCase(Locale.ROOT).contains(query))&&!current.toLowerCase(Locale.ROOT).contains(query)&&!next.toLowerCase(Locale.ROOT).contains(query))continue;
             if(!filterMatches(activeFilter,entry.group,entry.name))continue;
             matched++;if(shown>=maxRenderItems)continue;
             LinearLayout card=row();card.setPadding(dp(10),dp(7),dp(10),dp(7));
@@ -692,7 +701,6 @@ private void loadAllPlaylists(){
             card.addView(details,new LinearLayout.LayoutParams(0,-1,1f));
             TextView channelName=text(name,13,Color.WHITE,true);channelName.setMaxLines(1);
             details.addView(channelName,new LinearLayout.LayoutParams(-1,dp(21)));
-            String current=findEpgProgram(epgNow,entry),next=findEpgProgram(epgNext,entry);
             String currentStart=epgTimeLabel(epgNowStart,entry),currentStop=epgTimeLabel(epgNowStop,entry),nextStartLabel=epgTimeLabel(epgNextStart,entry);
             String currentTime=currentStart.isEmpty()||currentStop.isEmpty()?"":currentStart+"–"+currentStop+"  •  ";
             TextView nowLine=text(current.isEmpty()?"EN COURS  •  Programme non renseigné":"EN COURS  •  "+currentTime+current,10,current.isEmpty()?MUTED:0xFFFFD16B,true);
