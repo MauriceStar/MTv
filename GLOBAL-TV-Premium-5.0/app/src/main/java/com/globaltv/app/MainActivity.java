@@ -603,7 +603,8 @@ private void loadAllPlaylists(){
             if(PROFILE_CHILD.equals(activeProfile)&&isAdultEntry(entry))continue;
             String name=entry.name==null?"":entry.name;
             String group=entry.group==null?"":entry.group;
-            if(!query.isEmpty()&&!name.toLowerCase(Locale.ROOT).contains(query)&&!group.toLowerCase(Locale.ROOT).contains(query))continue;
+            String current=findEpgProgram(epgNow,entry),next=findEpgProgram(epgNext,entry);
+            if(!matchesSearchFields(query,name,group,current,next,entry.type))continue;
             if(!filterMatches(activeFilter,group,name))continue;
             entries.add(entry);
         }
@@ -688,7 +689,7 @@ private void loadAllPlaylists(){
             String current=findEpgProgram(epgNow,entry),next=findEpgProgram(epgNext,entry);
             boolean hasEpg=!current.isEmpty()||!next.isEmpty();
             if(showOnlyEpgChannels&&!hasEpg)continue;
-            if(!query.isEmpty()&&!name.toLowerCase(Locale.ROOT).contains(query)&&!(entry.group!=null&&entry.group.toLowerCase(Locale.ROOT).contains(query))&&!current.toLowerCase(Locale.ROOT).contains(query)&&!next.toLowerCase(Locale.ROOT).contains(query))continue;
+            if(!matchesSearchFields(query,name,entry.group,current,next,entry.type))continue;
             if(!filterMatches(activeFilter,entry.group,entry.name))continue;
             matched++;if(shown>=maxRenderItems)continue;
             LinearLayout card=row();card.setPadding(dp(10),dp(7),dp(10),dp(7));
@@ -1202,13 +1203,24 @@ private void showPinEditor(){
     }
     private void showCreateFavoriteGroup(){EditText name=field("Nom de la liste");new AlertDialog.Builder(this).setTitle("Créer une liste de favoris").setView(name).setNegativeButton("Annuler",null).setPositiveButton("Créer",(d,w)->{String n=name.getText().toString().trim();if(n.isEmpty())return;if(favoriteGroups.containsKey(n)){Toast.makeText(this,"Cette liste existe déjà",Toast.LENGTH_SHORT).show();return;}favoriteGroups.put(n,new LinkedHashSet<>());prefs.edit().putStringSet("favorite_groups",new HashSet<>(favoriteGroups.keySet())).apply();activeFilter=n;updateChips();renderList();}).show();}
     private void showAssignFavoriteGroup(MediaEntry entry){if(favoriteGroups.isEmpty()){Toast.makeText(this,"Crée d’abord une liste de favoris.",Toast.LENGTH_SHORT).show();return;}String[] names=favoriteGroups.keySet().toArray(new String[0]);new AlertDialog.Builder(this).setTitle("Ajouter à une liste").setItems(names,(d,i)->{Set<String> urls=favoriteGroups.get(names[i]);urls.add(entry.url);prefs.edit().putStringSet("favorite_group_"+key(names[i]),new HashSet<>(urls)).apply();Toast.makeText(this,"Ajouté à "+names[i],Toast.LENGTH_SHORT).show();}).setNegativeButton("Annuler",null).show();}
-    private boolean matchesUniversalSearch(MediaEntry entry,String normalizedQuery){
-        if(entry==null||normalizedQuery==null||normalizedQuery.isEmpty())return true;
-        String name=epgLookupKey(entry.name),group=epgLookupKey(entry.group);
-        String current=epgLookupKey(findEpgProgram(epgNow,entry));
-        String next=epgLookupKey(findEpgProgram(epgNext,entry));
-        return name.contains(normalizedQuery)||group.contains(normalizedQuery)
-            ||current.contains(normalizedQuery)||next.contains(normalizedQuery);
+    // Recherche multi-termes : chaque mot peut correspondre au nom, au groupe,
+    // au programme EPG ou au type, sans dépendre des accents ni de la ponctuation.
+    private boolean matchesSearchFields(String query,String... values){
+        if(query==null||query.trim().isEmpty())return true;
+        String[] rawTokens=query.trim().split("\\s+");
+        ArrayList<String> tokens=new ArrayList<>();
+        for(String token:rawTokens){String normalized=epgLookupKey(token);if(!normalized.isEmpty())tokens.add(normalized);}
+        if(tokens.isEmpty())return true;
+        StringBuilder searchable=new StringBuilder();
+        if(values!=null)for(String value:values){String normalized=epgLookupKey(value);if(!normalized.isEmpty())searchable.append(normalized).append(' ');}
+        String haystack=searchable.toString();
+        for(String token:tokens)if(!haystack.contains(token))return false;
+        return true;
+    }
+    private boolean matchesUniversalSearch(MediaEntry entry,String query){
+        if(entry==null)return false;
+        String current=findEpgProgram(epgNow,entry),next=findEpgProgram(epgNext,entry);
+        return matchesSearchFields(query,entry.name,entry.group,current,next,entry.type);
     }
     private String epgLookupKey(String value){
         if(value==null)return "";
