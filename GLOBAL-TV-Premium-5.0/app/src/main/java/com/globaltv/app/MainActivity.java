@@ -1406,15 +1406,21 @@ private void loadAllPlaylists(){
  }).show();
 }
     private void showPinDialog(){
- String existing=prefs.getString("parental_pin_hash","");
- if(PROFILE_CHILD.equals(activeProfile)&&existing.isEmpty()){Toast.makeText(this,"Le code parental ne peut être configuré ou réinitialisé depuis le profil Enfant.",Toast.LENGTH_LONG).show();return;}
- if(existing.isEmpty()){showPinEditor();return;}
- EditText current=field("Code PIN actuel");current.setInputType(2);
- new AlertDialog.Builder(this).setTitle("Vérification du code parental").setMessage("Entre le code actuel avant de le modifier ou de le désactiver.").setView(current).setNegativeButton("Annuler",null).setPositiveButton("Continuer",(d,w)->{
-  if(existing.equals(hash(current.getText().toString())))showPinEditor();else Toast.makeText(this,"Code PIN incorrect",Toast.LENGTH_LONG).show();
- }).show();
-}
-private void showPinEditor(){
+        // Le profil Enfant ne peut jamais modifier, désactiver ou réinitialiser le PIN,
+        // même s'il connaît le code actuel. Cette opération reste réservée au profil Adulte.
+        if(PROFILE_CHILD.equals(activeProfile)){
+            Toast.makeText(this,"Passe au profil Adulte pour gérer le code parental.",Toast.LENGTH_LONG).show();
+            return;
+        }
+        String existing=prefs.getString("parental_pin_hash","");
+        if(existing.isEmpty()){showPinEditor();return;}
+        EditText current=field("Code PIN actuel");current.setInputType(2);
+        new AlertDialog.Builder(this).setTitle("Vérification du code parental").setMessage("Entre le code actuel avant de le modifier ou de le désactiver.").setView(current).setNegativeButton("Annuler",null).setPositiveButton("Continuer",(d,w)->{
+            if(existing.equals(hash(current.getText().toString())))showPinEditor();
+            else Toast.makeText(this,"Code PIN incorrect",Toast.LENGTH_LONG).show();
+        }).show();
+    }
+    private void showPinEditor(){
  EditText pin=field("Nouveau code PIN (4 à 8 chiffres)");
  EditText confirm=field("Confirmer le nouveau code PIN");
  pin.setInputType(2);confirm.setInputType(2);
