@@ -81,7 +81,7 @@ public final class PlaybackDiagnostics {
         report.append("Événements format/conteneur : ").append(count(prefs, "format___conteneur")).append('\n');
         report.append("Événements décodeur : ").append(count(prefs, "décodeur")).append('\n');
         report.append("Événements lecture : ").append(count(prefs, "lecture")).append('\n');
-        report.append("Événements initialisation : ").append(count(prefs, "initialisation")).append('\n\n");
+        report.append("Événements initialisation : ").append(count(prefs, "initialisation")).append("\n\n");
         report.append("Incidents récents (12 maximum) :\n");
         report.append(prefs.getString(EVENTS, "Aucun détail disponible."));
         report.append("\n\nDiagnostic uniquement : aucune réparation destructive ni modification des données.");
