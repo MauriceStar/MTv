@@ -918,7 +918,7 @@ private void loadAllPlaylists(){
                 @Override public void onPlayerError(androidx.media3.common.PlaybackException e){
                     MediaEntry diagnosticEntry=currentEntry;
                     String diagnosticAddress=diagnosticEntry!=null?diagnosticEntry.url:c.url;
-                    android.util.Log.w("MTv-Player","Playback error code="+e.errorCode+" host="+safeHost(diagnosticAddress)+" type="+e.getClass().getSimpleName());
+                    PlaybackDiagnostics.record(MainActivity.this,e.errorCode,safeHost(diagnosticAddress),e.getClass().getSimpleName());\n                    android.util.Log.w("MTv-Player","Playback error code="+e.errorCode+" host="+safeHost(diagnosticAddress)+" type="+e.getClass().getSimpleName());
                     postUi(()->{
                         if(player!=activePlayer||destroyed)return;
                         int failedIndex=activePlayer.getCurrentMediaItemIndex();
@@ -963,7 +963,7 @@ private void loadAllPlaylists(){
             playbackSaveRunnable=()->{if(player!=activePlayer||destroyed)return;savePlaybackPosition();mainHandler.postDelayed(playbackSaveRunnable,15000L);};
             mainHandler.postDelayed(playbackSaveRunnable,15000L);
             status.setText("Lecture : "+c.name);
-        }catch(Exception e){android.util.Log.w("MTv-Player","Player initialization failed host="+safeHost(c.url)+" type="+e.getClass().getSimpleName());releasePlayer();Toast.makeText(this,"Impossible de lancer ce flux",Toast.LENGTH_LONG).show();}
+        }catch(Exception e){PlaybackDiagnostics.record(this,-1,safeHost(c.url),e.getClass().getSimpleName());android.util.Log.w("MTv-Player","Player initialization failed host="+safeHost(c.url)+" type="+e.getClass().getSimpleName());releasePlayer();Toast.makeText(this,"Impossible de lancer ce flux",Toast.LENGTH_LONG).show();}
     }
 
     private void styleFullscreenPlayerControls(){
@@ -1396,8 +1396,8 @@ private void loadAllPlaylists(){
                 ed.apply();renderList();
             }).show();
     }
-    private void showSettings(){String[] options={"Changer de profil (Adulte / Enfant)","Ajouter une playlist M3U","Gérer les playlists M3U","Connexion Xtream Codes","Configurer le guide TV (XMLTV)","Définir / modifier le code parental","Effacer l’historique et les reprises","Configurer la source MTV","MTv AutoPilot • Automatisation"};new AlertDialog.Builder(this).setTitle("GLOBAL TV • Paramètres").setItems(options,(d,w)->{if(w==0)showProfileDialog();else if(w==5)showPinDialog();else runAdultSettingsAction(()->{if(w==1)showM3uDialog();else if(w==2)showPlaylistManager();else if(w==3)showXtreamDialog();else if(w==4)showEpgDialog();else if(w==6)showClearHistoryDialog();else if(w==7)showMtvPlaylistDialog();else if(w==8)showAutoPilotDialog();});}).show();}
-    private void showAutoPilotDialog(){
+    private void showSettings(){String[] options={"Changer de profil (Adulte / Enfant)","Ajouter une playlist M3U","Gérer les playlists M3U","Connexion Xtream Codes","Configurer le guide TV (XMLTV)","Définir / modifier le code parental","Effacer l’historique et les reprises","Configurer la source MTV","MTv AutoPilot • Automatisation","MTv Smart Repair • Diagnostic"};new AlertDialog.Builder(this).setTitle("GLOBAL TV • Paramètres").setItems(options,(d,w)->{if(w==0)showProfileDialog();else if(w==5)showPinDialog();else runAdultSettingsAction(()->{if(w==1)showM3uDialog();else if(w==2)showPlaylistManager();else if(w==3)showXtreamDialog();else if(w==4)showEpgDialog();else if(w==6)showClearHistoryDialog();else if(w==7)showMtvPlaylistDialog();else if(w==8)showAutoPilotDialog();else if(w==9)showSmartRepairDialog();});}).show();}
+    private void showSmartRepairDialog(){\n        new AlertDialog.Builder(this).setTitle("MTv Smart Repair • Diagnostic")\n            .setMessage(PlaybackDiagnostics.buildReport(this))\n            .setPositiveButton("Fermer",null).show();\n    }\n\n    private void showAutoPilotDialog(){
         String mode=prefs.getString("autopilot_mode","assist");
         boolean enabled=prefs.getBoolean("autopilot_enabled",false);
         String modeLabel="manual".equals(mode)?"Manuel":("auto".equals(mode)?"Automatique":"Assisté");
