@@ -108,6 +108,8 @@ public class MainActivity extends AppCompatActivity {
     private View playerFullscreenTop,playerFullscreenChips,playerFullscreenStatus,playerFullscreenFooter;
     private MediaEntry currentEntry;
     private final Set<String> failedInCurrentRun=new HashSet<>();
+    // Reprises réseau bornées par flux pour éviter les boucles de préparation.
+    private final Map<String,Integer> transientRetryAttempts=new HashMap<>();
     private EditText search;
     private TextView status,heading,sourceLabel;
     private PlayerView playerView;
@@ -820,7 +822,7 @@ private void loadAllPlaylists(){
             more.setOnClickListener(v->{maxRenderItems+=40;renderList();if(list.getChildCount()>1){View last=list.getChildAt(list.getChildCount()-2);last.requestFocus();}});
         }
         if(section.equals("ACCUEIL")&&(q.isEmpty()||q.trim().isEmpty())){renderHome();return;}if(shown==0){TextView empty=text(section.equals("MTV")?(mtvPlaylistUrl.isEmpty()?"Configure une playlist M3U autorisée pour MTV dans Paramètres.":"Aucune chaîne MTV disponible dans cette source."):(all.isEmpty()?"Aucun contenu chargé. Configure une source M3U ou Xtream dans Paramètres.":"Aucun résultat dans cette rubrique. Vérifie la source ou le filtre."),14,MUTED,false);empty.setPadding(dp(12),dp(30),dp(12),dp(20));list.addView(empty);}}
-    private void play(MediaEntry c){failedInCurrentRun.clear();startPlayer(c);}
+    private void play(MediaEntry c){failedInCurrentRun.clear();transientRetryAttempts.clear();startPlayer(c);}
     private List<MediaEntry> playableQueue(MediaEntry selected){
         List<MediaEntry> source=section.equals("MTV")?mtvItems:all;
         ArrayList<MediaEntry> queue=new ArrayList<>();
@@ -925,11 +927,26 @@ private void loadAllPlaylists(){
                         int failedIndex=activePlayer.getCurrentMediaItemIndex();
                         String failedUrl=(failedIndex>=0&&failedIndex<queue.size())?queue.get(failedIndex).url:(currentEntry==null?c.url:currentEntry.url);
                         if(failedUrl==null)failedUrl=c.url;
-                        boolean firstFailure=failedInCurrentRun.add(failedUrl);
-                        if(firstFailure&&isTransientPlaybackError(e.errorCode)){
-                            Toast.makeText(MainActivity.this,"Connexion interrompue. Nouvelle tentative…",Toast.LENGTH_SHORT).show();
-                            activePlayer.prepare();activePlayer.play();return;
+                        int retryAttempt=transientRetryAttempts.containsKey(failedUrl)?transientRetryAttempts.get(failedUrl):0;
+                        if(isTransientPlaybackError(e.errorCode)&&retryAttempt<2){
+                            retryAttempt++;
+                            transientRetryAttempts.put(failedUrl,retryAttempt);
+                            final int expectedIndex=failedIndex;
+                            final String expectedUrl=failedUrl;
+                            long retryDelay=retryAttempt==1?1200L:2800L;
+                            mainHandler.postDelayed(()->{
+                                if(player!=activePlayer||destroyed)return;
+                                int currentIndex=activePlayer.getCurrentMediaItemIndex();
+                                if(currentIndex!=expectedIndex||currentIndex<0||currentIndex>=queue.size())return;
+                                MediaEntry current=queue.get(currentIndex);
+                                if(current==null||!expectedUrl.equals(current.url))return;
+                                activePlayer.prepare();
+                                activePlayer.play();
+                            },retryDelay);
+                            return;
                         }
+                        transientRetryAttempts.remove(failedUrl);
+                        failedInCurrentRun.add(failedUrl);
                         if(failedIndex<0||failedIndex>=queue.size()){
                             failedIndex=-1;
                             for(int i=0;i<queue.size();i++)if(failedUrl.equals(queue.get(i).url)){failedIndex=i;break;}
