@@ -47,6 +47,7 @@ public final class AutoPilotScheduler {
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build();
         OneTimeWorkRequest request = new OneTimeWorkRequest.Builder(AutoPilotWorker.class)
+            .setInputData(new androidx.work.Data.Builder().putBoolean("manual_run", true).build())
             .setConstraints(constraints)
             .build();
         WorkManager.getInstance(context.getApplicationContext())
