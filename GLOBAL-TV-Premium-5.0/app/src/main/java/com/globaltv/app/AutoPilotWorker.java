@@ -34,7 +34,8 @@ public final class AutoPilotWorker extends Worker {
     public Result doWork() {
         Context context = getApplicationContext();
         SharedPreferences prefs = context.getSharedPreferences("MainActivity", Context.MODE_PRIVATE);
-        boolean manualRun = getInputData().getBoolean("manual_run", false);\n        if (!prefs.getBoolean("autopilot_enabled", false) && !manualRun) return Result.success();
+        boolean manualRun = getInputData().getBoolean("manual_run", false);
+        if (!prefs.getBoolean("autopilot_enabled", false) && !manualRun) return Result.success();
 
         Set<String> configured = prefs.getStringSet("m3u_sources", Collections.emptySet());
         ArrayList<String> sources = new ArrayList<>();
