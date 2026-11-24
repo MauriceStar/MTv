@@ -34,8 +34,9 @@ public final class AutoPilotScheduler {
         Constraints constraints = new Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build();
+        long intervalHours = "auto".equals(mode) ? 12L : 24L;
         PeriodicWorkRequest request = new PeriodicWorkRequest.Builder(
-            AutoPilotWorker.class, 24, TimeUnit.HOURS)
+            AutoPilotWorker.class, intervalHours, TimeUnit.HOURS)
             .setConstraints(constraints)
             .build();
         manager.enqueueUniquePeriodicWork(
