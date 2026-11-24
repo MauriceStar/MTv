@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - work/recovery-thursday-build
+      - feature/autopilot-foundation
 
 permissions:
   contents: read
