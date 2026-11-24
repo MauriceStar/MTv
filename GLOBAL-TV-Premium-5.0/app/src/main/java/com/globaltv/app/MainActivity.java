@@ -122,7 +122,7 @@ public class MainActivity extends AppCompatActivity {
         String seriesTitle="";
         MediaEntry(String n,String u,String g,String l,String t){name=n;url=u;group=g;logo=l;type=t;id="";container="m3u8";tvgId="";}
     }
-    @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);getWindow().setStatusBarColor(BG);getWindow().setNavigationBarColor(BG);prefs=getPreferences(0);
+    @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);getWindow().setStatusBarColor(BG);getWindow().setNavigationBarColor(BG);prefs=getPreferences(0);AutoPilotScheduler.sync(this);
         activeProfile=prefs.getString("active_profile",PROFILE_ADULT);
         configureMemoryBudget();
         loadProfileFavoriteData();Set<String> priorPlayable=prefs.getStringSet("recently_playable",new LinkedHashSet<>());if(priorPlayable!=null)recentlyPlayable.addAll(priorPlayable);while(recentlyPlayable.size()>250)recentlyPlayable.remove(recentlyPlayable.iterator().next());playlistSources.addAll(prefs.getStringSet("m3u_sources",new LinkedHashSet<>()));
@@ -1396,7 +1396,53 @@ private void loadAllPlaylists(){
                 ed.apply();renderList();
             }).show();
     }
-    private void showSettings(){String[] options={"Changer de profil (Adulte / Enfant)","Ajouter une playlist M3U","Gérer les playlists M3U","Connexion Xtream Codes","Configurer le guide TV (XMLTV)","Définir / modifier le code parental","Effacer l’historique et les reprises","Configurer la source MTV"};new AlertDialog.Builder(this).setTitle("GLOBAL TV • Paramètres").setItems(options,(d,w)->{if(w==0)showProfileDialog();else if(w==5)showPinDialog();else runAdultSettingsAction(()->{if(w==1)showM3uDialog();else if(w==2)showPlaylistManager();else if(w==3)showXtreamDialog();else if(w==4)showEpgDialog();else if(w==6)showClearHistoryDialog();else if(w==7)showMtvPlaylistDialog();});}).show();}
+    private void showSettings(){String[] options={"Changer de profil (Adulte / Enfant)","Ajouter une playlist M3U","Gérer les playlists M3U","Connexion Xtream Codes","Configurer le guide TV (XMLTV)","Définir / modifier le code parental","Effacer l’historique et les reprises","Configurer la source MTV","MTv AutoPilot • Automatisation"};new AlertDialog.Builder(this).setTitle("GLOBAL TV • Paramètres").setItems(options,(d,w)->{if(w==0)showProfileDialog();else if(w==5)showPinDialog();else runAdultSettingsAction(()->{if(w==1)showM3uDialog();else if(w==2)showPlaylistManager();else if(w==3)showXtreamDialog();else if(w==4)showEpgDialog();else if(w==6)showClearHistoryDialog();else if(w==7)showMtvPlaylistDialog();else if(w==8)showAutoPilotDialog();});}).show();}
+    private void showAutoPilotDialog(){
+        String mode=prefs.getString("autopilot_mode","assist");
+        boolean enabled=prefs.getBoolean("autopilot_enabled",false);
+        String modeLabel="manual".equals(mode)?"Manuel":("auto".equals(mode)?"Automatique":"Assisté");
+        String[] options={
+            "Mode actuel : "+modeLabel,
+            enabled?"Désactiver la planification":"Activer la planification",
+            "Lancer un contrôle des sources maintenant",
+            "Consulter le dernier rapport"
+        };
+        new AlertDialog.Builder(this).setTitle("MTv AutoPilot")
+            .setMessage("Surveillance légère des adresses de playlists M3U. AutoPilot vérifie les points d’accès HTTP/HTTPS, sans tester chaque chaîne ni modifier tes sources.")
+            .setItems(options,(dialog,which)->{
+                if(which==0){
+                    String[] labels={"Manuel","Assisté","Automatique"};
+                    String[] values={"manual","assist","auto"};
+                    int selected="manual".equals(mode)?0:("auto".equals(mode)?2:1);
+                    new AlertDialog.Builder(this).setTitle("Mode AutoPilot")
+                        .setSingleChoiceItems(labels,selected,(choice,index)->{
+                            prefs.edit().putString("autopilot_mode",values[index]).apply();
+                            AutoPilotScheduler.sync(this);
+                            choice.dismiss();
+                            showAutoPilotDialog();
+                        }).setNegativeButton("Annuler",null).show();
+                }else if(which==1){
+                    boolean next=!enabled;
+                    SharedPreferences.Editor edit=prefs.edit().putBoolean("autopilot_enabled",next);
+                    if(next&&"manual".equals(mode))edit.putString("autopilot_mode","assist");
+                    edit.apply();
+                    AutoPilotScheduler.sync(this);
+                    Toast.makeText(this,next?"Planification AutoPilot activée":"Planification AutoPilot désactivée",Toast.LENGTH_SHORT).show();
+                    showAutoPilotDialog();
+                }else if(which==2){
+                    AutoPilotScheduler.runNow(this);
+                    Toast.makeText(this,"Contrôle des sources programmé. Le rapport apparaîtra ici.",Toast.LENGTH_LONG).show();
+                }else{
+                    long checkedAt=prefs.getLong("autopilot_last_check",0L);
+                    String when=checkedAt==0L?"Aucun contrôle effectué":new SimpleDateFormat("dd/MM/yyyy HH:mm",Locale.getDefault()).format(new Date(checkedAt));
+                    String report=prefs.getString("autopilot_last_report","Aucun rapport disponible.");
+                    String details=prefs.getString("autopilot_last_details","");
+                    new AlertDialog.Builder(this).setTitle("Rapport AutoPilot")
+                        .setMessage("Dernier contrôle : "+when+"\n"+report+(details.isEmpty()?"":"\n\n"+details))
+                        .setPositiveButton("Fermer",null).show();
+                }
+            }).show();
+    }
     private boolean isAdultWebSection(String target){return "MTV".equals(target)||"EPI XTV".equals(target)||"DUDETV".equals(target);}
     private boolean isProtectedSection(String target){return target.equals("FILMS")||target.equals("SÉRIES")||target.equals("ANIMÉS")||isAdultWebSection(target);}
     private void requestParentalAccess(String target){
