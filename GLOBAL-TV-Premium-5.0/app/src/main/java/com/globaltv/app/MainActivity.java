@@ -1408,7 +1408,7 @@ private void loadAllPlaylists(){
             "Consulter le dernier rapport"
         };
         new AlertDialog.Builder(this).setTitle("MTv AutoPilot")
-            .setMessage("Surveillance légère des adresses de playlists M3U. AutoPilot vérifie les points d’accès HTTP/HTTPS, sans tester chaque chaîne ni modifier tes sources.")
+            .setMessage("Manuel : aucun contrôle en arrière-plan. Assisté : vérification toutes les 24 h. Automatique : vérification toutes les 12 h. AutoPilot contrôle uniquement les adresses des playlists M3U, sans tester chaque chaîne ni modifier tes sources.")
             .setItems(options,(dialog,which)->{
                 if(which==0){
                     String[] labels={"Manuel","Assisté","Automatique"};
@@ -1416,7 +1416,7 @@ private void loadAllPlaylists(){
                     int selected="manual".equals(mode)?0:("auto".equals(mode)?2:1);
                     new AlertDialog.Builder(this).setTitle("Mode AutoPilot")
                         .setSingleChoiceItems(labels,selected,(choice,index)->{
-                            prefs.edit().putString("autopilot_mode",values[index]).apply();
+                            SharedPreferences.Editor modeEdit=prefs.edit().putString("autopilot_mode",values[index]);\n                            if(index==0)modeEdit.putBoolean("autopilot_enabled",false);\n                            modeEdit.apply();
                             AutoPilotScheduler.sync(this);
                             choice.dismiss();
                             showAutoPilotDialog();
