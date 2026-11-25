@@ -279,9 +279,11 @@ private final ArrayList<MediaEntry> progressiveSearchResults=new ArrayList<>();
         brandLogo.setImageResource(R.drawable.mtv_brand_logo);brandLogo.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);brandLogo.setAdjustViewBounds(true);brandLogo.setContentDescription("Logo MTv avec parabole et satellite");brand.addView(brandLogo,new LinearLayout.LayoutParams(-1,dp(78)));LinearLayout.LayoutParams brandParams=new LinearLayout.LayoutParams(-1,dp(86));brandParams.setMargins(dp(10),dp(10),dp(10),dp(9));sidebarShell.addView(brand,brandParams);
         sidebarScroll=new ScrollView(this);sidebarScroll.setFillViewport(true);sidebarScroll.setVerticalScrollBarEnabled(true);sidebarScroll.setScrollbarFadingEnabled(false);sidebarScroll.setSmoothScrollingEnabled(true);sidebarScroll.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);sidebarShell.addView(sidebarScroll,new LinearLayout.LayoutParams(-1,0,1f));
         sidebar=column();sidebar.setPadding(dp(18),dp(8),dp(12),dp(14));sidebar.setBackgroundColor(0xFF100D08);sidebarScroll.addView(sidebar,new ScrollView.LayoutParams(-1,-2));
+        addNavSectionLabel("DÉCOUVRIR");
         addNav("⌂   Accueil","ACCUEIL");addNav("▣   TV en direct","TV EN DIRECT");addNav("⚽   Sports","SPORTS");addNav("▶   Films","FILMS");addNav("🎬   Cinéma","CINÉMA");addNav("▤   Séries","SÉRIES");addNav("🎭   Divertissement","DIVERTISSEMENT");addNav("▤   Actualités","INFOS");addNav("♫   Musique","MUSIQUE");addNav("🎥   Documentaire","DOCUMENTAIRE");addNav("📰   Magazine","MAGAZINE");addNav("🧒   Jeunesse","JEUNESSE");addNav("💃   Novelas","NOVELAS");addNav("✦   Animés","ANIMÉS");addNav("🎓   Éducation","ÉDUCATION");addNav("🔬   Scientifique","SCIENCE & TECHNOLOGIE");addNav("✝   Religion","RELIGION");addNav("♡   Mes favoris","FAVORIS");addNav("◷   Historique","HISTORIQUE");addNav("▦   Guide TV","GUIDE TV");addNav("🌐   AOXTv","MTV");addNav("🌐   WiTv","WITV");addNav("🌐   FrSTv","FRSTV");addNav("🌐   FsLive","FSLIVE");addNav("🌐   EpiXtv","EPI XTV");addNav("🌐   DudeTV","DUDETV");addNav("🌐   Braflix","BRAFLIX");
         View spacer=new View(this);sidebar.addView(spacer,new LinearLayout.LayoutParams(1,dp(12)));
         sourceLabel=text("SOURCE : M3U",10,CYAN,true);sourceLabel.setVisibility(View.GONE);sidebar.addView(sourceLabel,new LinearLayout.LayoutParams(-1,dp(28)));
+        addNavSectionLabel("CONFIGURATION");
         addNav("⚙   Sources & paramètres","PARAMÈTRES");
         content=column();content.setPadding(dp(25),dp(18),dp(25),dp(14));root.addView(content,new LinearLayout.LayoutParams(0,-1,1));
         LinearLayout top=row();content.addView(top,new LinearLayout.LayoutParams(-1,dp(58)));
@@ -360,6 +362,7 @@ private final ArrayList<MediaEntry> progressiveSearchResults=new ArrayList<>();
             catalogRecycler.post(()->{RecyclerView.ViewHolder holder=catalogRecycler.findViewHolderForAdapterPosition(0);if(holder!=null)holder.itemView.requestFocus();});
         }else if(list!=null&&list.getChildCount()>0)list.getChildAt(0).requestFocus();
     }
+    private void addNavSectionLabel(String title){TextView label=text(title,10,CYAN,true);label.setLetterSpacing(0.14f);label.setPadding(dp(13),dp(11),dp(8),dp(3));label.setFocusable(false);sidebar.addView(label,new LinearLayout.LayoutParams(-1,dp(34)));}
     private void addNav(String label,String target){TextView v=text(label,14,0xFFD9E1F2,true);v.setPadding(dp(13),0,dp(8),0);v.setId(View.generateViewId());v.setFocusable(true);v.setClickable(true);v.setBackground(bg(0x00172035,10));navViews.put(target,v);
         v.setOnFocusChangeListener((view,hasFocus)->refreshNavStyle(target,hasFocus));
         LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,dp(47));p.bottomMargin=dp(3);sidebar.addView(v,p);v.setOnClickListener(w->navigateTo(target));refreshNavStyle(target,v.hasFocus());}
