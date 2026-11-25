@@ -64,6 +64,7 @@ public class MainActivity extends AppCompatActivity {
     private ArrayList<MediaEntry> homeFeaturedCache=null;
     private volatile boolean destroyed=false;
     private volatile int catalogRequestId=0;
+    private volatile int mtvPlaylistRequestId=0;
     private volatile int epgRequestId=0;
     private String parentalAuthorizedTarget="";
     private boolean parentalSettingsAccessGranted=false;
@@ -1421,31 +1422,44 @@ private void loadAllPlaylists(){
             }).show();
     }
     private void loadMtvPlaylist(String url){
+        final int request=++mtvPlaylistRequestId;
         status.setText("Chargement de la source MTV…");
         executeIo(()->{
-            ArrayList<MediaEntry> parsed=new ArrayList<>();String error=null;
+            ArrayList<MediaEntry> parsed=new ArrayList<>();String error=null;HttpURLConnection connection=null;
             try{
-                String data=get(url);BufferedReader reader=new BufferedReader(new StringReader(data));
-                String line,name=null,group="MTV",logo="",tvgId="";int count=0;
-                while((line=readBoundedPlaylistLine(reader))!=null&&count<MAX_CATALOG_ITEMS){
-                    line=line.trim();
-                    if(line.startsWith("#EXTINF:")){
-                        name=line.substring(line.lastIndexOf(',')+1).trim();group="MTV";logo="";tvgId="";
-                        int g=line.indexOf("group-title=\"");
-                        if(g>=0){int e=line.indexOf('"',g+13);if(e>g)group=line.substring(g+13,e);}
-                        int tid=line.indexOf("tvg-id=\"");
-                        if(tid>=0){int e=line.indexOf('"',tid+8);if(e>tid)tvgId=line.substring(tid+8,e);}
-                        int l=line.indexOf("tvg-logo=\"");
-                        if(l>=0){int e=line.indexOf('"',l+10);if(e>l)logo=line.substring(l+10,e);}
-                    }else if(!line.isEmpty()&&!line.startsWith("#")&&name!=null){
-                        if(line.startsWith("https://")||line.startsWith("http://")){
-                            MediaEntry entry=new MediaEntry(name,line,group,logo,"m3u");entry.tvgId=tvgId;parsed.add(entry);count++;
-                        }name=null;
+                connection=open(url);
+                int code=connection.getResponseCode();
+                if(code<200||code>=300)throw new IOException("Serveur HTTP "+code);
+                InputStream input=connection.getInputStream();
+                if(input==null)throw new IOException("Réponse vide du serveur");
+                try(BufferedReader reader=new BufferedReader(new InputStreamReader(input,"UTF-8"))){
+                    String line,name=null,group="MTV",logo="",tvgId="";int count=0;long bytes=0L;
+                    while((line=readBoundedPlaylistLine(reader))!=null&&count<MAX_CATALOG_ITEMS){
+                        if(request!=mtvPlaylistRequestId||destroyed)return;
+                        bytes+=line.length()*2L;
+                        if(bytes>15L*1024L*1024L)throw new IOException("Playlist trop volumineuse (limite 15 Mo)");
+                        line=line.trim();
+                        if(line.startsWith("#EXTINF:")){
+                            name=line.substring(line.lastIndexOf(',')+1).trim();group="MTV";logo="";tvgId="";
+                            int g=line.indexOf("group-title=\\\"");
+                            if(g>=0){int e=line.indexOf('\\\"',g+13);if(e>g)group=line.substring(g+13,e);}
+                            int tid=line.indexOf("tvg-id=\\\"");
+                            if(tid>=0){int e=line.indexOf('\\\"',tid+8);if(e>tid)tvgId=line.substring(tid+8,e);}
+                            int l=line.indexOf("tvg-logo=\\\"");
+                            if(l>=0){int e=line.indexOf('\\\"',l+10);if(e>l)logo=line.substring(l+10,e);}
+                        }else if(!line.isEmpty()&&!line.startsWith("#")&&name!=null){
+                            if(line.startsWith("https://")||line.startsWith("http://")){
+                                MediaEntry entry=new MediaEntry(name,line,group,logo,"m3u");entry.tvgId=tvgId;parsed.add(entry);count++;
+                            }name=null;
+                        }
                     }
                 }
-            }catch(Exception ex){error=ex.getMessage();}
+            }catch(Exception ex){if(request==mtvPlaylistRequestId&&!destroyed)error=ex.getMessage();}
+            finally{if(connection!=null)connection.disconnect();}
+            if(request!=mtvPlaylistRequestId||destroyed)return;
             final String err=error;
             postUi(()->{
+                if(request!=mtvPlaylistRequestId)return;
                 if(err!=null){status.setText("Erreur source MTV : "+err);return;}
                 mtvItems.clear();mtvItems.addAll(parsed);
                 status.setText(parsed.size()+" éléments chargés • Source MTV dédiée");
@@ -1811,7 +1825,7 @@ private void loadAllPlaylists(){
     @Override protected void onStart(){super.onStart();if(resumePlaybackOnStart&&player!=null){resumePlaybackOnStart=false;player.play();}if(playbackSaveRunnable!=null)mainHandler.postDelayed(playbackSaveRunnable,15000L);}
     @Override protected void onStop(){super.onStop();if(playbackSaveRunnable!=null)mainHandler.removeCallbacks(playbackSaveRunnable);if(player!=null){resumePlaybackOnStart=player.isPlaying();savePlaybackPosition();player.pause();}}
     @Override protected void onDestroy(){
-        destroyed=true;catalogRequestId++;epgRequestId++;if(pendingSearch!=null)mainHandler.removeCallbacks(pendingSearch);
+        destroyed=true;catalogRequestId++;mtvPlaylistRequestId++;epgRequestId++;if(pendingSearch!=null)mainHandler.removeCallbacks(pendingSearch);
         if(webCustomView!=null)hideWebCustomView();
         for(WebView popup:new HashSet<>(webPopupViews)){try{popup.stopLoading();popup.destroy();}catch(Exception ignored){}}webPopupViews.clear();
         if(mtvWebView!=null){try{mtvWebView.stopLoading();mtvWebView.loadUrl("about:blank");mtvWebView.clearHistory();if(mtvWebView.getParent() instanceof ViewGroup)((ViewGroup)mtvWebView.getParent()).removeView(mtvWebView);mtvWebView.destroy();}catch(Exception ignored){}mtvWebView=null;}
