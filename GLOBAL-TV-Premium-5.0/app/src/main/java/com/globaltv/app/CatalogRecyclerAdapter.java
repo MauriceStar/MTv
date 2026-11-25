@@ -101,7 +101,7 @@ final class CatalogRecyclerAdapter extends RecyclerView.Adapter<CatalogRecyclerA
 
     @Override public void onBindViewHolder(Holder holder,int position) {
         MainActivity.MediaEntry entry=items.get(position);
-        holder.item=entry;
+        holder.item=entry;holder.root.setTag(entry==null?null:entry.url);
         holder.title.setText(entry==null||entry.name==null?"Contenu":entry.name);
         holder.detail.setText(entry==null?"":detailProvider.detail(entry));
         holder.favorite.setText(entry!=null&&favoriteState(entry)?"♥":"♡");
