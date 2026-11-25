@@ -378,7 +378,7 @@ public class MainActivity extends AppCompatActivity {
   if(ch==-1&&line.length()==0)return null;
   return line.toString();
  }
- private int appendM3uPlaylist(String address,ArrayList<MediaEntry> merged,HashMap<String,HashSet<String>> seenStreamEntries)throws Exception{
+ private int appendM3uPlaylist(String address,ArrayList<MediaEntry> merged,HashMap<String,HashSet<String>> seenStreamEntries,int request)throws Exception{
  HttpURLConnection connection=open(address);
  try{
   int code=connection.getResponseCode();if(code<200||code>=300)throw new IOException("Serveur HTTP "+code);
@@ -387,6 +387,7 @@ public class MainActivity extends AppCompatActivity {
   try(BufferedReader reader=new BufferedReader(new InputStreamReader(input,"UTF-8"))){
    String line,name=null,group="Autres",logo="",tvgId="";
    while((line=readBoundedPlaylistLine(reader))!=null&&merged.size()<MAX_CATALOG_ITEMS){
+    if(request!=catalogRequestId||destroyed)throw new IOException("Chargement M3U annulé");
     chars+=line.length();if(chars>64L*1024L*1024L)throw new IOException("Playlist trop volumineuse (limite 64 Mo)");
     line=line.trim();if(line.startsWith("\uFEFF"))line=line.substring(1);
     if(line.startsWith("#EXTINF:")){
@@ -416,7 +417,7 @@ private void loadAllPlaylists(){
    final String progressHost=host;final int progressIndex=sourceIndex+1;final int progressTotal=urls.size();
    postUi(()->{if(request==catalogRequestId&&status!=null)status.setText("Chargement M3U "+progressIndex+"/"+progressTotal+" • "+progressHost);});
    long startedAt=SystemClock.elapsedRealtime();int sourceCount=0;String outcome="OK";
-   try{sourceCount=appendM3uPlaylist(address,merged,seenStreamEntries);}
+   try{sourceCount=appendM3uPlaylist(address,merged,seenStreamEntries,request);}
    catch(Exception ex){outcome="ÉCHEC";String reason=ex.getMessage();if(reason==null||reason.trim().isEmpty())reason=ex.getClass().getSimpleName();errors.add(host+": "+reason);}
    long elapsed=Math.max(0L,SystemClock.elapsedRealtime()-startedAt);completedSources++;
    sourceResults.add(host+" : "+sourceCount+" élément(s), "+(elapsed/1000.0)+" s"+("OK".equals(outcome)?"":" • "+outcome));
