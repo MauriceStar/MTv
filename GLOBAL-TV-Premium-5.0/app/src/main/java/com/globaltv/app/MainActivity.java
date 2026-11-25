@@ -426,11 +426,11 @@ private void loadAllPlaylists(){
     private void loadXtream(){
  final int request=++catalogRequestId;status.setText("Connexion au serveur Xtream Codes…");
  executeIo(()->{
-  ArrayList<MediaEntry> parsed=new ArrayList<>();ArrayList<String> endpointErrors=new ArrayList<>();String err=null;
+  ArrayList<MediaEntry> parsed=new ArrayList<>();ArrayList<String> endpointErrors=new ArrayList<>(),endpointReports=new ArrayList<>();String err=null;
   try{
    String auth=get(xtreamBase+(xtreamBase.endsWith("/")?"":"/")+"player_api.php?username="+enc(xtreamUser)+"&password="+enc(xtreamPass));
    JSONObject root=new JSONObject(auth);JSONObject user=root.optJSONObject("user_info");if(user!=null&&!user.optString("auth","1").equals("1"))throw new IOException("Identifiants refusés par le serveur");
-   ArrayList<String> categoryWarnings=new ArrayList<>(),endpointReports=new ArrayList<>();
+   ArrayList<String> categoryWarnings=new ArrayList<>();
    Map<String,String> liveCats=safeCategories("get_live_categories",categoryWarnings,"catégories TV"),vodCats=safeCategories("get_vod_categories",categoryWarnings,"catégories Films"),seriesCats=safeCategories("get_series_categories",categoryWarnings,"catégories Séries");
    String streamBase=xtreamBase+(xtreamBase.endsWith("/")?"":"/");String credentialsPath=enc(xtreamUser)+"/"+enc(xtreamPass)+"/";
    long endpointStarted=System.currentTimeMillis();int endpointBefore=parsed.size();
