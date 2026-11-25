@@ -933,7 +933,7 @@ private void loadAllPlaylists(){
         if(count>0){featuredTitle.setNextFocusDownId(featured.getChildAt(0).getId());}if(count==0){TextView empty=text("Tes chaînes apparaîtront ici dès que la playlist sera chargée.",12,MUTED,false);list.addView(empty);}
     }
     private void renderHistory(){
-        showLinearCatalog();try{renderHistoryContent();catch(Exception historyError){
+        showLinearCatalog();try{renderHistoryContent();}catch(Exception historyError){
             try{if(list!=null){list.removeAllViews();TextView fallback=text("Impossible d’afficher l’historique pour le moment. Réessaie après le rechargement des chaînes.",13,MUTED,false);fallback.setPadding(dp(12),dp(24),dp(12),dp(20));list.addView(fallback);}}catch(Exception ignored){}
             android.util.Log.e("MTv-History","History rendering failed",historyError);
         }
