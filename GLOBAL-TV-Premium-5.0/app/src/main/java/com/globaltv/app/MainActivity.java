@@ -67,7 +67,7 @@ private final LinkedHashSet<String> incompleteM3uSources=new LinkedHashSet<>();
 private String progressiveSearchCacheQuery="";
 private long progressiveSearchCacheAt=0L;
 private final ArrayList<MediaEntry> progressiveSearchResults=new ArrayList<>();
-private void requestProgressiveM3uSearch(String query,String[] tokens,int databaseRequest){
+
     // Index léger des champs statiques : évite de normaliser les mêmes noms à chaque recherche.
     private final Map<String,String> normalizedSearchIndex=new HashMap<>();
     // Les vignettes de la page d’accueil sont calculées une seule fois par catalogue.
@@ -438,6 +438,7 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
         });
     });
 }
+private void requestProgressiveM3uSearch(String query,String[] tokens,int databaseRequest){
  if(query==null||query.trim().length()<2||tokens==null||tokens.length==0||incompleteM3uSources.isEmpty())return;
  final int request=++progressiveSearchRequestId;
  final ArrayList<String> sources=new ArrayList<>(incompleteM3uSources);
