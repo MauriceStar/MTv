@@ -448,6 +448,7 @@ private void mergeProgressiveSearchResults(List<MediaEntry> results){
  if(results!=null)for(MediaEntry entry:results)if(entry!=null&&identities.add(catalogSearchIdentity(entry)))databaseSearchResults.add(entry);
 }
 private String progressiveCursorPreferenceKey(String address,String query){return "progressive_m3u_cursor_"+key(address+"\\u001f"+epgLookupKey(query));}
+private String progressiveVersionPreferenceKey(String address,String query){return "progressive_m3u_version_"+key(address+"\\u001f"+epgLookupKey(query));}
 private void requestProgressiveM3uSearch(String query,String[] tokens,int databaseRequest){
  if(query==null||query.trim().length()<2||tokens==null||tokens.length==0)return;
  final ArrayList<String> sources;
@@ -472,6 +473,16 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
     connection=open(address);
     int code=connection.getResponseCode();
     if(code<200||code>=300)continue;
+    String etag=connection.getHeaderField("ETag");
+    String lastModified=connection.getHeaderField("Last-Modified");
+    String contentLength=connection.getHeaderField("Content-Length");
+    String sourceVersion=(etag==null?"":etag)+"|"+(lastModified==null?"":lastModified)+"|"+(contentLength==null?"":contentLength);
+    String versionKey=progressiveVersionPreferenceKey(address,query);
+    String previousVersion=prefs.getString(versionKey,"");
+    if(!previousVersion.isEmpty()&&!sourceVersion.equals("||")&&!previousVersion.equals(sourceVersion)){
+     cursorLines=0L;safeCursorLines=0L;prefs.edit().remove(cursorKey).apply();
+    }
+    if(!sourceVersion.equals("||"))prefs.edit().putString(versionKey,sourceVersion).apply();
     InputStream input=connection.getInputStream();
     if(input==null)continue;
     try(BufferedReader reader=new BufferedReader(new InputStreamReader(input,"UTF-8"))){
@@ -609,7 +620,7 @@ private void loadPlaylist(String url){if(url!=null&&(url.startsWith("http://")||
  }finally{connection.disconnect();}
 }
 private void loadAllPlaylists(){
- final int request=++catalogRequestId;progressiveSearchRequestId++;progressiveSearchCacheQuery="";progressiveSearchCacheAt=0L;progressiveSearchResults.clear();databaseSearchRequestId++;databaseSearchQuery="";databaseSearchResults.clear();ArrayList<String> urls=new ArrayList<>(playlistSources);if(urls.isEmpty())urls.add(DEFAULT_PLAYLIST);SharedPreferences.Editor cursorReset=prefs.edit();for(String preferenceKey:prefs.getAll().keySet())if(preferenceKey.startsWith("progressive_m3u_cursor_"))cursorReset.remove(preferenceKey);cursorReset.apply();
+ final int request=++catalogRequestId;progressiveSearchRequestId++;progressiveSearchCacheQuery="";progressiveSearchCacheAt=0L;progressiveSearchResults.clear();databaseSearchRequestId++;databaseSearchQuery="";databaseSearchResults.clear();ArrayList<String> urls=new ArrayList<>(playlistSources);if(urls.isEmpty())urls.add(DEFAULT_PLAYLIST);SharedPreferences.Editor cursorReset=prefs.edit();for(String preferenceKey:prefs.getAll().keySet())if(preferenceKey.startsWith("progressive_m3u_cursor_")||preferenceKey.startsWith("progressive_m3u_version_"))cursorReset.remove(preferenceKey);cursorReset.apply();
  status.setText("Chargement de "+urls.size()+" source(s) M3U…");
  executeIo(()->{
   ArrayList<MediaEntry> merged=new ArrayList<>();HashMap<String,HashSet<String>> seenStreamEntries=new HashMap<>();ArrayList<String> errors=new ArrayList<>();ArrayList<String> sourceResults=new ArrayList<>();
