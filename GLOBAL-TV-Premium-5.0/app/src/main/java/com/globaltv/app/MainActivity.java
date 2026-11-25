@@ -1192,10 +1192,18 @@ private void loadAllPlaylists(){
                     postUi(()->{
                         if(player!=activePlayer||destroyed)return;
                         int failedIndex=activePlayer.getCurrentMediaItemIndex();
-                        String failedUrl=(failedIndex>=0&&failedIndex<queue.size())?queue.get(failedIndex).url:(currentEntry==null?c.url:currentEntry.url);
+                        MediaEntry activeEntry=currentEntry;
+                        String failedUrl=activeEntry!=null&&activeEntry.url!=null?activeEntry.url:
+                                (failedIndex>=0&&failedIndex<queue.size()?queue.get(failedIndex).url:c.url);
                         if(failedUrl==null)failedUrl=c.url;
+                        // Media3 peut renvoyer INDEX_UNSET (-1) lors d'un échec très précoce.
+                        // On retrouve alors l'index depuis l'URL réelle avant de planifier une reprise.
+                        if(failedIndex<0||failedIndex>=queue.size()||!failedUrl.equals(queue.get(failedIndex).url)){
+                            failedIndex=-1;
+                            for(int i=0;i<queue.size();i++)if(failedUrl.equals(queue.get(i).url)){failedIndex=i;break;}
+                        }
                         int retryAttempt=transientRetryAttempts.containsKey(failedUrl)?transientRetryAttempts.get(failedUrl):0;
-                        if(isTransientPlaybackError(e.errorCode)&&retryAttempt<2){
+                        if(isTransientPlaybackError(e.errorCode)&&retryAttempt<2&&failedIndex>=0){
                             retryAttempt++;
                             transientRetryAttempts.put(failedUrl,retryAttempt);
                             final int expectedIndex=failedIndex;
@@ -1206,9 +1214,12 @@ private void loadAllPlaylists(){
                                 pendingPlaybackRetry=null;
                                 if(player!=activePlayer||destroyed)return;
                                 int currentIndex=activePlayer.getCurrentMediaItemIndex();
-                                if(currentIndex!=expectedIndex||currentIndex<0||currentIndex>=queue.size())return;
-                                MediaEntry current=queue.get(currentIndex);
-                                if(current==null||!expectedUrl.equals(current.url))return;
+                                String currentUrl=currentEntry!=null?currentEntry.url:
+                                        (currentIndex>=0&&currentIndex<queue.size()?queue.get(currentIndex).url:null);
+                                if(!expectedUrl.equals(currentUrl))return;
+                                // Repositionner explicitement le média évite de rester bloqué
+                                // si Media3 a perdu son index pendant l'erreur réseau.
+                                activePlayer.seekTo(expectedIndex,0L);
                                 activePlayer.prepare();
                                 activePlayer.play();
                             };
@@ -1217,10 +1228,6 @@ private void loadAllPlaylists(){
                         }
                         transientRetryAttempts.remove(failedUrl);
                         failedInCurrentRun.add(failedUrl);
-                        if(failedIndex<0||failedIndex>=queue.size()){
-                            failedIndex=-1;
-                            for(int i=0;i<queue.size();i++)if(failedUrl.equals(queue.get(i).url)){failedIndex=i;break;}
-                        }
                         int nextIndex=-1;
                         for(int i=Math.max(0,failedIndex+1);i<queue.size();i++){
                             MediaEntry candidate=queue.get(i);
