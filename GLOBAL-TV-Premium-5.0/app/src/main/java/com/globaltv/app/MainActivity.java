@@ -58,6 +58,8 @@ public class MainActivity extends AppCompatActivity {
     // Cache les termes normalisés : ils ne doivent pas être recalculés pour chaque élément du catalogue.
     private String cachedSearchQuery=null;
     private String[] cachedSearchTokens=new String[0];
+    // Les vignettes de la page d’accueil sont calculées une seule fois par catalogue.
+    private ArrayList<MediaEntry> homeFeaturedCache=null;
     private volatile boolean destroyed=false;
     private volatile int catalogRequestId=0;
     private volatile int epgRequestId=0;
@@ -395,7 +397,7 @@ private void loadAllPlaylists(){
    try{appendM3uPlaylist(address,merged);}catch(Exception ex){String host=Uri.parse(address).getHost();errors.add((host==null?address:host)+": "+ex.getMessage());}
   }
   if(request!=catalogRequestId||destroyed)return;final int loaded=merged.size();
-  postUi(()->{if(request!=catalogRequestId)return;all.clear();all.addAll(merged);sourceMode="M3U";sourceLabel.setText("SOURCES : "+urls.size()+" M3U");
+  postUi(()->{if(request!=catalogRequestId)return;homeFeaturedCache=null;all.clear();all.addAll(merged);sourceMode="M3U";sourceLabel.setText("SOURCES : "+urls.size()+" M3U");
    if(loaded==0){String problem=errors.isEmpty()?"Aucune chaîne reçue. Vérifie tes sources.":"Erreur M3U : "+errors.get(0);status.setText(problem);renderList();onStartupPlaylistLoadFinished(false,"AUCUNE PLAYLIST DISPONIBLE • VÉRIFIE TES SOURCES");return;}
    status.setText(loaded+" chaînes/contenus chargés • "+urls.size()+" source(s) M3U"+(errors.isEmpty()?"":" • "+errors.size()+" erreur(s)"));renderList();onStartupPlaylistLoadFinished(true,loaded+" CHAÎNES CHARGÉES • PRÊT À REGARDER");
   });
@@ -419,7 +421,7 @@ private void loadAllPlaylists(){
   }catch(Exception e){err=e.getMessage();}
   final String error=err;final ArrayList<String> failures=endpointErrors;if(request!=catalogRequestId||destroyed)return;
   postUi(()->{if(request!=catalogRequestId)return;if(error!=null){status.setText("Connexion Xtream impossible : "+error);return;}
-   all.clear();all.addAll(parsed);sourceMode="XTREAM";sourceLabel.setText("SOURCE : XTREAM");
+   homeFeaturedCache=null;all.clear();all.addAll(parsed);sourceMode="XTREAM";sourceLabel.setText("SOURCE : XTREAM");
    status.setText(parsed.size()+" éléments récupérés • Serveur Xtream"+(failures.isEmpty()?"":" • "+failures.size()+" catégorie(s) indisponible(s)"));renderList();
   });
  });
@@ -607,12 +609,15 @@ private void loadAllPlaylists(){
         }
         TextView featuredTitle=text("À DÉCOUVRIR  •  PROGRAMMES & DIRECTS",12,0xFFFFC45C,true);featuredTitle.setLetterSpacing(0.06f);LinearLayout.LayoutParams ft=new LinearLayout.LayoutParams(-1,dp(34));ft.topMargin=dp(9);list.addView(featuredTitle,ft);
         HorizontalScrollView featuredScroll=new HorizontalScrollView(this);featuredScroll.setHorizontalScrollBarEnabled(false);LinearLayout featured=row();featuredScroll.addView(featured);list.addView(featuredScroll,new LinearLayout.LayoutParams(-1,dp(188)));
-        ArrayList<MediaEntry> featuredEntries=new ArrayList<>();
         if(all==null||all.isEmpty()){TextView empty=text("Charge une playlist pour découvrir les chaînes et programmes.",12,MUTED,false);list.addView(empty);return;}
-        String homeSection=section;
-        String[] featuredSections={"TV EN DIRECT","SPORTS","FILMS","CINÉMA","SÉRIES","DIVERTISSEMENT","INFOS","MUSIQUE","DOCUMENTAIRE","MAGAZINE","JEUNESSE","NOVELAS","ANIMÉS","ÉDUCATION","RELIGION","SCIENCE & TECHNOLOGIE"};
-        HashSet<String> featuredUrls=new HashSet<>();
-        try{for(String category:featuredSections){section=category;for(MediaEntry entry:all){if(entry==null||entry.name==null||entry.name.isEmpty()||entry.url==null||featuredUrls.contains(entry.url))continue;if(matchSection(entry)){featuredEntries.add(entry);featuredUrls.add(entry.url);break;}}}}finally{section=homeSection;}
+        if(homeFeaturedCache==null){
+            homeFeaturedCache=new ArrayList<>();
+            String homeSection=section;
+            String[] featuredSections={"TV EN DIRECT","SPORTS","FILMS","CINÉMA","SÉRIES","DIVERTISSEMENT","INFOS","MUSIQUE","DOCUMENTAIRE","MAGAZINE","JEUNESSE","NOVELAS","ANIMÉS","ÉDUCATION","RELIGION","SCIENCE & TECHNOLOGIE"};
+            HashSet<String> featuredUrls=new HashSet<>();
+            try{for(String category:featuredSections){section=category;for(MediaEntry entry:all){if(entry==null||entry.name==null||entry.name.isEmpty()||entry.url==null||featuredUrls.contains(entry.url))continue;if(matchSection(entry)){homeFeaturedCache.add(entry);featuredUrls.add(entry.url);break;}}}}finally{section=homeSection;}
+        }
+        ArrayList<MediaEntry> featuredEntries=homeFeaturedCache;
         int count=0;
         for(MediaEntry entry:featuredEntries){
             LinearLayout card=column();card.setGravity(Gravity.CENTER_HORIZONTAL);card.setPadding(dp(8),dp(8),dp(8),dp(6));card.setBackground(bg(PANEL,12));card.setFocusable(true);card.setClickable(true);LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(dp(174),dp(172));cp.rightMargin=dp(10);featured.addView(card,cp);
