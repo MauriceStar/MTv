@@ -447,6 +447,7 @@ private void mergeProgressiveSearchResults(List<MediaEntry> results){
  for(MediaEntry entry:databaseSearchResults)if(entry!=null)identities.add(catalogSearchIdentity(entry));
  if(results!=null)for(MediaEntry entry:results)if(entry!=null&&identities.add(catalogSearchIdentity(entry)))databaseSearchResults.add(entry);
 }
+private String progressiveCursorPreferenceKey(String address){return "progressive_m3u_cursor_"+key(address);}
 private void requestProgressiveM3uSearch(String query,String[] tokens,int databaseRequest){
  if(query==null||query.trim().length()<2||tokens==null||tokens.length==0)return;
  final ArrayList<String> sources;
@@ -455,11 +456,6 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
  for(MediaEntry entry:all)if(entry!=null)existingIdentities.add(catalogSearchIdentity(entry));
  for(MediaEntry entry:databaseSearchResults)if(entry!=null)existingIdentities.add(catalogSearchIdentity(entry));
  final int request=++progressiveSearchRequestId;
- if(query.equals(progressiveSearchCacheQuery)&&SystemClock.elapsedRealtime()-progressiveSearchCacheAt<600000L){
-  final ArrayList<MediaEntry> cached=new ArrayList<>(progressiveSearchResults);
-  postUi(()->{if(request==progressiveSearchRequestId&&databaseRequest==databaseSearchRequestId&&query.equals(databaseSearchQuery)){mergeProgressiveSearchResults(cached);renderList();}});
-  return;
- }
  executeIo(()->{
   ArrayList<MediaEntry> found=new ArrayList<>();
   HashSet<String> identities=new HashSet<>(existingIdentities);
@@ -467,6 +463,9 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
   for(String address:sources){
    if(request!=progressiveSearchRequestId||databaseRequest!=databaseSearchRequestId||destroyed||found.size()>=120||totalChars>=24L*1024L*1024L)break;
    HttpURLConnection connection=null;
+   long cursorLines=prefs.getLong(progressiveCursorPreferenceKey(address),0L);
+   long safeCursorLines=cursorLines;
+   boolean reachedEnd=false;
    try{
     connection=open(address);
     int code=connection.getResponseCode();
@@ -474,11 +473,20 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
     InputStream input=connection.getInputStream();
     if(input==null)continue;
     try(BufferedReader reader=new BufferedReader(new InputStreamReader(input,"UTF-8"))){
+     long lineNumber=0L;
+     while(lineNumber<cursorLines){
+      String skipped=readBoundedPlaylistLine(reader);
+      if(skipped==null){reachedEnd=true;break;}
+      lineNumber++;
+     }
      String line,name=null,group="Autres",logo="",tvgId="";
      long sourceChars=0L;
-     while((line=readBoundedPlaylistLine(reader))!=null&&found.size()<120){
+     while(!reachedEnd&&found.size()<120){
       if(request!=progressiveSearchRequestId||databaseRequest!=databaseSearchRequestId||destroyed)break;
-      sourceChars+=line.length();totalChars+=line.length();
+      line=readBoundedPlaylistLine(reader);
+      if(line==null){reachedEnd=true;break;}
+      lineNumber++;
+      sourceChars+=line.length()+1L;totalChars+=line.length()+1L;
       if(sourceChars>12L*1024L*1024L||totalChars>24L*1024L*1024L)break;
       line=line.trim();if(line.startsWith("\uFEFF"))line=line.substring(1);
       if(line.startsWith("#EXTINF:")){
@@ -500,12 +508,22 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
          if(identities.add(identity))found.add(candidate);
         }
        }
+       safeCursorLines=lineNumber;
        name=null;tvgId="";
       }
      }
     }
+    if(reachedEnd){
+     prefs.edit().remove(progressiveCursorPreferenceKey(address)).apply();
+     synchronized(incompleteM3uSources){incompleteM3uSources.remove(address);}
+    }else if(safeCursorLines>cursorLines){
+     prefs.edit().putLong(progressiveCursorPreferenceKey(address),safeCursorLines).apply();
+    }
    }catch(Exception error){android.util.Log.w("MTv-Search","Progressive playlist search failed",error);}
    finally{if(connection!=null)connection.disconnect();}
+  }
+  synchronized(incompleteM3uSources){
+   prefs.edit().putStringSet("incomplete_m3u_sources",new HashSet<>(incompleteM3uSources)).apply();
   }
   final ArrayList<MediaEntry> results=found;
   postUi(()->{
@@ -590,7 +608,7 @@ private void loadPlaylist(String url){if(url!=null&&(url.startsWith("http://")||
  }finally{connection.disconnect();}
 }
 private void loadAllPlaylists(){
- final int request=++catalogRequestId;progressiveSearchRequestId++;progressiveSearchCacheQuery="";progressiveSearchCacheAt=0L;progressiveSearchResults.clear();databaseSearchRequestId++;databaseSearchQuery="";databaseSearchResults.clear();ArrayList<String> urls=new ArrayList<>(playlistSources);if(urls.isEmpty())urls.add(DEFAULT_PLAYLIST);
+ final int request=++catalogRequestId;progressiveSearchRequestId++;progressiveSearchCacheQuery="";progressiveSearchCacheAt=0L;progressiveSearchResults.clear();databaseSearchRequestId++;databaseSearchQuery="";databaseSearchResults.clear();ArrayList<String> urls=new ArrayList<>(playlistSources);if(urls.isEmpty())urls.add(DEFAULT_PLAYLIST);SharedPreferences.Editor cursorReset=prefs.edit();for(String sourceUrl:urls)cursorReset.remove(progressiveCursorPreferenceKey(sourceUrl));cursorReset.apply();
  status.setText("Chargement de "+urls.size()+" source(s) M3U…");
  executeIo(()->{
   ArrayList<MediaEntry> merged=new ArrayList<>();HashMap<String,HashSet<String>> seenStreamEntries=new HashMap<>();ArrayList<String> errors=new ArrayList<>();ArrayList<String> sourceResults=new ArrayList<>();
