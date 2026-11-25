@@ -365,7 +365,7 @@ public class MainActivity extends AppCompatActivity {
                 return out.toString("UTF-8");
             }}finally{c.disconnect();}}
     private void loadPlaylist(String url){if(url!=null&&(url.startsWith("http://")||url.startsWith("https://"))){playlistSources.add(url);prefs.edit().putStringSet("m3u_sources",new HashSet<>(playlistSources)).apply();}loadAllPlaylists();}
-    private int appendM3uPlaylist(String address,ArrayList<MediaEntry> merged,HashMap<String,HashSet<String>> seenStreamEntries)throws Exception{
+    private String readBoundedPlaylistLine(BufferedReader reader)throws IOException{StringBuilder line=new StringBuilder(256);int ch;while((ch=reader.read())!=-1){if(ch=='\\n')break;if(ch!='\\r'){if(line.length()>=1024*1024)throw new IOException("Ligne de playlist trop longue (limite 1 Mo)");line.append((char)ch);}}if(ch==-1&&line.length()==0)return null;return line.toString();}\n    private int appendM3uPlaylist(String address,ArrayList<MediaEntry> merged,HashMap<String,HashSet<String>> seenStreamEntries)throws Exception{
  HttpURLConnection connection=open(address);
  try{
   int code=connection.getResponseCode();if(code<200||code>=300)throw new IOException("Serveur HTTP "+code);
@@ -373,7 +373,7 @@ public class MainActivity extends AppCompatActivity {
   int count=0;long chars=0L;
   try(BufferedReader reader=new BufferedReader(new InputStreamReader(input,"UTF-8"))){
    String line,name=null,group="Autres",logo="",tvgId="";
-   while((line=reader.readLine())!=null&&merged.size()<MAX_CATALOG_ITEMS){
+   while((line=readBoundedPlaylistLine(reader))!=null&&merged.size()<MAX_CATALOG_ITEMS){
     chars+=line.length();if(chars>64L*1024L*1024L)throw new IOException("Playlist trop volumineuse (limite 64 Mo)");
     line=line.trim();if(line.startsWith("\uFEFF"))line=line.substring(1);
     if(line.startsWith("#EXTINF:")){
@@ -1413,7 +1413,7 @@ private void loadAllPlaylists(){
             try{
                 String data=get(url);BufferedReader reader=new BufferedReader(new StringReader(data));
                 String line,name=null,group="MTV",logo="",tvgId="";int count=0;
-                while((line=reader.readLine())!=null&&count<MAX_CATALOG_ITEMS){
+                while((line=readBoundedPlaylistLine(reader))!=null&&count<MAX_CATALOG_ITEMS){
                     line=line.trim();
                     if(line.startsWith("#EXTINF:")){
                         name=line.substring(line.lastIndexOf(',')+1).trim();group="MTV";logo="";tvgId="";
