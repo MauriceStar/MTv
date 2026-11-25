@@ -365,7 +365,20 @@ public class MainActivity extends AppCompatActivity {
                 return out.toString("UTF-8");
             }}finally{c.disconnect();}}
     private void loadPlaylist(String url){if(url!=null&&(url.startsWith("http://")||url.startsWith("https://"))){playlistSources.add(url);prefs.edit().putStringSet("m3u_sources",new HashSet<>(playlistSources)).apply();}loadAllPlaylists();}
-    private String readBoundedPlaylistLine(BufferedReader reader)throws IOException{StringBuilder line=new StringBuilder(256);int ch;while((ch=reader.read())!=-1){if(ch=='\\n')break;if(ch!='\\r'){if(line.length()>=1024*1024)throw new IOException("Ligne de playlist trop longue (limite 1 Mo)");line.append((char)ch);}}if(ch==-1&&line.length()==0)return null;return line.toString();}\n    private int appendM3uPlaylist(String address,ArrayList<MediaEntry> merged,HashMap<String,HashSet<String>> seenStreamEntries)throws Exception{
+    private String readBoundedPlaylistLine(BufferedReader reader)throws IOException{
+  StringBuilder line=new StringBuilder(256);
+  int ch;
+  while((ch=reader.read())!=-1){
+   if(ch=='\n')break;
+   if(ch!='\r'){
+    if(line.length()>=1024*1024)throw new IOException("Ligne de playlist trop longue (limite 1 Mo)");
+    line.append((char)ch);
+   }
+  }
+  if(ch==-1&&line.length()==0)return null;
+  return line.toString();
+ }
+ private int appendM3uPlaylist(String address,ArrayList<MediaEntry> merged,HashMap<String,HashSet<String>> seenStreamEntries)throws Exception{
  HttpURLConnection connection=open(address);
  try{
   int code=connection.getResponseCode();if(code<200||code>=300)throw new IOException("Serveur HTTP "+code);
