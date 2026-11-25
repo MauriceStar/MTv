@@ -140,6 +140,11 @@ private final ArrayList<MediaEntry> progressiveSearchResults=new ArrayList<>();
         String seriesTitle="";
         MediaEntry(String n,String u,String g,String l,String t){name=n;url=u;group=g;logo=l;type=t;id="";container="m3u8";tvgId="";sourceId="";}
     }
+    static class M3uAppendResult {
+        final int count;
+        final boolean truncated;
+        M3uAppendResult(int count,boolean truncated){this.count=count;this.truncated=truncated;}
+    }
     @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);getWindow().setStatusBarColor(BG);getWindow().setNavigationBarColor(BG);prefs=getPreferences(0);Set<String> savedIncompleteSources=prefs.getStringSet("incomplete_m3u_sources",new LinkedHashSet<>());if(savedIncompleteSources!=null)incompleteM3uSources.addAll(savedIncompleteSources);AutoPilotScheduler.sync(this);
         activeProfile=prefs.getString("active_profile",PROFILE_ADULT);
         configureMemoryBudget();
@@ -554,30 +559,34 @@ private void loadPlaylist(String url){if(url!=null&&(url.startsWith("http://")||
   if(ch==-1&&line.length()==0)return null;
   return line.toString();
  }
- private int appendM3uPlaylist(String address,ArrayList<MediaEntry> merged,HashMap<String,HashSet<String>> seenStreamEntries,int request)throws Exception{
+ private M3uAppendResult appendM3uPlaylist(String address,ArrayList<MediaEntry> merged,HashMap<String,HashSet<String>> seenStreamEntries,int request)throws Exception{
  HttpURLConnection connection=open(address);
  try{
   int code=connection.getResponseCode();if(code<200||code>=300)throw new IOException("Serveur HTTP "+code);
   InputStream input=connection.getInputStream();if(input==null)throw new IOException("Réponse vide du serveur");
-  int count=0;long chars=0L;
+  int count=0;long chars=0L;boolean truncated=false;
   try(BufferedReader reader=new BufferedReader(new InputStreamReader(input,"UTF-8"))){
    String line,name=null,group="Autres",logo="",tvgId="";
    while((line=readBoundedPlaylistLine(reader))!=null&&merged.size()<MAX_CATALOG_ITEMS){
     if(request!=catalogRequestId||destroyed)throw new IOException("Chargement M3U annulé");
-    chars+=line.length();if(chars>64L*1024L*1024L)throw new IOException("Playlist trop volumineuse (limite 64 Mo)");
+    chars+=line.length();if(chars>64L*1024L*1024L){truncated=true;break;}
     line=line.trim();if(line.startsWith("\uFEFF"))line=line.substring(1);
     if(line.startsWith("#EXTINF:")){
      name=line.substring(line.lastIndexOf(',')+1).trim();group="Autres";logo="";tvgId="";
-     int g=line.indexOf("group-title=\"");if(g>=0){int e=line.indexOf('"',g+13);if(e>g)group=line.substring(g+13,e);}
-     int tid=line.indexOf("tvg-id=\"");if(tid>=0){int te=line.indexOf('"',tid+8);if(te>tid)tvgId=line.substring(tid+8,te);}
-     int l=line.indexOf("tvg-logo=\"");if(l>=0){int e=line.indexOf('"',l+10);if(e>l)logo=line.substring(l+10,e);}
+     int g=line.indexOf("group-title=\"");
+     if(g>=0){int e=line.indexOf('"',g+13);if(e>g)group=line.substring(g+13,e);}
+     int tid=line.indexOf("tvg-id=\"");
+     if(tid>=0){int te=line.indexOf('"',tid+8);if(te>tid)tvgId=line.substring(tid+8,te);}
+     int l=line.indexOf("tvg-logo=\"");
+     if(l>=0){int e=line.indexOf('"',l+10);if(e>l)logo=line.substring(l+10,e);}
     }else if(!line.isEmpty()&&!line.startsWith("#")&&name!=null){
      if(line.startsWith("https://")||line.startsWith("http://")){String identity=name.trim().toLowerCase(Locale.ROOT)+"\u001F"+group.trim().toLowerCase(Locale.ROOT)+"\u001F"+tvgId.trim().toLowerCase(Locale.ROOT);HashSet<String> identities=seenStreamEntries.get(line);if(identities==null){identities=new HashSet<>();seenStreamEntries.put(line,identities);}if(identities.add(identity)){MediaEntry entry=new MediaEntry(name,line,group,logo,"m3u");entry.tvgId=tvgId;entry.sourceId=Uri.parse(address).getHost();merged.add(entry);count++;}}
      name=null;tvgId="";
     }
    }
+   if(merged.size()>=MAX_CATALOG_ITEMS)truncated=true;
   }
-  return count;
+  return new M3uAppendResult(count,truncated);
  }finally{connection.disconnect();}
 }
 private void loadAllPlaylists(){
@@ -595,8 +604,8 @@ private void loadAllPlaylists(){
    final String progressHost=host;final int progressIndex=sourceIndex+1;final int progressTotal=urls.size();
    postUi(()->{if(request==catalogRequestId&&status!=null)status.setText("Chargement M3U "+progressIndex+"/"+progressTotal+" • "+progressHost);});
    long startedAt=SystemClock.elapsedRealtime();int sourceCount=0;String outcome="OK";
-   try{sourceCount=appendM3uPlaylist(address,merged,seenStreamEntries,request);}
-   catch(Exception ex){outcome="ÉCHEC";String reason=ex.getMessage();if(reason==null||reason.trim().isEmpty())reason=ex.getClass().getSimpleName();errors.add(host+": "+reason);}
+   try{M3uAppendResult append=appendM3uPlaylist(address,merged,seenStreamEntries,request);sourceCount=append.count;if(append.truncated)incompleteThisLoad.add(address);}
+   catch(Exception ex){outcome="ÉCHEC";incompleteThisLoad.add(address);String reason=ex.getMessage();if(reason==null||reason.trim().isEmpty())reason=ex.getClass().getSimpleName();errors.add(host+": "+reason);}
    if(merged.size()>=MAX_CATALOG_ITEMS){for(int remaining=sourceIndex;remaining<urls.size();remaining++)incompleteThisLoad.add(urls.get(remaining));}
    long elapsed=Math.max(0L,SystemClock.elapsedRealtime()-startedAt);completedSources++;
    sourceResults.add(host+" : "+sourceCount+" élément(s), "+(elapsed/1000.0)+" s"+("OK".equals(outcome)?"":" • "+outcome));
