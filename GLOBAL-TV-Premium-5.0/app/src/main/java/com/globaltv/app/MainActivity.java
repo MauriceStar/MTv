@@ -382,8 +382,6 @@ private final ArrayList<MediaEntry> progressiveSearchResults=new ArrayList<>();
         databaseSearchQuery="";
         databaseSearchResults.clear();
         progressiveSearchRequestId++;
-        progressiveSearchCacheQuery="";
-        progressiveSearchResults.clear();
         return;
     }
     if(key.equals(databaseSearchQuery))return;
@@ -451,7 +449,6 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
   ArrayList<MediaEntry> found=new ArrayList<>();
   HashSet<String> identities=new HashSet<>();
   for(MediaEntry entry:all)if(entry!=null)identities.add(catalogSearchIdentity(entry));
-  for(MediaEntry entry:databaseSearchResults)if(entry!=null)identities.add(catalogSearchIdentity(entry));
   long totalChars=0L;
   for(String address:sources){
    if(request!=progressiveSearchRequestId||databaseRequest!=databaseSearchRequestId||destroyed||found.size()>=120||totalChars>=24L*1024L*1024L)break;
