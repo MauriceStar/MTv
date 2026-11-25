@@ -394,15 +394,29 @@ private void loadAllPlaylists(){
  final int request=++catalogRequestId;ArrayList<String> urls=new ArrayList<>(playlistSources);if(urls.isEmpty())urls.add(DEFAULT_PLAYLIST);
  status.setText("Chargement de "+urls.size()+" source(s) M3U…");
  executeIo(()->{
-  ArrayList<MediaEntry> merged=new ArrayList<>();HashMap<String,HashSet<String>> seenStreamEntries=new HashMap<>();ArrayList<String> errors=new ArrayList<>();
-  for(String address:urls){
+  ArrayList<MediaEntry> merged=new ArrayList<>();HashMap<String,HashSet<String>> seenStreamEntries=new HashMap<>();ArrayList<String> errors=new ArrayList<>();ArrayList<String> sourceResults=new ArrayList<>();
+  int completedSources=0;
+  for(int sourceIndex=0;sourceIndex<urls.size();sourceIndex++){
+   String address=urls.get(sourceIndex);
    if(merged.size()>=MAX_CATALOG_ITEMS||request!=catalogRequestId||destroyed)break;
-   try{appendM3uPlaylist(address,merged,seenStreamEntries);}catch(Exception ex){String host=Uri.parse(address).getHost();errors.add((host==null?address:host)+": "+ex.getMessage());}
+   String host=Uri.parse(address).getHost();if(host==null||host.isEmpty())host="Source "+(sourceIndex+1);
+   final String progressHost=host;final int progressIndex=sourceIndex+1;final int progressTotal=urls.size();
+   postUi(()->{if(request==catalogRequestId&&status!=null)status.setText("Chargement M3U "+progressIndex+"/"+progressTotal+" • "+progressHost);});
+   long startedAt=SystemClock.elapsedRealtime();int sourceCount=0;String outcome="OK";
+   try{sourceCount=appendM3uPlaylist(address,merged,seenStreamEntries);}
+   catch(Exception ex){outcome="ÉCHEC";String reason=ex.getMessage();if(reason==null||reason.trim().isEmpty())reason=ex.getClass().getSimpleName();errors.add(host+": "+reason);}
+   long elapsed=Math.max(0L,SystemClock.elapsedRealtime()-startedAt);completedSources++;
+   sourceResults.add(host+" : "+sourceCount+" élément(s), "+(elapsed/1000.0)+" s"+("OK".equals(outcome)?"":" • "+outcome));
   }
-  if(request!=catalogRequestId||destroyed)return;final int loaded=merged.size();
+  if(request!=catalogRequestId||destroyed)return;final int loaded=merged.size();final int checkedSources=completedSources;final boolean capped=loaded>=MAX_CATALOG_ITEMS;
+  StringBuilder summary=new StringBuilder().append(loaded).append(" éléments • ").append(checkedSources).append("/").append(urls.size()).append(" sources analysées");
+  if(!errors.isEmpty())summary.append(" • ").append(errors.size()).append(" échec(s)");
+  if(capped)summary.append(" • limite de ").append(MAX_CATALOG_ITEMS).append(" atteinte, sources restantes ignorées");
+  if(!sourceResults.isEmpty()){summary.append(" • ");int shown=Math.min(4,sourceResults.size());for(int i=0;i<shown;i++){if(i>0)summary.append(" | ");summary.append(sourceResults.get(i));}if(sourceResults.size()>shown)summary.append(" | +").append(sourceResults.size()-shown).append(" autre(s)");}
+  final String finalSummary=summary.toString();
   postUi(()->{if(request!=catalogRequestId)return;homeFeaturedCache=null;normalizedSearchIndex.clear();all.clear();all.addAll(merged);sourceMode="M3U";sourceLabel.setText("SOURCES : "+urls.size()+" M3U");
-   if(loaded==0){String problem=errors.isEmpty()?"Aucune chaîne reçue. Vérifie tes sources.":"Erreur M3U : "+errors.get(0);status.setText(problem);renderList();onStartupPlaylistLoadFinished(false,"AUCUNE PLAYLIST DISPONIBLE • VÉRIFIE TES SOURCES");return;}
-   status.setText(loaded+" chaînes/contenus chargés • "+urls.size()+" source(s) M3U"+(errors.isEmpty()?"":" • "+errors.size()+" erreur(s)"));renderList();onStartupPlaylistLoadFinished(true,loaded+" CHAÎNES CHARGÉES • PRÊT À REGARDER");
+   if(loaded==0){String problem=errors.isEmpty()?"Aucune chaîne reçue. Vérifie tes sources.":"Erreur M3U : "+errors.get(0);status.setText(problem+" • "+finalSummary);renderList();onStartupPlaylistLoadFinished(false,"AUCUNE PLAYLIST DISPONIBLE • VÉRIFIE TES SOURCES");return;}
+   status.setText(finalSummary);renderList();onStartupPlaylistLoadFinished(true,loaded+" CHAÎNES CHARGÉES • PRÊT À REGARDER");
   });
  });
 }
