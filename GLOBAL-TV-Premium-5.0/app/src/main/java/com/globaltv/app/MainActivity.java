@@ -73,7 +73,7 @@ public class MainActivity extends AppCompatActivity {
     private long splashStartedAt=0L;
     private boolean splashLoadFinished=false;
     private Runnable splashTimeoutRunnable;
-    private static final int MAX_CATALOG_ITEMS=20000;
+    private static final int MAX_CATALOG_ITEMS=30000;
     private int maxRenderItems=120;
     private String activeProfile="Adulte";
     private static final String PROFILE_ADULT="Adulte", PROFILE_CHILD="Enfant";
