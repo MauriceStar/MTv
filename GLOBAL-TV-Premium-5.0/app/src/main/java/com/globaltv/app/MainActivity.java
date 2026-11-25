@@ -140,7 +140,7 @@ private final ArrayList<MediaEntry> progressiveSearchResults=new ArrayList<>();
         String seriesTitle="";
         MediaEntry(String n,String u,String g,String l,String t){name=n;url=u;group=g;logo=l;type=t;id="";container="m3u8";tvgId="";sourceId="";}
     }
-    @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);getWindow().setStatusBarColor(BG);getWindow().setNavigationBarColor(BG);prefs=getPreferences(0);AutoPilotScheduler.sync(this);
+    @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);getWindow().setStatusBarColor(BG);getWindow().setNavigationBarColor(BG);prefs=getPreferences(0);Set<String> savedIncompleteSources=prefs.getStringSet("incomplete_m3u_sources",new LinkedHashSet<>());if(savedIncompleteSources!=null)incompleteM3uSources.addAll(savedIncompleteSources);AutoPilotScheduler.sync(this);
         activeProfile=prefs.getString("active_profile",PROFILE_ADULT);
         configureMemoryBudget();
         loadProfileFavoriteData();Set<String> priorPlayable=prefs.getStringSet("recently_playable",new LinkedHashSet<>());if(priorPlayable!=null)recentlyPlayable.addAll(priorPlayable);while(recentlyPlayable.size()>250)recentlyPlayable.remove(recentlyPlayable.iterator().next());Set<String> savedPlaylistSources=prefs.getStringSet("m3u_sources",new LinkedHashSet<>());
@@ -436,19 +436,28 @@ private final ArrayList<MediaEntry> progressiveSearchResults=new ArrayList<>();
         });
     });
 }
+private void mergeProgressiveSearchResults(List<MediaEntry> results){
+ HashSet<String> identities=new HashSet<>();
+ for(MediaEntry entry:all)if(entry!=null)identities.add(catalogSearchIdentity(entry));
+ for(MediaEntry entry:databaseSearchResults)if(entry!=null)identities.add(catalogSearchIdentity(entry));
+ if(results!=null)for(MediaEntry entry:results)if(entry!=null&&identities.add(catalogSearchIdentity(entry)))databaseSearchResults.add(entry);
+}
 private void requestProgressiveM3uSearch(String query,String[] tokens,int databaseRequest){
- if(query==null||query.trim().length()<2||tokens==null||tokens.length==0||incompleteM3uSources.isEmpty())return;
+ if(query==null||query.trim().length()<2||tokens==null||tokens.length==0)return;
+ final ArrayList<String> sources;
+ synchronized(incompleteM3uSources){if(incompleteM3uSources.isEmpty())return;sources=new ArrayList<>(incompleteM3uSources);}
+ final HashSet<String> existingIdentities=new HashSet<>();
+ for(MediaEntry entry:all)if(entry!=null)existingIdentities.add(catalogSearchIdentity(entry));
+ for(MediaEntry entry:databaseSearchResults)if(entry!=null)existingIdentities.add(catalogSearchIdentity(entry));
  final int request=++progressiveSearchRequestId;
- final ArrayList<String> sources=new ArrayList<>(incompleteM3uSources);
  if(query.equals(progressiveSearchCacheQuery)&&SystemClock.elapsedRealtime()-progressiveSearchCacheAt<600000L){
   final ArrayList<MediaEntry> cached=new ArrayList<>(progressiveSearchResults);
-  postUi(()->{if(request==progressiveSearchRequestId&&databaseRequest==databaseSearchRequestId&&query.equals(databaseSearchQuery)){for(MediaEntry entry:cached)databaseSearchResults.add(entry);renderList();}});
+  postUi(()->{if(request==progressiveSearchRequestId&&databaseRequest==databaseSearchRequestId&&query.equals(databaseSearchQuery)){mergeProgressiveSearchResults(cached);renderList();}});
   return;
  }
  executeIo(()->{
   ArrayList<MediaEntry> found=new ArrayList<>();
-  HashSet<String> identities=new HashSet<>();
-  for(MediaEntry entry:all)if(entry!=null)identities.add(catalogSearchIdentity(entry));
+  HashSet<String> identities=new HashSet<>(existingIdentities);
   long totalChars=0L;
   for(String address:sources){
    if(request!=progressiveSearchRequestId||databaseRequest!=databaseSearchRequestId||destroyed||found.size()>=120||totalChars>=24L*1024L*1024L)break;
@@ -498,10 +507,9 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
    if(request!=progressiveSearchRequestId||databaseRequest!=databaseSearchRequestId||!query.equals(databaseSearchQuery))return;
    progressiveSearchCacheQuery=query;progressiveSearchCacheAt=SystemClock.elapsedRealtime();
    progressiveSearchResults.clear();progressiveSearchResults.addAll(results);
-   for(MediaEntry entry:results)databaseSearchResults.add(entry);
+   mergeProgressiveSearchResults(results);
    normalizedSearchIndex.clear();renderList();
   });
- });
 }
 
 private void persistCatalogToDatabase(List<MediaEntry> entries,String fallbackSource,int request){
@@ -572,7 +580,7 @@ private void loadPlaylist(String url){if(url!=null&&(url.startsWith("http://")||
  }finally{connection.disconnect();}
 }
 private void loadAllPlaylists(){
- final int request=++catalogRequestId;ArrayList<String> urls=new ArrayList<>(playlistSources);if(urls.isEmpty())urls.add(DEFAULT_PLAYLIST);
+ final int request=++catalogRequestId;progressiveSearchRequestId++;progressiveSearchCacheQuery="";progressiveSearchCacheAt=0L;progressiveSearchResults.clear();databaseSearchRequestId++;databaseSearchQuery="\u0000";databaseSearchResults.clear();ArrayList<String> urls=new ArrayList<>(playlistSources);if(urls.isEmpty())urls.add(DEFAULT_PLAYLIST);
  status.setText("Chargement de "+urls.size()+" source(s) M3U…");
  executeIo(()->{
   ArrayList<MediaEntry> merged=new ArrayList<>();HashMap<String,HashSet<String>> seenStreamEntries=new HashMap<>();ArrayList<String> errors=new ArrayList<>();ArrayList<String> sourceResults=new ArrayList<>();
@@ -593,7 +601,7 @@ private void loadAllPlaylists(){
    sourceResults.add(host+" : "+sourceCount+" élément(s), "+(elapsed/1000.0)+" s"+("OK".equals(outcome)?"":" • "+outcome));
   }
   if(request!=catalogRequestId||destroyed)return;
-  incompleteM3uSources.clear();incompleteM3uSources.addAll(incompleteThisLoad);
+  synchronized(incompleteM3uSources){incompleteM3uSources.clear();incompleteM3uSources.addAll(incompleteThisLoad);}
   prefs.edit().putStringSet("incomplete_m3u_sources",new HashSet<>(incompleteThisLoad)).apply();
   persistCatalogToDatabase(merged,"M3U",request);seenStreamEntries.clear();final int loaded=merged.size();final int checkedSources=completedSources;final boolean capped=loaded>=MAX_CATALOG_ITEMS;
   StringBuilder summary=new StringBuilder().append(loaded).append(" éléments • ").append(checkedSources).append("/").append(urls.size()).append(" sources analysées");
