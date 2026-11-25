@@ -811,7 +811,7 @@ private void loadAllPlaylists(){
             more.setPadding(dp(8),dp(10),dp(8),dp(10));list.addView(more);
         }
     }
-    private void renderList(){if(list==null)return;if(section.equals("HISTORIQUE")){renderHistory();return;}if(section.equals("GUIDE TV")){renderEpgGuide();return;}list.removeAllViews();String q=search==null?"":search.getText().toString().trim().toLowerCase(Locale.ROOT);if(section.equals("ACCUEIL")&&q.trim().isEmpty()){renderHome();return;}int shown=0;boolean universalSearch=!q.trim().isEmpty();List<MediaEntry> activeItems=universalSearch?all:(section.equals("MTV")?mtvItems:all);
+    private void renderList(){if(list==null)return;if(section.equals("HISTORIQUE")){renderHistory();return;}if(section.equals("GUIDE TV")){renderEpgGuide();return;}String restoreFocusUrl=focusedCatalogItemUrl();list.removeAllViews();String q=search==null?"":search.getText().toString().trim().toLowerCase(Locale.ROOT);if(section.equals("ACCUEIL")&&q.trim().isEmpty()){renderHome();return;}int shown=0;boolean universalSearch=!q.trim().isEmpty();List<MediaEntry> activeItems=universalSearch?all:(section.equals("MTV")?mtvItems:all);
         if(!universalSearch){ArrayList<MediaEntry> preferredItems=new ArrayList<>(),otherItems=new ArrayList<>();HashSet<String> seenUrls=new HashSet<>();for(MediaEntry entry:activeItems){if(entry==null||entry.url==null||!seenUrls.add(entry.url))continue;if(recentlyPlayable.contains(entry.url))preferredItems.add(entry);else otherItems.add(entry);}preferredItems.addAll(otherItems);activeItems=preferredItems;}
         else if(section.equals("MTV")){ArrayList<MediaEntry> searchItems=new ArrayList<>(activeItems);searchItems.addAll(mtvItems);activeItems=searchItems;}
         HashSet<String> seenSearchUrls=universalSearch?new HashSet<>():null;
@@ -819,7 +819,7 @@ private void loadAllPlaylists(){
             if(PROFILE_CHILD.equals(activeProfile) && isAdultEntry(c)) continue;
             String itemName=c.name==null?"":c.name;String itemGroup=c.group==null?"":c.group;
             if(!q.isEmpty()&&!matchesUniversalSearch(c,q))continue;if(!universalSearch&&!filterMatches(activeFilter,itemGroup,itemName))continue;
-            LinearLayout item=row();item.setId(View.generateViewId());item.setPadding(dp(13),dp(4),dp(12),dp(4));item.setFocusable(true);item.setClickable(true);
+            LinearLayout item=row();item.setTag(c.url);item.setId(View.generateViewId());item.setPadding(dp(13),dp(4),dp(12),dp(4));item.setFocusable(true);item.setClickable(true);
             item.setBackground(bg(0xFF17233A,12));
             item.setOnFocusChangeListener((view,hasFocus)->view.setBackground(bg(hasFocus?ACCENT:0xFF17233A,12)));LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(-1,dp(62));ip.bottomMargin=dp(8);list.addView(item,ip);if(chips!=null&&shown==0){for(int ci=0;ci<chips.getChildCount();ci++)chips.getChildAt(ci).setNextFocusDownId(item.getId());}if(chips!=null&&chips.getChildCount()>0)item.setNextFocusUpId(chips.getChildAt(0).getId());
             ImageView artwork=new ImageView(this);artwork.setScaleType(ImageView.ScaleType.CENTER_CROP);item.addView(artwork,new LinearLayout.LayoutParams(dp(76),dp(52)));if(c.logo!=null&&!c.logo.isEmpty())com.bumptech.glide.Glide.with(this).load(c.logo).placeholder(bg(CARD,8)).error(bg(CARD,8)).into(artwork);else artwork.setImageDrawable(bg(CARD,8));
@@ -831,7 +831,29 @@ private void loadAllPlaylists(){
             LinearLayout.LayoutParams moreParams=new LinearLayout.LayoutParams(-1,dp(48));moreParams.topMargin=dp(4);moreParams.bottomMargin=dp(12);list.addView(more,moreParams);
             more.setOnClickListener(v->{maxRenderItems+=40;renderList();if(list.getChildCount()>1){View last=list.getChildAt(list.getChildCount()-2);last.requestFocus();}});
         }
-        if(section.equals("ACCUEIL")&&(q.isEmpty()||q.trim().isEmpty())){renderHome();return;}if(shown==0){TextView empty=text(section.equals("MTV")?(mtvPlaylistUrl.isEmpty()?"Configure une playlist M3U autorisée pour MTV dans Paramètres.":"Aucune chaîne MTV disponible dans cette source."):(all.isEmpty()?"Aucun contenu chargé. Configure une source M3U ou Xtream dans Paramètres.":"Aucun résultat dans cette rubrique. Vérifie la source ou le filtre."),14,MUTED,false);empty.setPadding(dp(12),dp(30),dp(12),dp(20));list.addView(empty);}}
+        if(section.equals("ACCUEIL")&&(q.isEmpty()||q.trim().isEmpty())){renderHome();return;}if(shown==0){TextView empty=text(section.equals("MTV")?(mtvPlaylistUrl.isEmpty()?"Configure une playlist M3U autorisée pour MTV dans Paramètres.":"Aucune chaîne MTV disponible dans cette source."):(all.isEmpty()?"Aucun contenu chargé. Configure une source M3U ou Xtream dans Paramètres.":"Aucun résultat dans cette rubrique. Vérifie la source ou le filtre."),14,MUTED,false);empty.setPadding(dp(12),dp(30),dp(12),dp(20));list.addView(empty);}restoreCatalogFocus(restoreFocusUrl);}
+    // Conserve l'élément focalisé lors d'une reconstruction du catalogue.
+    private String focusedCatalogItemUrl(){
+        View focused=getCurrentFocus();
+        while(focused!=null){
+            android.view.ViewParent parent=focused.getParent();
+            if(parent==list){Object tag=focused.getTag();return tag instanceof String?(String)tag:"";}
+            focused=parent instanceof View?(View)parent:null;
+        }
+        return "";
+    }
+    private void restoreCatalogFocus(String url){
+        if(url==null||url.isEmpty()||list==null)return;
+        for(int i=0;i<list.getChildCount();i++){
+            View child=list.getChildAt(i);
+            Object tag=child.getTag();
+            if(url.equals(tag)){
+                child.requestFocus();
+                if(catalogScroll!=null){Rect rect=new Rect();child.getDrawingRect(rect);catalogScroll.requestChildRectangleOnScreen(child,rect,true);}
+                return;
+            }
+        }
+    }
     private void play(MediaEntry c){failedInCurrentRun.clear();transientRetryAttempts.clear();startPlayer(c);}
     private List<MediaEntry> playableQueue(MediaEntry selected){
         List<MediaEntry> source=section.equals("MTV")?mtvItems:all;
