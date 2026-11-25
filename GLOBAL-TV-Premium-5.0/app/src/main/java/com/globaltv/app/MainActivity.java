@@ -87,6 +87,7 @@ private final ArrayList<MediaEntry> progressiveSearchResults=new ArrayList<>();
     private int maxRenderItems=120;
     private int renderedCatalogItems=0;
     private boolean appendCatalogPage=false;
+    private final HashSet<String> renderedCatalogKeys=new HashSet<>();
     private String activeProfile="Adulte";
     private static final String PROFILE_ADULT="Adulte", PROFILE_CHILD="Enfant";
     private final ArrayList<MediaEntry> all=new ArrayList<>();
@@ -1071,7 +1072,7 @@ private void loadAllPlaylists(){
             more.setPadding(dp(8),dp(10),dp(8),dp(10));list.addView(more);
         }
     }
-    private void renderList(){if(list==null)return;if(section.equals("HISTORIQUE")){renderHistory();return;}if(section.equals("GUIDE TV")){renderEpgGuide();return;}boolean appendPage=appendCatalogPage;appendCatalogPage=false;int previouslyRendered=appendPage?renderedCatalogItems:0;String restoreFocusUrl=appendPage?"":focusedCatalogItemUrl();if(!appendPage){list.removeAllViews();renderedCatalogItems=0;}else if(list.getChildCount()>0&&"MTV_LOAD_MORE".equals(list.getChildAt(list.getChildCount()-1).getTag()))list.removeViewAt(list.getChildCount()-1);String q=search==null?"":search.getText().toString().trim().toLowerCase(Locale.ROOT);if(!appendPage)requestDatabaseSearch(q);if(section.equals("ACCUEIL")&&q.trim().isEmpty()){renderHome();return;}int shown=0;boolean universalSearch=!q.trim().isEmpty();List<MediaEntry> activeItems=universalSearch?all:(section.equals("MTV")?mtvItems:all);
+    private void renderList(){if(list==null)return;if(section.equals("HISTORIQUE")){renderHistory();return;}if(section.equals("GUIDE TV")){renderEpgGuide();return;}boolean appendPage=appendCatalogPage;appendCatalogPage=false;int previouslyRendered=appendPage?renderedCatalogItems:0;String restoreFocusUrl=appendPage?"":focusedCatalogItemUrl();if(!appendPage){list.removeAllViews();renderedCatalogItems=0;renderedCatalogKeys.clear();}else if(list.getChildCount()>0&&"MTV_LOAD_MORE".equals(list.getChildAt(list.getChildCount()-1).getTag()))list.removeViewAt(list.getChildCount()-1);String q=search==null?"":search.getText().toString().trim().toLowerCase(Locale.ROOT);if(!appendPage)requestDatabaseSearch(q);if(section.equals("ACCUEIL")&&q.trim().isEmpty()){renderHome();return;}int shown=0;boolean universalSearch=!q.trim().isEmpty();List<MediaEntry> activeItems=universalSearch?all:(section.equals("MTV")?mtvItems:all);
         if(!universalSearch){ArrayList<MediaEntry> preferredItems=new ArrayList<>(),otherItems=new ArrayList<>();HashSet<String> seenUrls=new HashSet<>();for(MediaEntry entry:activeItems){if(entry==null||entry.url==null||!seenUrls.add(entry.url))continue;if(recentlyPlayable.contains(entry.url))preferredItems.add(entry);else otherItems.add(entry);}preferredItems.addAll(otherItems);activeItems=preferredItems;}
         if(universalSearch){
             ArrayList<MediaEntry> searchItems=new ArrayList<>(activeItems);
@@ -1081,11 +1082,11 @@ private void loadAllPlaylists(){
             for(MediaEntry entry:databaseSearchResults)if(entry!=null&&identities.add(catalogSearchIdentity(entry)))searchItems.add(entry);
             activeItems=searchItems;
         }
-        HashSet<String> seenSearchEntries=universalSearch?new HashSet<>():null;int matchedCount=0;
+        HashSet<String> seenSearchEntries=universalSearch?new HashSet<>():null;
         for(MediaEntry c:activeItems){if(c==null||c.url==null)continue;if(universalSearch&&!seenSearchEntries.add(catalogSearchIdentity(c)))continue;if(!universalSearch&&!matchSection(c))continue;
             if(PROFILE_CHILD.equals(activeProfile) && isAdultEntry(c)) continue;
             String itemName=c.name==null?"":c.name;String itemGroup=c.group==null?"":c.group;
-            if(!q.isEmpty()&&!matchesUniversalSearch(c,q))continue;if(!universalSearch&&!filterMatches(activeFilter,itemGroup,itemName))continue;matchedCount++;if(matchedCount<=previouslyRendered)continue;
+            if(!q.isEmpty()&&!matchesUniversalSearch(c,q))continue;if(!universalSearch&&!filterMatches(activeFilter,itemGroup,itemName))continue;String renderIdentity=universalSearch?catalogSearchIdentity(c):c.url;if(!renderedCatalogKeys.add(renderIdentity))continue;
             LinearLayout item=row();item.setTag(c.url);item.setId(View.generateViewId());item.setPadding(dp(13),dp(4),dp(12),dp(4));item.setFocusable(true);item.setClickable(true);
             item.setBackground(bg(0xFF17233A,12));
             item.setOnFocusChangeListener((view,hasFocus)->view.setBackground(bg(hasFocus?ACCENT:0xFF17233A,12)));LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(-1,dp(62));ip.bottomMargin=dp(8);list.addView(item,ip);if(chips!=null&&shown==0){for(int ci=0;ci<chips.getChildCount();ci++)chips.getChildAt(ci).setNextFocusDownId(item.getId());}if(chips!=null&&chips.getChildCount()>0)item.setNextFocusUpId(chips.getChildAt(0).getId());
