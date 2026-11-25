@@ -62,6 +62,12 @@ public class MainActivity extends AppCompatActivity {
     private volatile int databaseSearchRequestId=0;
     private String databaseSearchQuery="";
     private final ArrayList<MediaEntry> databaseSearchResults=new ArrayList<>();
+private volatile int progressiveSearchRequestId=0;
+private final LinkedHashSet<String> incompleteM3uSources=new LinkedHashSet<>();
+private String progressiveSearchCacheQuery="";
+private long progressiveSearchCacheAt=0L;
+private final ArrayList<MediaEntry> progressiveSearchResults=new ArrayList<>();
+private void requestProgressiveM3uSearch(String query,String[] tokens,int databaseRequest){
     // Index léger des champs statiques : évite de normaliser les mêmes noms à chaque recherche.
     private final Map<String,String> normalizedSearchIndex=new HashMap<>();
     // Les vignettes de la page d’accueil sont calculées une seule fois par catalogue.
@@ -375,6 +381,9 @@ public class MainActivity extends AppCompatActivity {
         databaseSearchRequestId++;
         databaseSearchQuery="";
         databaseSearchResults.clear();
+        progressiveSearchRequestId++;
+        progressiveSearchCacheQuery="";
+        progressiveSearchResults.clear();
         return;
     }
     if(key.equals(databaseSearchQuery))return;
@@ -424,10 +433,79 @@ public class MainActivity extends AppCompatActivity {
             databaseSearchResults.clear();
             databaseSearchResults.addAll(results);
             normalizedSearchIndex.clear();
+            requestProgressiveM3uSearch(key,tokens,request);
             renderList();
         });
     });
 }
+ if(query==null||query.trim().length()<2||tokens==null||tokens.length==0||incompleteM3uSources.isEmpty())return;
+ final int request=++progressiveSearchRequestId;
+ final ArrayList<String> sources=new ArrayList<>(incompleteM3uSources);
+ if(query.equals(progressiveSearchCacheQuery)&&SystemClock.elapsedRealtime()-progressiveSearchCacheAt<600000L){
+  final ArrayList<MediaEntry> cached=new ArrayList<>(progressiveSearchResults);
+  postUi(()->{if(request==progressiveSearchRequestId&&databaseRequest==databaseSearchRequestId&&query.equals(databaseSearchQuery)){for(MediaEntry entry:cached)databaseSearchResults.add(entry);renderList();}});
+  return;
+ }
+ executeIo(()->{
+  ArrayList<MediaEntry> found=new ArrayList<>();
+  HashSet<String> identities=new HashSet<>();
+  for(MediaEntry entry:all)if(entry!=null)identities.add(catalogSearchIdentity(entry));
+  for(MediaEntry entry:databaseSearchResults)if(entry!=null)identities.add(catalogSearchIdentity(entry));
+  long totalChars=0L;
+  for(String address:sources){
+   if(request!=progressiveSearchRequestId||databaseRequest!=databaseSearchRequestId||destroyed||found.size()>=120||totalChars>=24L*1024L*1024L)break;
+   HttpURLConnection connection=null;
+   try{
+    connection=open(address);
+    int code=connection.getResponseCode();
+    if(code<200||code>=300)continue;
+    InputStream input=connection.getInputStream();
+    if(input==null)continue;
+    try(BufferedReader reader=new BufferedReader(new InputStreamReader(input,"UTF-8"))){
+     String line,name=null,group="Autres",logo="",tvgId="";
+     long sourceChars=0L;
+     while((line=readBoundedPlaylistLine(reader))!=null&&found.size()<120){
+      if(request!=progressiveSearchRequestId||databaseRequest!=databaseSearchRequestId||destroyed)break;
+      sourceChars+=line.length();totalChars+=line.length();
+      if(sourceChars>12L*1024L*1024L||totalChars>24L*1024L*1024L)break;
+      line=line.trim();if(line.startsWith("\uFEFF"))line=line.substring(1);
+      if(line.startsWith("#EXTINF:")){
+       name=line.substring(line.lastIndexOf(',')+1).trim();group="Autres";logo="";tvgId="";
+       int g=line.indexOf("group-title=\"");
+       if(g>=0){int e=line.indexOf('"',g+13);if(e>g)group=line.substring(g+13,e);}
+       int tid=line.indexOf("tvg-id=\"");
+       if(tid>=0){int e=line.indexOf('"',tid+8);if(e>tid)tvgId=line.substring(tid+8,e);}
+       int l=line.indexOf("tvg-logo=\"");
+       if(l>=0){int e=line.indexOf('"',l+10);if(e>l)logo=line.substring(l+10,e);}
+      }else if(!line.isEmpty()&&!line.startsWith("#")&&name!=null){
+       if(line.startsWith("http://")||line.startsWith("https://")){
+        String searchable=epgLookupKey(name+" "+group+" "+tvgId);
+        boolean matches=true;for(String token:tokens)if(!searchable.contains(token)){matches=false;break;}
+        if(matches){
+         MediaEntry candidate=new MediaEntry(name,line,group,logo,"m3u");candidate.tvgId=tvgId;
+         String host=Uri.parse(address).getHost();candidate.sourceId=host==null?"M3U":host;
+         String identity=catalogSearchIdentity(candidate);
+         if(identities.add(identity))found.add(candidate);
+        }
+       }
+       name=null;tvgId="";
+      }
+     }
+    }
+   }catch(Exception error){android.util.Log.w("MTv-Search","Progressive playlist search failed",error);}
+   finally{if(connection!=null)connection.disconnect();}
+  }
+  final ArrayList<MediaEntry> results=found;
+  postUi(()->{
+   if(request!=progressiveSearchRequestId||databaseRequest!=databaseSearchRequestId||!query.equals(databaseSearchQuery))return;
+   progressiveSearchCacheQuery=query;progressiveSearchCacheAt=SystemClock.elapsedRealtime();
+   progressiveSearchResults.clear();progressiveSearchResults.addAll(results);
+   for(MediaEntry entry:results)databaseSearchResults.add(entry);
+   normalizedSearchIndex.clear();renderList();
+  });
+ });
+}
+
 private void persistCatalogToDatabase(List<MediaEntry> entries,String fallbackSource,int request){
  if(entries==null||entries.isEmpty()||request!=catalogRequestId||destroyed)return;
  try{
@@ -501,19 +579,25 @@ private void loadAllPlaylists(){
  executeIo(()->{
   ArrayList<MediaEntry> merged=new ArrayList<>();HashMap<String,HashSet<String>> seenStreamEntries=new HashMap<>();ArrayList<String> errors=new ArrayList<>();ArrayList<String> sourceResults=new ArrayList<>();
   int completedSources=0;
+  LinkedHashSet<String> incompleteThisLoad=new LinkedHashSet<>();
   for(int sourceIndex=0;sourceIndex<urls.size();sourceIndex++){
    String address=urls.get(sourceIndex);
-   if(merged.size()>=MAX_CATALOG_ITEMS||request!=catalogRequestId||destroyed)break;
+   if(request!=catalogRequestId||destroyed)break;
+   if(merged.size()>=MAX_CATALOG_ITEMS){for(int remaining=sourceIndex;remaining<urls.size();remaining++)incompleteThisLoad.add(urls.get(remaining));break;}
    String host=Uri.parse(address).getHost();if(host==null||host.isEmpty())host="Source "+(sourceIndex+1);
    final String progressHost=host;final int progressIndex=sourceIndex+1;final int progressTotal=urls.size();
    postUi(()->{if(request==catalogRequestId&&status!=null)status.setText("Chargement M3U "+progressIndex+"/"+progressTotal+" • "+progressHost);});
    long startedAt=SystemClock.elapsedRealtime();int sourceCount=0;String outcome="OK";
    try{sourceCount=appendM3uPlaylist(address,merged,seenStreamEntries,request);}
    catch(Exception ex){outcome="ÉCHEC";String reason=ex.getMessage();if(reason==null||reason.trim().isEmpty())reason=ex.getClass().getSimpleName();errors.add(host+": "+reason);}
+   if(merged.size()>=MAX_CATALOG_ITEMS){for(int remaining=sourceIndex;remaining<urls.size();remaining++)incompleteThisLoad.add(urls.get(remaining));}
    long elapsed=Math.max(0L,SystemClock.elapsedRealtime()-startedAt);completedSources++;
    sourceResults.add(host+" : "+sourceCount+" élément(s), "+(elapsed/1000.0)+" s"+("OK".equals(outcome)?"":" • "+outcome));
   }
-  if(request!=catalogRequestId||destroyed)return;persistCatalogToDatabase(merged,"M3U",request);seenStreamEntries.clear();final int loaded=merged.size();final int checkedSources=completedSources;final boolean capped=loaded>=MAX_CATALOG_ITEMS;
+  if(request!=catalogRequestId||destroyed)return;
+  incompleteM3uSources.clear();incompleteM3uSources.addAll(incompleteThisLoad);
+  prefs.edit().putStringSet("incomplete_m3u_sources",new HashSet<>(incompleteThisLoad)).apply();
+  persistCatalogToDatabase(merged,"M3U",request);seenStreamEntries.clear();final int loaded=merged.size();final int checkedSources=completedSources;final boolean capped=loaded>=MAX_CATALOG_ITEMS;
   StringBuilder summary=new StringBuilder().append(loaded).append(" éléments • ").append(checkedSources).append("/").append(urls.size()).append(" sources analysées");
   if(!errors.isEmpty())summary.append(" • ").append(errors.size()).append(" échec(s)");
   if(capped)summary.append(" • limite de ").append(MAX_CATALOG_ITEMS).append(" atteinte, sources restantes ignorées");
