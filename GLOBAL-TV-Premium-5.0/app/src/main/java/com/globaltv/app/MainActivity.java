@@ -312,13 +312,6 @@ private final ArrayList<MediaEntry> progressiveSearchResults=new ArrayList<>();
         chipScroll.addView(chips,new HorizontalScrollView.LayoutParams(-2,-1));
         content.addView(chipScroll,new LinearLayout.LayoutParams(-1,dp(54)));
         status=text("",12,MUTED,false);status.setVisibility(View.GONE);content.addView(status,new LinearLayout.LayoutParams(-1,dp(0)));
-        catalogScroll=new ScrollView(this);
-        catalogScroll.setFillViewport(true);
-        catalogScroll.setVerticalScrollBarEnabled(true);
-        catalogScroll.setScrollbarFadingEnabled(false);
-        catalogScroll.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
-        catalogScroll.setSmoothScrollingEnabled(true);
-        catalogScroll.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
         playerArea=row();playerArea.setGravity(Gravity.TOP);content.addView(playerArea,new LinearLayout.LayoutParams(-1,0,1));
         catalogContainer=new FrameLayout(this);
         playerArea.addView(catalogContainer,new LinearLayout.LayoutParams(-1,-1));
@@ -413,7 +406,7 @@ private final ArrayList<MediaEntry> progressiveSearchResults=new ArrayList<>();
         playerFullscreen=false;playerExpanded=false;
         try{if(sidebarShell!=null)sidebarShell.setVisibility(View.VISIBLE);if(sidebarScroll!=null)sidebarScroll.setVisibility(View.VISIBLE);if(sidebar!=null)sidebar.setVisibility(View.VISIBLE);if(content!=null)for(int i=0;i<content.getChildCount();i++)content.getChildAt(i).setVisibility(View.VISIBLE);}catch(Exception e){android.util.Log.w("MTv-Player","Unable to restore layout",e);}
         try{if(oldView!=null){oldView.setPlayer(null);if(oldView.getParent() instanceof ViewGroup)((ViewGroup)oldView.getParent()).removeView(oldView);}}catch(Exception e){android.util.Log.w("MTv-Player","Unable to detach player view",e);}
-        try{if(playerArea!=null)playerArea.setOrientation(LinearLayout.HORIZONTAL);if(catalogScroll!=null&&playerArea!=null&&catalogScroll.getParent()!=playerArea)playerArea.addView(catalogContainer,new LinearLayout.LayoutParams(-1,-1));}catch(Exception e){android.util.Log.w("MTv-Player","Unable to restore catalogue",e);}
+        try{if(playerArea!=null)playerArea.setOrientation(LinearLayout.HORIZONTAL);if(catalogContainer!=null&&playerArea!=null&&catalogContainer.getParent()!=playerArea)playerArea.addView(catalogContainer,new LinearLayout.LayoutParams(-1,-1));}catch(Exception e){android.util.Log.w("MTv-Player","Unable to restore catalogue",e);}
         try{if(oldToolbar!=null&&oldToolbar.getParent() instanceof ViewGroup)((ViewGroup)oldToolbar.getParent()).removeView(oldToolbar);if(playerArea!=null)for(int i=playerArea.getChildCount()-1;i>=0;i--){View child=playerArea.getChildAt(i);if(child instanceof LinearLayout&&child!=catalogContainer&&((LinearLayout)child).getChildCount()==0)playerArea.removeViewAt(i);}}catch(Exception e){android.util.Log.w("MTv-Player","Unable to clean player controls",e);}
         try{if(oldPlayer!=null)oldPlayer.release();}catch(Exception e){android.util.Log.w("MTv-Player","Player release failed",e);}
     }
@@ -928,13 +921,13 @@ private void loadAllPlaylists(){
         ArrayList<MediaEntry> featuredEntries=homeFeaturedCache;
         int count=0;
         for(MediaEntry entry:featuredEntries){
-            LinearLayout card=column();card.setGravity(Gravity.CENTER_HORIZONTAL);card.setPadding(dp(8),dp(8),dp(8),dp(6));card.setBackground(bg(PANEL,12));card.setFocusable(true);card.setClickable(true);LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(dp(174),dp(172));cp.rightMargin=dp(10);featured.addView(card,cp);
+            LinearLayout card=column();card.setId(View.generateViewId());if(featured.getChildCount()==0)card.setNextFocusUpId(featuredTitle.getId());else{View previous=featured.getChildAt(featured.getChildCount()-1);previous.setNextFocusRightId(card.getId());card.setNextFocusLeftId(previous.getId());}card.setGravity(Gravity.CENTER_HORIZONTAL);card.setPadding(dp(8),dp(8),dp(8),dp(6));card.setBackground(bg(PANEL,12));card.setFocusable(true);card.setClickable(true);LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(dp(174),dp(172));cp.rightMargin=dp(10);featured.addView(card,cp);
             ImageView logo=new ImageView(this);logo.setScaleType(ImageView.ScaleType.FIT_CENTER);logo.setBackground(bg(CARD,8));card.addView(logo,new LinearLayout.LayoutParams(dp(158),dp(102)));if(entry.logo!=null&&!entry.logo.isEmpty())com.bumptech.glide.Glide.with(this).load(entry.logo).override(dp(158),dp(102)).fitCenter().dontAnimate().placeholder(bg(CARD,8)).error(bg(CARD,8)).into(logo);
             TextView label=text(entry.name,12,Color.WHITE,true);label.setGravity(Gravity.CENTER);label.setMaxLines(1);card.addView(label,new LinearLayout.LayoutParams(-1,dp(25)));String programme=findEpgProgram(epgNow,entry);String cardDetail=!programme.isEmpty()?"EN COURS • "+programme:(("live".equals(entry.type)||"m3u".equals(entry.type))?"EN DIRECT":(entry.group==null?"À DÉCOUVRIR":entry.group));TextView sub=text(cardDetail,9,0xFFB8C8DE,true);sub.setGravity(Gravity.CENTER);sub.setMaxLines(1);card.addView(sub,new LinearLayout.LayoutParams(-1,dp(20)));
             card.setOnFocusChangeListener((v,focus)->{if(focus){GradientDrawable d=bg(0xFF3A315D,12);d.setStroke(dp(2),FOCUS_GOLD);v.setBackground(d);v.animate().scaleX(1.05f).scaleY(1.05f).setDuration(110).start();}else{v.setBackground(bg(PANEL,12));v.animate().scaleX(1f).scaleY(1f).setDuration(110).start();}});
             card.setOnClickListener(v->play(entry));count++;
         }
-        if(count>0&&!homeTiles.isEmpty()){for(int fi=0;fi<featured.getChildCount();fi++)if(fi==0)featured.getChildAt(fi).setNextFocusUpId(featuredTitle.getId());}if(count==0){TextView empty=text("Tes chaînes apparaîtront ici dès que la playlist sera chargée.",12,MUTED,false);list.addView(empty);}
+        if(count>0){featuredTitle.setNextFocusDownId(featured.getChildAt(0).getId());}if(count==0){TextView empty=text("Tes chaînes apparaîtront ici dès que la playlist sera chargée.",12,MUTED,false);list.addView(empty);}
     }
     private void renderHistory(){
         try{renderHistoryContent();}catch(Exception historyError){
