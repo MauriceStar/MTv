@@ -58,6 +58,10 @@ public class MainActivity extends AppCompatActivity {
     // Cache les termes normalisés : ils ne doivent pas être recalculés pour chaque élément du catalogue.
     private String cachedSearchQuery=null;
     private String[] cachedSearchTokens=new String[0];
+    // Résultats Room associés à la dernière requête de recherche.
+    private volatile int databaseSearchRequestId=0;
+    private String databaseSearchQuery="";
+    private final ArrayList<MediaEntry> databaseSearchResults=new ArrayList<>();
     // Index léger des champs statiques : évite de normaliser les mêmes noms à chaque recherche.
     private final Map<String,String> normalizedSearchIndex=new HashMap<>();
     // Les vignettes de la page d’accueil sont calculées une seule fois par catalogue.
@@ -365,7 +369,66 @@ public class MainActivity extends AppCompatActivity {
                 while((n=stream.read(b))!=-1){total+=n;if(total>15*1024*1024)throw new IOException("Réponse trop volumineuse (limite 15 Mo)");out.write(b,0,n);}
                 return out.toString("UTF-8");
             }}finally{c.disconnect();}}
-    private void persistCatalogToDatabase(List<MediaEntry> entries,String fallbackSource,int request){
+    private void requestDatabaseSearch(String query){
+    String key=query==null?"":query.trim().toLowerCase(Locale.ROOT);
+    if(key.isEmpty()){
+        databaseSearchRequestId++;
+        databaseSearchQuery="";
+        databaseSearchResults.clear();
+        return;
+    }
+    if(key.equals(databaseSearchQuery))return;
+    databaseSearchQuery=key;
+    final int request=++databaseSearchRequestId;
+    databaseSearchResults.clear();
+    ArrayList<String> tokenList=new ArrayList<>();
+    for(String token:key.split("\\s+")){
+        String normalized=epgLookupKey(token);
+        if(!normalized.isEmpty()&&!tokenList.contains(normalized))tokenList.add(normalized);
+    }
+    if(tokenList.isEmpty())return;
+    final String[] tokens=tokenList.toArray(new String[0]);
+    executeIo(()->{
+        ArrayList<MediaEntry> found=new ArrayList<>();
+        try{
+            CatalogDao dao=CatalogDatabase.getInstance(getApplicationContext()).catalogDao();
+            LinkedHashMap<String,CatalogEntryEntity> candidates=new LinkedHashMap<>();
+            for(String token:tokens){
+                for(CatalogEntryEntity row:dao.searchToken(token,MAX_CATALOG_ITEMS)){
+                    if(row!=null&&row.id!=null)candidates.put(row.id,row);
+                }
+            }
+            for(CatalogEntryEntity row:candidates.values()){
+                StringBuilder fields=new StringBuilder(192);
+                String[] values={row.normalizedName,row.normalizedGroup,epgLookupKey(row.type),epgLookupKey(row.tvgId),
+                    epgLookupKey(row.plot),epgLookupKey(row.rating),epgLookupKey(row.year),epgLookupKey(row.duration),
+                    epgLookupKey(row.genre),epgLookupKey(row.cast),epgLookupKey(row.director),epgLookupKey(row.seriesTitle)};
+                for(String value:values)if(value!=null&&!value.isEmpty())fields.append(value).append(' ');
+                String haystack=fields.toString();
+                boolean matches=true;
+                for(String token:tokens)if(!haystack.contains(token)){matches=false;break;}
+                if(!matches)continue;
+                MediaEntry entry=new MediaEntry(row.name,row.url,row.groupName,row.logo,row.type);
+                entry.id=row.entryId;entry.container=row.container;entry.tvgId=row.tvgId;entry.sourceId=row.sourceId;
+                entry.plot=row.plot;entry.rating=row.rating;entry.year=row.year;entry.duration=row.duration;
+                entry.genre=row.genre;entry.cast=row.cast;entry.director=row.director;
+                entry.seasonNumber=row.seasonNumber;entry.episodeNumber=row.episodeNumber;entry.seriesTitle=row.seriesTitle;
+                found.add(entry);
+            }
+        }catch(Exception error){
+            android.util.Log.w("MTv-Catalog","Room search failed",error);
+        }
+        final ArrayList<MediaEntry> results=found;
+        postUi(()->{
+            if(request!=databaseSearchRequestId||!key.equals(databaseSearchQuery))return;
+            databaseSearchResults.clear();
+            databaseSearchResults.addAll(results);
+            normalizedSearchIndex.clear();
+            renderList();
+        });
+    });
+}
+private void persistCatalogToDatabase(List<MediaEntry> entries,String fallbackSource,int request){
  if(entries==null||entries.isEmpty()||request!=catalogRequestId||destroyed)return;
  try{
   CatalogDao dao=CatalogDatabase.getInstance(getApplicationContext()).catalogDao();
@@ -876,11 +939,18 @@ private void loadAllPlaylists(){
             more.setPadding(dp(8),dp(10),dp(8),dp(10));list.addView(more);
         }
     }
-    private void renderList(){if(list==null)return;if(section.equals("HISTORIQUE")){renderHistory();return;}if(section.equals("GUIDE TV")){renderEpgGuide();return;}String restoreFocusUrl=focusedCatalogItemUrl();list.removeAllViews();String q=search==null?"":search.getText().toString().trim().toLowerCase(Locale.ROOT);if(section.equals("ACCUEIL")&&q.trim().isEmpty()){renderHome();return;}int shown=0;boolean universalSearch=!q.trim().isEmpty();List<MediaEntry> activeItems=universalSearch?all:(section.equals("MTV")?mtvItems:all);
+    private void renderList(){if(list==null)return;if(section.equals("HISTORIQUE")){renderHistory();return;}if(section.equals("GUIDE TV")){renderEpgGuide();return;}String restoreFocusUrl=focusedCatalogItemUrl();list.removeAllViews();String q=search==null?"":search.getText().toString().trim().toLowerCase(Locale.ROOT);requestDatabaseSearch(q);if(section.equals("ACCUEIL")&&q.trim().isEmpty()){renderHome();return;}int shown=0;boolean universalSearch=!q.trim().isEmpty();List<MediaEntry> activeItems=universalSearch?all:(section.equals("MTV")?mtvItems:all);
         if(!universalSearch){ArrayList<MediaEntry> preferredItems=new ArrayList<>(),otherItems=new ArrayList<>();HashSet<String> seenUrls=new HashSet<>();for(MediaEntry entry:activeItems){if(entry==null||entry.url==null||!seenUrls.add(entry.url))continue;if(recentlyPlayable.contains(entry.url))preferredItems.add(entry);else otherItems.add(entry);}preferredItems.addAll(otherItems);activeItems=preferredItems;}
-        else if(section.equals("MTV")){ArrayList<MediaEntry> searchItems=new ArrayList<>(activeItems);searchItems.addAll(mtvItems);activeItems=searchItems;}
-        HashSet<String> seenSearchUrls=universalSearch?new HashSet<>():null;
-        for(MediaEntry c:activeItems){if(c==null||c.url==null)continue;if(universalSearch&&!seenSearchUrls.add(c.url))continue;if(!universalSearch&&!matchSection(c))continue;
+        if(universalSearch){
+            ArrayList<MediaEntry> searchItems=new ArrayList<>(activeItems);
+            if(section.equals("MTV"))searchItems.addAll(mtvItems);
+            HashSet<String> identities=new HashSet<>();
+            for(MediaEntry entry:searchItems)if(entry!=null)identities.add(catalogSearchIdentity(entry));
+            for(MediaEntry entry:databaseSearchResults)if(entry!=null&&identities.add(catalogSearchIdentity(entry)))searchItems.add(entry);
+            activeItems=searchItems;
+        }
+        HashSet<String> seenSearchEntries=universalSearch?new HashSet<>():null;
+        for(MediaEntry c:activeItems){if(c==null||c.url==null)continue;if(universalSearch&&!seenSearchEntries.add(catalogSearchIdentity(c)))continue;if(!universalSearch&&!matchSection(c))continue;
             if(PROFILE_CHILD.equals(activeProfile) && isAdultEntry(c)) continue;
             String itemName=c.name==null?"":c.name;String itemGroup=c.group==null?"":c.group;
             if(!q.isEmpty()&&!matchesUniversalSearch(c,q))continue;if(!universalSearch&&!filterMatches(activeFilter,itemGroup,itemName))continue;
@@ -1702,15 +1772,24 @@ private void loadAllPlaylists(){
         for(String value:values){String normalized=epgLookupKey(value);if(!normalized.isEmpty())searchable.append(normalized).append(' ');}
         return matchesNormalizedSearchFields(query,searchable.toString());
     }
+    private String catalogSearchIdentity(MediaEntry entry){
+        if(entry==null)return "";
+        char separator=31;
+        return (entry.url==null?"":entry.url)+separator+(entry.name==null?"":entry.name)+separator+
+            (entry.group==null?"":entry.group)+separator+(entry.tvgId==null?"":entry.tvgId)+separator+
+            (entry.type==null?"":entry.type);
+    }
     private boolean matchesUniversalSearch(MediaEntry entry,String query){
         if(entry==null)return false;
-        String base=normalizedSearchIndex.get(entry.url);
+        String identity=catalogSearchIdentity(entry);
+        String base=normalizedSearchIndex.get(identity);
         if(base==null){
-            StringBuilder fields=new StringBuilder(96);
-            String[] values={entry.name,entry.group,entry.type};
+            StringBuilder fields=new StringBuilder(192);
+            String[] values={entry.name,entry.group,entry.type,entry.tvgId,entry.plot,entry.rating,entry.year,
+                entry.duration,entry.genre,entry.cast,entry.director,entry.seriesTitle};
             for(String value:values){String normalized=epgLookupKey(value);if(!normalized.isEmpty())fields.append(normalized).append(' ');}
             base=fields.toString();
-            if(entry.url!=null&&!entry.url.isEmpty())normalizedSearchIndex.put(entry.url,base);
+            if(!identity.isEmpty())normalizedSearchIndex.put(identity,base);
         }
         String current=epgLookupKey(findEpgProgram(epgNow,entry));
         String next=epgLookupKey(findEpgProgram(epgNext,entry));
