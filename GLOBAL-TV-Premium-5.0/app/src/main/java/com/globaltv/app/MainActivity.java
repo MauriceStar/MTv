@@ -325,6 +325,8 @@ private final ArrayList<MediaEntry> progressiveSearchResults=new ArrayList<>();
         catalogContainer.addView(catalogScroll,new FrameLayout.LayoutParams(-1,-1));
         list=column();list.setPadding(0,dp(4),0,dp(12));catalogScroll.addView(list);
         catalogRecycler=new RecyclerView(this);
+        catalogRecycler.setId(View.generateViewId());
+        catalogRecycler.setFocusable(true);
         catalogRecycler.setLayoutManager(new LinearLayoutManager(this,RecyclerView.VERTICAL,false));
         catalogRecycler.setHasFixedSize(true);
         catalogRecycler.setItemAnimator(null);
@@ -1150,7 +1152,7 @@ private void loadAllPlaylists(){
         if(catalogEmpty!=null){catalogEmpty.setText(all.isEmpty()?"Aucun contenu chargé. Configure une source M3U ou Xtream dans Paramètres.":"Aucun résultat dans cette rubrique. Vérifie la source ou le filtre.");catalogEmpty.setVisibility(visible.isEmpty()?View.VISIBLE:View.GONE);}
         if(catalogRecycler!=null)catalogRecycler.scrollToPosition(0);
         if(search!=null){
-            if(section.equals("ACCUEIL"))search.setNextFocusDownId(View.NO_ID);
+            if(section.equals("ACCUEIL"))search.setNextFocusDownId(catalogRecycler.getId());
             else if(chips!=null&&chips.getChildCount()>0)search.setNextFocusDownId(chips.getChildAt(0).getId());
         }
     }
@@ -1255,8 +1257,8 @@ private void loadAllPlaylists(){
             if(wideLayout)videoColumn.addView(playerView,new LinearLayout.LayoutParams(-1,0,1f));
             else videoColumn.addView(playerView,new LinearLayout.LayoutParams(-1,dp(245)));
             videoColumn.addView(playerToolbar,new LinearLayout.LayoutParams(-1,dp(82)));
-            if(wideLayout)playerArea.addView(catalogScroll,new LinearLayout.LayoutParams(0,-1,0.38f));
-            else playerArea.addView(catalogScroll,new LinearLayout.LayoutParams(-1,0,1f));
+            if(wideLayout)playerArea.addView(catalogContainer,new LinearLayout.LayoutParams(0,-1,0.38f));
+            else playerArea.addView(catalogContainer,new LinearLayout.LayoutParams(-1,0,1f));
             final ExoPlayer activePlayer=player;
             lastPlayedUrl=c.url;long resumePosition=("live".equals(c.type)||"m3u".equals(c.type))?0L:historyPosition(c);pendingResumePosition=0L;
             recordHistoryEntry(c);
@@ -1394,9 +1396,9 @@ private void loadAllPlaylists(){
         LinearLayout.LayoutParams videoParams=(LinearLayout.LayoutParams)playerView.getLayoutParams();
         videoParams.width=-1;videoParams.height=playerFullscreen?-1:(wideLayout?0:dp(245));
         videoParams.weight=playerFullscreen?0f:(wideLayout?1f:0f);playerView.setLayoutParams(videoParams);
-        if(!playerFullscreen&&catalogScroll.getParent()!=playerArea){
-            if(wideLayout)playerArea.addView(catalogScroll,new LinearLayout.LayoutParams(0,-1,0.38f));
-            else playerArea.addView(catalogScroll,new LinearLayout.LayoutParams(-1,0,1f));
+        if(!playerFullscreen&&catalogContainer.getParent()!=playerArea){
+            if(wideLayout)playerArea.addView(catalogContainer,new LinearLayout.LayoutParams(0,-1,0.38f));
+            else playerArea.addView(catalogContainer,new LinearLayout.LayoutParams(-1,0,1f));
         }
         applyImmersiveMode();styleFullscreenPlayerControls();playerView.post(()->{styleFullscreenPlayerControls();playerView.requestFocus();});
     }
