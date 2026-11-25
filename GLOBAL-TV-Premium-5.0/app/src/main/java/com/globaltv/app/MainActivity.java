@@ -85,6 +85,8 @@ private final ArrayList<MediaEntry> progressiveSearchResults=new ArrayList<>();
     private Runnable splashTimeoutRunnable;
     private static final int MAX_CATALOG_ITEMS=30000;
     private int maxRenderItems=120;
+    private int renderedCatalogItems=0;
+    private boolean appendCatalogPage=false;
     private String activeProfile="Adulte";
     private static final String PROFILE_ADULT="Adulte", PROFILE_CHILD="Enfant";
     private final ArrayList<MediaEntry> all=new ArrayList<>();
@@ -1069,7 +1071,7 @@ private void loadAllPlaylists(){
             more.setPadding(dp(8),dp(10),dp(8),dp(10));list.addView(more);
         }
     }
-    private void renderList(){if(list==null)return;if(section.equals("HISTORIQUE")){renderHistory();return;}if(section.equals("GUIDE TV")){renderEpgGuide();return;}String restoreFocusUrl=focusedCatalogItemUrl();list.removeAllViews();String q=search==null?"":search.getText().toString().trim().toLowerCase(Locale.ROOT);requestDatabaseSearch(q);if(section.equals("ACCUEIL")&&q.trim().isEmpty()){renderHome();return;}int shown=0;boolean universalSearch=!q.trim().isEmpty();List<MediaEntry> activeItems=universalSearch?all:(section.equals("MTV")?mtvItems:all);
+    private void renderList(){if(list==null)return;if(section.equals("HISTORIQUE")){renderHistory();return;}if(section.equals("GUIDE TV")){renderEpgGuide();return;}boolean appendPage=appendCatalogPage;appendCatalogPage=false;int previouslyRendered=appendPage?renderedCatalogItems:0;String restoreFocusUrl=appendPage?"":focusedCatalogItemUrl();if(!appendPage){list.removeAllViews();renderedCatalogItems=0;}else if(list.getChildCount()>0&&"MTV_LOAD_MORE".equals(list.getChildAt(list.getChildCount()-1).getTag()))list.removeViewAt(list.getChildCount()-1);String q=search==null?"":search.getText().toString().trim().toLowerCase(Locale.ROOT);if(!appendPage)requestDatabaseSearch(q);if(section.equals("ACCUEIL")&&q.trim().isEmpty()){renderHome();return;}int shown=0;boolean universalSearch=!q.trim().isEmpty();List<MediaEntry> activeItems=universalSearch?all:(section.equals("MTV")?mtvItems:all);
         if(!universalSearch){ArrayList<MediaEntry> preferredItems=new ArrayList<>(),otherItems=new ArrayList<>();HashSet<String> seenUrls=new HashSet<>();for(MediaEntry entry:activeItems){if(entry==null||entry.url==null||!seenUrls.add(entry.url))continue;if(recentlyPlayable.contains(entry.url))preferredItems.add(entry);else otherItems.add(entry);}preferredItems.addAll(otherItems);activeItems=preferredItems;}
         if(universalSearch){
             ArrayList<MediaEntry> searchItems=new ArrayList<>(activeItems);
@@ -1079,24 +1081,25 @@ private void loadAllPlaylists(){
             for(MediaEntry entry:databaseSearchResults)if(entry!=null&&identities.add(catalogSearchIdentity(entry)))searchItems.add(entry);
             activeItems=searchItems;
         }
-        HashSet<String> seenSearchEntries=universalSearch?new HashSet<>():null;
+        HashSet<String> seenSearchEntries=universalSearch?new HashSet<>():null;int matchedCount=0;
         for(MediaEntry c:activeItems){if(c==null||c.url==null)continue;if(universalSearch&&!seenSearchEntries.add(catalogSearchIdentity(c)))continue;if(!universalSearch&&!matchSection(c))continue;
             if(PROFILE_CHILD.equals(activeProfile) && isAdultEntry(c)) continue;
             String itemName=c.name==null?"":c.name;String itemGroup=c.group==null?"":c.group;
-            if(!q.isEmpty()&&!matchesUniversalSearch(c,q))continue;if(!universalSearch&&!filterMatches(activeFilter,itemGroup,itemName))continue;
+            if(!q.isEmpty()&&!matchesUniversalSearch(c,q))continue;if(!universalSearch&&!filterMatches(activeFilter,itemGroup,itemName))continue;matchedCount++;if(matchedCount<=previouslyRendered)continue;
             LinearLayout item=row();item.setTag(c.url);item.setId(View.generateViewId());item.setPadding(dp(13),dp(4),dp(12),dp(4));item.setFocusable(true);item.setClickable(true);
             item.setBackground(bg(0xFF17233A,12));
             item.setOnFocusChangeListener((view,hasFocus)->view.setBackground(bg(hasFocus?ACCENT:0xFF17233A,12)));LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(-1,dp(62));ip.bottomMargin=dp(8);list.addView(item,ip);if(chips!=null&&shown==0){for(int ci=0;ci<chips.getChildCount();ci++)chips.getChildAt(ci).setNextFocusDownId(item.getId());}if(chips!=null&&chips.getChildCount()>0)item.setNextFocusUpId(chips.getChildAt(0).getId());
             ImageView artwork=new ImageView(this);artwork.setScaleType(ImageView.ScaleType.CENTER_CROP);item.addView(artwork,new LinearLayout.LayoutParams(dp(76),dp(52)));if(c.logo!=null&&!c.logo.isEmpty())com.bumptech.glide.Glide.with(this).load(c.logo).override(dp(76),dp(52)).centerCrop().dontAnimate().placeholder(bg(CARD,8)).error(bg(CARD,8)).into(artwork);else artwork.setImageDrawable(bg(CARD,8));
             LinearLayout meta=column();meta.setPadding(dp(12),0,0,0);item.addView(meta,new LinearLayout.LayoutParams(0,-1,1));meta.addView(text(itemName,14,Color.WHITE,true));String entryType=c.type==null?"":c.type;String programmeNow=findEpgProgram(epgNow,c),programmeNext=findEpgProgram(epgNext,c);String detail=itemGroup+"  •  "+(entryType.equals("live")||entryType.equals("m3u")?"En direct":entryType.equals("series")?"Série":"VOD");if(!programmeNow.isEmpty())detail+="  •  En cours : "+programmeNow;if(!programmeNext.isEmpty())detail+="  •  Ensuite : "+programmeNext;if(section.equals("HISTORIQUE")){long pos=historyPosition(c);detail+="  •  Reprendre à "+(pos/60000)+" min";}meta.addView(text(detail,10,MUTED,false));
-            TextView fav=text(favorites.contains(c.url)?"♥":"♡",22,0xFFFF7199,true);fav.setGravity(Gravity.CENTER);fav.setId(View.generateViewId());fav.setFocusable(true);fav.setClickable(true);fav.setBackground(bg(CARD,8));fav.setOnFocusChangeListener((v,focus)->v.setBackground(bg(focus?ACCENT:CARD,8)));item.setNextFocusRightId(fav.getId());item.addView(fav,new LinearLayout.LayoutParams(dp(52),-1));fav.setNextFocusLeftId(item.getId());fav.setOnClickListener(v->{if(!favorites.add(c.url))favorites.remove(c.url);getPreferences(0).edit().putStringSet(profileFavoritesKey(),new HashSet<>(favorites)).apply();fav.setText(favorites.contains(c.url)?"♥":"♡");fav.setContentDescription(favorites.contains(c.url)?"Retirer des favoris":"Ajouter aux favoris");});fav.setOnLongClickListener(v->{showAssignFavoriteGroup(c);return true;});item.setOnClickListener(v->openContent(c));shown++;if(shown>=maxRenderItems)break;}
-        if(shown>=maxRenderItems){
+            TextView fav=text(favorites.contains(c.url)?"♥":"♡",22,0xFFFF7199,true);fav.setGravity(Gravity.CENTER);fav.setId(View.generateViewId());fav.setFocusable(true);fav.setClickable(true);fav.setBackground(bg(CARD,8));fav.setOnFocusChangeListener((v,focus)->v.setBackground(bg(focus?ACCENT:CARD,8)));item.setNextFocusRightId(fav.getId());item.addView(fav,new LinearLayout.LayoutParams(dp(52),-1));fav.setNextFocusLeftId(item.getId());fav.setOnClickListener(v->{if(!favorites.add(c.url))favorites.remove(c.url);getPreferences(0).edit().putStringSet(profileFavoritesKey(),new HashSet<>(favorites)).apply();fav.setText(favorites.contains(c.url)?"♥":"♡");fav.setContentDescription(favorites.contains(c.url)?"Retirer des favoris":"Ajouter aux favoris");});fav.setOnLongClickListener(v->{showAssignFavoriteGroup(c);return true;});item.setOnClickListener(v->openContent(c));shown++;if(shown+previouslyRendered>=maxRenderItems)break;}
+        renderedCatalogItems=previouslyRendered+shown;
+        if(renderedCatalogItems>=maxRenderItems){
             TextView more=text("Afficher les chaînes / contenus suivants…",13,Color.WHITE,true);
             more.setGravity(Gravity.CENTER);more.setFocusable(true);more.setClickable(true);more.setTag("MTV_LOAD_MORE");more.setPadding(dp(12),dp(10),dp(12),dp(10));more.setBackground(bg(ACCENT,10));
             LinearLayout.LayoutParams moreParams=new LinearLayout.LayoutParams(-1,dp(48));moreParams.topMargin=dp(4);moreParams.bottomMargin=dp(12);list.addView(more,moreParams);
-            more.setOnClickListener(v->{maxRenderItems=Math.min(MAX_CATALOG_ITEMS,maxRenderItems+40);renderList();if(list.getChildCount()>0&&!"MTV_LOAD_MORE".equals(list.getChildAt(list.getChildCount()-1).getTag()))list.getChildAt(list.getChildCount()-1).requestFocus();});
+            more.setOnClickListener(v->{maxRenderItems=Math.min(MAX_CATALOG_ITEMS,maxRenderItems+40);appendCatalogPage=true;renderList();if(list.getChildCount()>0&&!"MTV_LOAD_MORE".equals(list.getChildAt(list.getChildCount()-1).getTag()))list.getChildAt(list.getChildCount()-1).requestFocus();});
         }
-        if(section.equals("ACCUEIL")&&(q.isEmpty()||q.trim().isEmpty())){renderHome();return;}if(shown==0){TextView empty=text(section.equals("MTV")?(mtvPlaylistUrl.isEmpty()?"Configure une playlist M3U autorisée pour MTV dans Paramètres.":"Aucune chaîne MTV disponible dans cette source."):(all.isEmpty()?"Aucun contenu chargé. Configure une source M3U ou Xtream dans Paramètres.":"Aucun résultat dans cette rubrique. Vérifie la source ou le filtre."),14,MUTED,false);empty.setPadding(dp(12),dp(30),dp(12),dp(20));list.addView(empty);}restoreCatalogFocus(restoreFocusUrl);}
+        if(section.equals("ACCUEIL")&&(q.isEmpty()||q.trim().isEmpty())){renderHome();return;}if(renderedCatalogItems==0){TextView empty=text(section.equals("MTV")?(mtvPlaylistUrl.isEmpty()?"Configure une playlist M3U autorisée pour MTV dans Paramètres.":"Aucune chaîne MTV disponible dans cette source."):(all.isEmpty()?"Aucun contenu chargé. Configure une source M3U ou Xtream dans Paramètres.":"Aucun résultat dans cette rubrique. Vérifie la source ou le filtre."),14,MUTED,false);empty.setPadding(dp(12),dp(30),dp(12),dp(20));list.addView(empty);}restoreCatalogFocus(restoreFocusUrl);}
     // Conserve l'élément focalisé lors d'une reconstruction du catalogue.
     private String focusedCatalogItemUrl(){
         View focused=getCurrentFocus();
