@@ -963,7 +963,6 @@ private void loadAllPlaylists(){
                         }
                         recordFailedStream(failedUrl);
                         if(nextIndex>=0){
-                            Toast.makeText(MainActivity.this,"Flux indisponible. Passage au suivant…",Toast.LENGTH_SHORT).show();
                             activePlayer.seekTo(nextIndex,0L);activePlayer.prepare();activePlayer.play();
                         }else{
                             activePlayer.stop();
