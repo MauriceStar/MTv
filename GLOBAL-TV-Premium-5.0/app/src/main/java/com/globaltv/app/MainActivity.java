@@ -365,7 +365,7 @@ public class MainActivity extends AppCompatActivity {
                 return out.toString("UTF-8");
             }}finally{c.disconnect();}}
     private void loadPlaylist(String url){if(url!=null&&(url.startsWith("http://")||url.startsWith("https://"))){playlistSources.add(url);prefs.edit().putStringSet("m3u_sources",new HashSet<>(playlistSources)).apply();}loadAllPlaylists();}
-    private int appendM3uPlaylist(String address,ArrayList<MediaEntry> merged,HashSet<String> seenStreamUrls)throws Exception{
+    private int appendM3uPlaylist(String address,ArrayList<MediaEntry> merged,HashMap<String,HashSet<String>> seenStreamEntries)throws Exception{
  HttpURLConnection connection=open(address);
  try{
   int code=connection.getResponseCode();if(code<200||code>=300)throw new IOException("Serveur HTTP "+code);
@@ -382,7 +382,7 @@ public class MainActivity extends AppCompatActivity {
      int tid=line.indexOf("tvg-id=\"");if(tid>=0){int te=line.indexOf('"',tid+8);if(te>tid)tvgId=line.substring(tid+8,te);}
      int l=line.indexOf("tvg-logo=\"");if(l>=0){int e=line.indexOf('"',l+10);if(e>l)logo=line.substring(l+10,e);}
     }else if(!line.isEmpty()&&!line.startsWith("#")&&name!=null){
-     if((line.startsWith("https://")||line.startsWith("http://"))&&seenStreamUrls.add(line)){MediaEntry entry=new MediaEntry(name,line,group,logo,"m3u");entry.tvgId=tvgId;merged.add(entry);count++;}
+     if(line.startsWith("https://")||line.startsWith("http://")){String identity=name.trim().toLowerCase(Locale.ROOT)+"\u001F"+group.trim().toLowerCase(Locale.ROOT)+"\u001F"+tvgId.trim().toLowerCase(Locale.ROOT);HashSet<String> identities=seenStreamEntries.get(line);if(identities==null){identities=new HashSet<>();seenStreamEntries.put(line,identities);}if(identities.add(identity)){MediaEntry entry=new MediaEntry(name,line,group,logo,"m3u");entry.tvgId=tvgId;merged.add(entry);count++;}}
      name=null;tvgId="";
     }
    }
@@ -394,10 +394,10 @@ private void loadAllPlaylists(){
  final int request=++catalogRequestId;ArrayList<String> urls=new ArrayList<>(playlistSources);if(urls.isEmpty())urls.add(DEFAULT_PLAYLIST);
  status.setText("Chargement de "+urls.size()+" source(s) M3U…");
  executeIo(()->{
-  ArrayList<MediaEntry> merged=new ArrayList<>();HashSet<String> seenStreamUrls=new HashSet<>();ArrayList<String> errors=new ArrayList<>();
+  ArrayList<MediaEntry> merged=new ArrayList<>();HashMap<String,HashSet<String>> seenStreamEntries=new HashMap<>();ArrayList<String> errors=new ArrayList<>();
   for(String address:urls){
    if(merged.size()>=MAX_CATALOG_ITEMS||request!=catalogRequestId||destroyed)break;
-   try{appendM3uPlaylist(address,merged,seenStreamUrls);}catch(Exception ex){String host=Uri.parse(address).getHost();errors.add((host==null?address:host)+": "+ex.getMessage());}
+   try{appendM3uPlaylist(address,merged,seenStreamEntries);}catch(Exception ex){String host=Uri.parse(address).getHost();errors.add((host==null?address:host)+": "+ex.getMessage());}
   }
   if(request!=catalogRequestId||destroyed)return;final int loaded=merged.size();
   postUi(()->{if(request!=catalogRequestId)return;homeFeaturedCache=null;normalizedSearchIndex.clear();all.clear();all.addAll(merged);sourceMode="M3U";sourceLabel.setText("SOURCES : "+urls.size()+" M3U");
