@@ -58,6 +58,8 @@ public class MainActivity extends AppCompatActivity {
     // Cache les termes normalisés : ils ne doivent pas être recalculés pour chaque élément du catalogue.
     private String cachedSearchQuery=null;
     private String[] cachedSearchTokens=new String[0];
+    // Index léger des champs statiques : évite de normaliser les mêmes noms à chaque recherche.
+    private final Map<String,String> normalizedSearchIndex=new HashMap<>();
     // Les vignettes de la page d’accueil sont calculées une seule fois par catalogue.
     private ArrayList<MediaEntry> homeFeaturedCache=null;
     private volatile boolean destroyed=false;
@@ -397,7 +399,7 @@ private void loadAllPlaylists(){
    try{appendM3uPlaylist(address,merged);}catch(Exception ex){String host=Uri.parse(address).getHost();errors.add((host==null?address:host)+": "+ex.getMessage());}
   }
   if(request!=catalogRequestId||destroyed)return;final int loaded=merged.size();
-  postUi(()->{if(request!=catalogRequestId)return;homeFeaturedCache=null;all.clear();all.addAll(merged);sourceMode="M3U";sourceLabel.setText("SOURCES : "+urls.size()+" M3U");
+  postUi(()->{if(request!=catalogRequestId)return;homeFeaturedCache=null;normalizedSearchIndex.clear();all.clear();all.addAll(merged);sourceMode="M3U";sourceLabel.setText("SOURCES : "+urls.size()+" M3U");
    if(loaded==0){String problem=errors.isEmpty()?"Aucune chaîne reçue. Vérifie tes sources.":"Erreur M3U : "+errors.get(0);status.setText(problem);renderList();onStartupPlaylistLoadFinished(false,"AUCUNE PLAYLIST DISPONIBLE • VÉRIFIE TES SOURCES");return;}
    status.setText(loaded+" chaînes/contenus chargés • "+urls.size()+" source(s) M3U"+(errors.isEmpty()?"":" • "+errors.size()+" erreur(s)"));renderList();onStartupPlaylistLoadFinished(true,loaded+" CHAÎNES CHARGÉES • PRÊT À REGARDER");
   });
@@ -421,7 +423,7 @@ private void loadAllPlaylists(){
   }catch(Exception e){err=e.getMessage();}
   final String error=err;final ArrayList<String> failures=endpointErrors;if(request!=catalogRequestId||destroyed)return;
   postUi(()->{if(request!=catalogRequestId)return;if(error!=null){status.setText("Connexion Xtream impossible : "+error);return;}
-   homeFeaturedCache=null;all.clear();all.addAll(parsed);sourceMode="XTREAM";sourceLabel.setText("SOURCE : XTREAM");
+   homeFeaturedCache=null;normalizedSearchIndex.clear();all.clear();all.addAll(parsed);sourceMode="XTREAM";sourceLabel.setText("SOURCE : XTREAM");
    status.setText(parsed.size()+" éléments récupérés • Serveur Xtream"+(failures.isEmpty()?"":" • "+failures.size()+" catégorie(s) indisponible(s)"));renderList();
   });
  });
@@ -1571,9 +1573,8 @@ private void loadAllPlaylists(){
     private void showCreateFavoriteGroup(){EditText name=field("Nom de la liste");new AlertDialog.Builder(this).setTitle("Créer une liste de favoris").setView(name).setNegativeButton("Annuler",null).setPositiveButton("Créer",(d,w)->{String n=name.getText().toString().trim();if(n.isEmpty())return;if(favoriteGroups.containsKey(n)){Toast.makeText(this,"Cette liste existe déjà",Toast.LENGTH_SHORT).show();return;}favoriteGroups.put(n,new LinkedHashSet<>());prefs.edit().putStringSet(profileFavoriteGroupsKey(),new HashSet<>(favoriteGroups.keySet())).apply();activeFilter=n;updateChips();renderList();}).show();}
     private void showAssignFavoriteGroup(MediaEntry entry){if(favoriteGroups.isEmpty()){Toast.makeText(this,"Crée d’abord une liste de favoris.",Toast.LENGTH_SHORT).show();return;}String[] names=favoriteGroups.keySet().toArray(new String[0]);new AlertDialog.Builder(this).setTitle("Ajouter à une liste").setItems(names,(d,i)->{Set<String> urls=favoriteGroups.get(names[i]);urls.add(entry.url);prefs.edit().putStringSet(profileFavoriteGroupKey(names[i]),new HashSet<>(urls)).apply();Toast.makeText(this,"Ajouté à "+names[i],Toast.LENGTH_SHORT).show();}).setNegativeButton("Annuler",null).show();}
     // Recherche multi-termes : les mots saisis sont normalisés une seule fois par requête.
-    private boolean matchesSearchFields(String query,String... values){
-        if(query==null||query.trim().isEmpty())return true;
-        String normalizedQuery=query.trim();
+    private void prepareSearchTokens(String query){
+        String normalizedQuery=query==null?"":query.trim();
         if(!normalizedQuery.equals(cachedSearchQuery)){
             cachedSearchQuery=normalizedQuery;
             ArrayList<String> tokens=new ArrayList<>();
@@ -1583,20 +1584,37 @@ private void loadAllPlaylists(){
             }
             cachedSearchTokens=tokens.toArray(new String[0]);
         }
+    }
+    private boolean matchesNormalizedSearchFields(String query,String... normalizedValues){
+        if(query==null||query.trim().isEmpty())return true;
+        prepareSearchTokens(query);
         if(cachedSearchTokens.length==0)return true;
-        StringBuilder searchable=new StringBuilder(96);
-        if(values!=null)for(String value:values){
-            String normalized=epgLookupKey(value);
-            if(!normalized.isEmpty())searchable.append(normalized).append(' ');
-        }
+        StringBuilder searchable=new StringBuilder(128);
+        if(normalizedValues!=null)for(String value:normalizedValues)if(value!=null&&!value.isEmpty())searchable.append(value).append(' ');
         String haystack=searchable.toString();
         for(String token:cachedSearchTokens)if(!haystack.contains(token))return false;
         return true;
     }
+    private boolean matchesSearchFields(String query,String... values){
+        if(query==null||query.trim().isEmpty())return true;
+        if(values==null||values.length==0)return matchesNormalizedSearchFields(query);
+        StringBuilder searchable=new StringBuilder(96);
+        for(String value:values){String normalized=epgLookupKey(value);if(!normalized.isEmpty())searchable.append(normalized).append(' ');}
+        return matchesNormalizedSearchFields(query,searchable.toString());
+    }
     private boolean matchesUniversalSearch(MediaEntry entry,String query){
         if(entry==null)return false;
-        String current=findEpgProgram(epgNow,entry),next=findEpgProgram(epgNext,entry);
-        return matchesSearchFields(query,entry.name,entry.group,current,next,entry.type);
+        String base=normalizedSearchIndex.get(entry.url);
+        if(base==null){
+            StringBuilder fields=new StringBuilder(96);
+            String[] values={entry.name,entry.group,entry.type};
+            for(String value:values){String normalized=epgLookupKey(value);if(!normalized.isEmpty())fields.append(normalized).append(' ');}
+            base=fields.toString();
+            if(entry.url!=null&&!entry.url.isEmpty())normalizedSearchIndex.put(entry.url,base);
+        }
+        String current=epgLookupKey(findEpgProgram(epgNow,entry));
+        String next=epgLookupKey(findEpgProgram(epgNext,entry));
+        return matchesNormalizedSearchFields(query,base,current,next);
     }
     // Normalisation sans expressions régulières : appelée potentiellement des milliers de fois.
     private String epgLookupKey(String value){
