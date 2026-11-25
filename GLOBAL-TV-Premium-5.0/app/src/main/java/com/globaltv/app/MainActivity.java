@@ -124,11 +124,11 @@ public class MainActivity extends AppCompatActivity {
     private String section="ACCUEIL",activeFilter="Tout",sourceMode="M3U",xtreamBase="",xtreamUser="",xtreamPass="";
 
     static class MediaEntry {
-        String name,url,group,logo,type,id,container,tvgId;
+        String name,url,group,logo,type,id,container,tvgId,sourceId;
         String plot="",rating="",year="",duration="",genre="",cast="",director="";
         int seasonNumber=-1,episodeNumber=-1;
         String seriesTitle="";
-        MediaEntry(String n,String u,String g,String l,String t){name=n;url=u;group=g;logo=l;type=t;id="";container="m3u8";tvgId="";}
+        MediaEntry(String n,String u,String g,String l,String t){name=n;url=u;group=g;logo=l;type=t;id="";container="m3u8";tvgId="";sourceId="";}
     }
     @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);getWindow().setStatusBarColor(BG);getWindow().setNavigationBarColor(BG);prefs=getPreferences(0);AutoPilotScheduler.sync(this);
         activeProfile=prefs.getString("active_profile",PROFILE_ADULT);
@@ -365,7 +365,34 @@ public class MainActivity extends AppCompatActivity {
                 while((n=stream.read(b))!=-1){total+=n;if(total>15*1024*1024)throw new IOException("Réponse trop volumineuse (limite 15 Mo)");out.write(b,0,n);}
                 return out.toString("UTF-8");
             }}finally{c.disconnect();}}
-    private void loadPlaylist(String url){if(url!=null&&(url.startsWith("http://")||url.startsWith("https://"))){playlistSources.add(url);prefs.edit().putStringSet("m3u_sources",new HashSet<>(playlistSources)).apply();}loadAllPlaylists();}
+    private void persistCatalogToDatabase(List<MediaEntry> entries,String fallbackSource,int request){
+ if(entries==null||entries.isEmpty()||request!=catalogRequestId||destroyed)return;
+ try{
+  CatalogDao dao=CatalogDatabase.getInstance(getApplicationContext()).catalogDao();
+  ArrayList<CatalogEntryEntity> batch=new ArrayList<>(400);
+  for(MediaEntry entry:entries){
+   if(request!=catalogRequestId||destroyed)return;
+   if(entry==null||entry.url==null||entry.url.isEmpty())continue;
+   CatalogEntryEntity row=new CatalogEntryEntity();
+   String identity=entry.url+"\\u001F"+(entry.name==null?"":entry.name)+"\\u001F"+(entry.group==null?"":entry.group)+"\\u001F"+(entry.tvgId==null?"":entry.tvgId)+"\\u001F"+(entry.type==null?"":entry.type);
+   row.id=key(identity);row.url=entry.url;row.name=entry.name==null?"":entry.name;
+   row.normalizedName=epgLookupKey(row.name);row.groupName=entry.group==null?"":entry.group;
+   row.normalizedGroup=epgLookupKey(row.groupName);row.type=entry.type==null?"":entry.type;
+   row.sourceId=entry.sourceId==null||entry.sourceId.isEmpty()?fallbackSource:entry.sourceId;
+   row.logo=entry.logo==null?"":entry.logo;row.tvgId=entry.tvgId==null?"":entry.tvgId;
+   row.container=entry.container==null?"":entry.container;row.entryId=entry.id==null?"":entry.id;
+   row.plot=entry.plot==null?"":entry.plot;row.rating=entry.rating==null?"":entry.rating;
+   row.year=entry.year==null?"":entry.year;row.duration=entry.duration==null?"":entry.duration;
+   row.genre=entry.genre==null?"":entry.genre;row.cast=entry.cast==null?"":entry.cast;
+   row.director=entry.director==null?"":entry.director;row.seasonNumber=entry.seasonNumber;
+   row.episodeNumber=entry.episodeNumber;row.seriesTitle=entry.seriesTitle==null?"":entry.seriesTitle;
+   row.updatedAt=System.currentTimeMillis();batch.add(row);
+   if(batch.size()>=400){dao.upsertAll(batch);batch.clear();}
+  }
+  if(!batch.isEmpty()&&request==catalogRequestId&&!destroyed)dao.upsertAll(batch);
+ }catch(Exception e){android.util.Log.w("MTv-Catalog","Local catalog persistence failed",e);}
+}
+private void loadPlaylist(String url){if(url!=null&&(url.startsWith("http://")||url.startsWith("https://"))){playlistSources.add(url);prefs.edit().putStringSet("m3u_sources",new HashSet<>(playlistSources)).apply();}loadAllPlaylists();}
     private String readBoundedPlaylistLine(BufferedReader reader)throws IOException{
   StringBuilder line=new StringBuilder(256);
   int ch;
@@ -397,7 +424,7 @@ public class MainActivity extends AppCompatActivity {
      int tid=line.indexOf("tvg-id=\"");if(tid>=0){int te=line.indexOf('"',tid+8);if(te>tid)tvgId=line.substring(tid+8,te);}
      int l=line.indexOf("tvg-logo=\"");if(l>=0){int e=line.indexOf('"',l+10);if(e>l)logo=line.substring(l+10,e);}
     }else if(!line.isEmpty()&&!line.startsWith("#")&&name!=null){
-     if(line.startsWith("https://")||line.startsWith("http://")){String identity=name.trim().toLowerCase(Locale.ROOT)+"\u001F"+group.trim().toLowerCase(Locale.ROOT)+"\u001F"+tvgId.trim().toLowerCase(Locale.ROOT);HashSet<String> identities=seenStreamEntries.get(line);if(identities==null){identities=new HashSet<>();seenStreamEntries.put(line,identities);}if(identities.add(identity)){MediaEntry entry=new MediaEntry(name,line,group,logo,"m3u");entry.tvgId=tvgId;merged.add(entry);count++;}}
+     if(line.startsWith("https://")||line.startsWith("http://")){String identity=name.trim().toLowerCase(Locale.ROOT)+"\u001F"+group.trim().toLowerCase(Locale.ROOT)+"\u001F"+tvgId.trim().toLowerCase(Locale.ROOT);HashSet<String> identities=seenStreamEntries.get(line);if(identities==null){identities=new HashSet<>();seenStreamEntries.put(line,identities);}if(identities.add(identity)){MediaEntry entry=new MediaEntry(name,line,group,logo,"m3u");entry.tvgId=tvgId;entry.sourceId=Uri.parse(address).getHost();merged.add(entry);count++;}}
      name=null;tvgId="";
     }
    }
@@ -423,7 +450,7 @@ private void loadAllPlaylists(){
    long elapsed=Math.max(0L,SystemClock.elapsedRealtime()-startedAt);completedSources++;
    sourceResults.add(host+" : "+sourceCount+" élément(s), "+(elapsed/1000.0)+" s"+("OK".equals(outcome)?"":" • "+outcome));
   }
-  if(request!=catalogRequestId||destroyed)return;seenStreamEntries.clear();final int loaded=merged.size();final int checkedSources=completedSources;final boolean capped=loaded>=MAX_CATALOG_ITEMS;
+  if(request!=catalogRequestId||destroyed)return;persistCatalogToDatabase(merged,"M3U",request);seenStreamEntries.clear();final int loaded=merged.size();final int checkedSources=completedSources;final boolean capped=loaded>=MAX_CATALOG_ITEMS;
   StringBuilder summary=new StringBuilder().append(loaded).append(" éléments • ").append(checkedSources).append("/").append(urls.size()).append(" sources analysées");
   if(!errors.isEmpty())summary.append(" • ").append(errors.size()).append(" échec(s)");
   if(capped)summary.append(" • limite de ").append(MAX_CATALOG_ITEMS).append(" atteinte, sources restantes ignorées");
@@ -459,7 +486,7 @@ private void loadAllPlaylists(){
    if(parsed.isEmpty()&&!endpointErrors.isEmpty())throw new IOException(android.text.TextUtils.join(" • ",endpointErrors));
    if(parsed.isEmpty())throw new IOException("Le serveur n’a renvoyé aucun contenu TV, Films ou Séries. Vérifie les droits et les rubriques de ton compte.");
   }catch(Exception e){err=e.getMessage();}
-  final String error=err;final ArrayList<String> failures=endpointErrors;if(request!=catalogRequestId||destroyed)return;
+  final String error=err;final ArrayList<String> failures=endpointErrors;if(error==null)persistCatalogToDatabase(parsed,"XTREAM",request);if(request!=catalogRequestId||destroyed)return;
   postUi(()->{if(request!=catalogRequestId)return;if(error!=null){status.setText("Connexion Xtream impossible : "+error);return;}
    homeFeaturedCache=null;normalizedSearchIndex.clear();all.clear();all.addAll(parsed);sourceMode="XTREAM";sourceLabel.setText("SOURCE : XTREAM");
    StringBuilder summary=new StringBuilder().append(parsed.size()).append(" éléments • Xtream");if(!endpointReports.isEmpty())summary.append(" • ").append(android.text.TextUtils.join(" | ",endpointReports));if(!failures.isEmpty())summary.append(" • Alertes : ").append(android.text.TextUtils.join(", ",failures));status.setText(summary.toString());renderList();
@@ -468,7 +495,7 @@ private void loadAllPlaylists(){
 }
     private Map<String,String> safeCategories(String action,ArrayList<String> warnings,String label){try{return parseCategories(get(api(action,"")));}catch(Exception e){warnings.add(label+" indisponibles ("+e.getClass().getSimpleName()+")");return new HashMap<>();}}
     private Map<String,String> parseCategories(String json)throws JSONException{Map<String,String> map=new HashMap<>();JSONArray a=new JSONArray(json);for(int i=0;i<a.length();i++){JSONObject o=a.optJSONObject(i);if(o!=null){String id=o.optString("category_id","");if(!id.isEmpty())map.put(id,o.optString("category_name","Autres"));}}return map;}
-    private void parseXtreamArray(ArrayList<MediaEntry> out,String json,String type,String fallback,String streamPrefix,Map<String,String> categories)throws JSONException{JSONArray a=new JSONArray(json);String fallbackCategory=type.equals("live")?"TV en direct":type.equals("movie")?"Films":"Séries";for(int i=0;i<a.length()&&out.size()<MAX_CATALOG_ITEMS;i++){JSONObject o=a.optJSONObject(i);if(o==null)continue;String id=o.optString(type.equals("series")?"series_id":"stream_id",o.optString("id",""));if(id.isEmpty())continue;String name=o.optString("name",type.equals("series")?"Série":"Contenu");String categoryId=o.optString("category_id");String cat=o.optString("category_name",categories.containsKey(categoryId)?categories.get(categoryId):fallbackCategory);String logo=o.optString("stream_icon",o.optString("cover",""));String ext=o.optString("container_extension",fallback);String path=streamPrefix+id+"."+ext;MediaEntry m=new MediaEntry(name,path,cat,logo,type);m.id=id;m.container=ext;m.tvgId=o.optString("epg_channel_id","");m.rating=o.optString("rating","");m.year=o.optString("year",o.optString("releaseDate",""));m.duration=o.optString("duration","");m.genre=o.optString("genre","");m.plot=o.optString("plot","");m.cast=o.optString("cast","");m.director=o.optString("director","");out.add(m);}}
+    private void parseXtreamArray(ArrayList<MediaEntry> out,String json,String type,String fallback,String streamPrefix,Map<String,String> categories)throws JSONException{JSONArray a=new JSONArray(json);String fallbackCategory=type.equals("live")?"TV en direct":type.equals("movie")?"Films":"Séries";for(int i=0;i<a.length()&&out.size()<MAX_CATALOG_ITEMS;i++){JSONObject o=a.optJSONObject(i);if(o==null)continue;String id=o.optString(type.equals("series")?"series_id":"stream_id",o.optString("id",""));if(id.isEmpty())continue;String name=o.optString("name",type.equals("series")?"Série":"Contenu");String categoryId=o.optString("category_id");String cat=o.optString("category_name",categories.containsKey(categoryId)?categories.get(categoryId):fallbackCategory);String logo=o.optString("stream_icon",o.optString("cover",""));String ext=o.optString("container_extension",fallback);String path=streamPrefix+id+"."+ext;MediaEntry m=new MediaEntry(name,path,cat,logo,type);m.id=id;m.container=ext;m.tvgId=o.optString("epg_channel_id","");m.sourceId="XTREAM:"+Uri.parse(xtreamBase).getHost();m.rating=o.optString("rating","");m.year=o.optString("year",o.optString("releaseDate",""));m.duration=o.optString("duration","");m.genre=o.optString("genre","");m.plot=o.optString("plot","");m.cast=o.optString("cast","");m.director=o.optString("director","");out.add(m);}}
 
     private void recordSuccessfulStream(String url){
         if(url==null||url.isEmpty()||prefs==null)return;
