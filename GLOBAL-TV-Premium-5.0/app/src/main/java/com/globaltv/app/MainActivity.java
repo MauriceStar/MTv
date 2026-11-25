@@ -1441,12 +1441,12 @@ private void loadAllPlaylists(){
                         line=line.trim();
                         if(line.startsWith("#EXTINF:")){
                             name=line.substring(line.lastIndexOf(',')+1).trim();group="MTV";logo="";tvgId="";
-                            int g=line.indexOf("group-title=\\\"");
-                            if(g>=0){int e=line.indexOf('\\\"',g+13);if(e>g)group=line.substring(g+13,e);}
-                            int tid=line.indexOf("tvg-id=\\\"");
-                            if(tid>=0){int e=line.indexOf('\\\"',tid+8);if(e>tid)tvgId=line.substring(tid+8,e);}
-                            int l=line.indexOf("tvg-logo=\\\"");
-                            if(l>=0){int e=line.indexOf('\\\"',l+10);if(e>l)logo=line.substring(l+10,e);}
+                            int g=line.indexOf("group-title=\"");
+                            if(g>=0){int e=line.indexOf('"',g+13);if(e>g)group=line.substring(g+13,e);}
+                            int tid=line.indexOf("tvg-id=\"");
+                            if(tid>=0){int e=line.indexOf('"',tid+8);if(e>tid)tvgId=line.substring(tid+8,e);}
+                            int l=line.indexOf("tvg-logo=\"");
+                            if(l>=0){int e=line.indexOf('"',l+10);if(e>l)logo=line.substring(l+10,e);}
                         }else if(!line.isEmpty()&&!line.startsWith("#")&&name!=null){
                             if(line.startsWith("https://")||line.startsWith("http://")){
                                 MediaEntry entry=new MediaEntry(name,line,group,logo,"m3u");entry.tvgId=tvgId;parsed.add(entry);count++;
