@@ -447,7 +447,7 @@ private void mergeProgressiveSearchResults(List<MediaEntry> results){
  for(MediaEntry entry:databaseSearchResults)if(entry!=null)identities.add(catalogSearchIdentity(entry));
  if(results!=null)for(MediaEntry entry:results)if(entry!=null&&identities.add(catalogSearchIdentity(entry)))databaseSearchResults.add(entry);
 }
-private String progressiveCursorPreferenceKey(String address){return "progressive_m3u_cursor_"+key(address);}
+private String progressiveCursorPreferenceKey(String address,String query){return "progressive_m3u_cursor_"+key(address+"\\u001f"+epgLookupKey(query));}
 private void requestProgressiveM3uSearch(String query,String[] tokens,int databaseRequest){
  if(query==null||query.trim().length()<2||tokens==null||tokens.length==0)return;
  final ArrayList<String> sources;
@@ -463,7 +463,9 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
   for(String address:sources){
    if(request!=progressiveSearchRequestId||databaseRequest!=databaseSearchRequestId||destroyed||found.size()>=120||totalChars>=24L*1024L*1024L)break;
    HttpURLConnection connection=null;
-   long cursorLines=prefs.getLong(progressiveCursorPreferenceKey(address),0L);
+   String cursorKey=progressiveCursorPreferenceKey(address,query);
+   long cursorLines=prefs.getLong(cursorKey,0L);
+   if(cursorLines<0L)continue;
    long safeCursorLines=cursorLines;
    boolean reachedEnd=false;
    try{
@@ -514,10 +516,9 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
      }
     }
     if(reachedEnd){
-     prefs.edit().remove(progressiveCursorPreferenceKey(address)).apply();
-     synchronized(incompleteM3uSources){incompleteM3uSources.remove(address);}
+     prefs.edit().putLong(cursorKey,-1L).apply();
     }else if(safeCursorLines>cursorLines){
-     prefs.edit().putLong(progressiveCursorPreferenceKey(address),safeCursorLines).apply();
+     prefs.edit().putLong(cursorKey,safeCursorLines).apply();
     }
    }catch(Exception error){android.util.Log.w("MTv-Search","Progressive playlist search failed",error);}
    finally{if(connection!=null)connection.disconnect();}
@@ -608,7 +609,7 @@ private void loadPlaylist(String url){if(url!=null&&(url.startsWith("http://")||
  }finally{connection.disconnect();}
 }
 private void loadAllPlaylists(){
- final int request=++catalogRequestId;progressiveSearchRequestId++;progressiveSearchCacheQuery="";progressiveSearchCacheAt=0L;progressiveSearchResults.clear();databaseSearchRequestId++;databaseSearchQuery="";databaseSearchResults.clear();ArrayList<String> urls=new ArrayList<>(playlistSources);if(urls.isEmpty())urls.add(DEFAULT_PLAYLIST);SharedPreferences.Editor cursorReset=prefs.edit();for(String sourceUrl:urls)cursorReset.remove(progressiveCursorPreferenceKey(sourceUrl));cursorReset.apply();
+ final int request=++catalogRequestId;progressiveSearchRequestId++;progressiveSearchCacheQuery="";progressiveSearchCacheAt=0L;progressiveSearchResults.clear();databaseSearchRequestId++;databaseSearchQuery="";databaseSearchResults.clear();ArrayList<String> urls=new ArrayList<>(playlistSources);if(urls.isEmpty())urls.add(DEFAULT_PLAYLIST);SharedPreferences.Editor cursorReset=prefs.edit();for(String preferenceKey:prefs.getAll().keySet())if(preferenceKey.startsWith("progressive_m3u_cursor_"))cursorReset.remove(preferenceKey);cursorReset.apply();
  status.setText("Chargement de "+urls.size()+" source(s) M3U…");
  executeIo(()->{
   ArrayList<MediaEntry> merged=new ArrayList<>();HashMap<String,HashSet<String>> seenStreamEntries=new HashMap<>();ArrayList<String> errors=new ArrayList<>();ArrayList<String> sourceResults=new ArrayList<>();
