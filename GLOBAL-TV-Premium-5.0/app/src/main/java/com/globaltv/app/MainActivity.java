@@ -824,7 +824,16 @@ private void loadPlaylist(String url){if(url!=null&&(url.startsWith("http://")||
   return new M3uAppendResult(count,truncated);
  }finally{connection.disconnect();}
 }
-private void loadAllPlaylists(){
+private void loadAllPlaylists(){loadAllPlaylists(true);}
+private void loadAllPlaylists(boolean force){
+ if(!force&&!all.isEmpty()){
+  long lastRefresh=prefs.getLong("catalog_last_refresh",0L);
+  if(lastRefresh>0L&&System.currentTimeMillis()-lastRefresh<6L*60L*60L*1000L){
+   status.setText(all.size()+" chaînes disponibles • catalogue local à jour");
+   if(!splashLoadFinished)onStartupPlaylistLoadFinished(true,"CATALOGUE LOCAL À JOUR");
+   return;
+  }
+ }
  final int request=++catalogRequestId;progressiveSearchRequestId++;progressiveSearchCacheQuery="";progressiveSearchCacheAt=0L;progressiveSearchResults.clear();databaseSearchRequestId++;databaseSearchQuery="";databaseSearchResults.clear();ArrayList<String> urls=new ArrayList<>(playlistSources);if(urls.isEmpty())urls.add(DEFAULT_PLAYLIST);
  status.setText("Chargement de "+urls.size()+" source(s) M3U…");
  executeIo(()->{
@@ -854,6 +863,7 @@ private void loadAllPlaylists(){
   if(capped)summary.append(" • limite de ").append(MAX_CATALOG_ITEMS).append(" atteinte, sources restantes ignorées");
   if(!sourceResults.isEmpty()){summary.append(" • ");int shown=Math.min(4,sourceResults.size());for(int i=0;i<shown;i++){if(i>0)summary.append(" | ");summary.append(sourceResults.get(i));}if(sourceResults.size()>shown)summary.append(" | +").append(sourceResults.size()-shown).append(" autre(s)");}
   final String firstError=errors.isEmpty()?null:errors.get(0);final String finalSummary=summary.toString();errors.clear();sourceResults.clear();
+  prefs.edit().putLong("catalog_last_refresh",System.currentTimeMillis()).apply();
   postUi(()->{if(request!=catalogRequestId)return;homeFeaturedCache=null;normalizedSearchIndex.clear();all.clear();all.addAll(merged);merged.clear();sourceMode="M3U";sourceLabel.setText("SOURCES : "+urls.size()+" M3U");
    if(loaded==0){String problem=firstError==null?"Aucune chaîne reçue. Vérifie tes sources.":"Erreur M3U : "+firstError;status.setText(problem+" • "+finalSummary);renderList();onStartupPlaylistLoadFinished(false,"AUCUNE PLAYLIST DISPONIBLE • VÉRIFIE TES SOURCES");return;}
    status.setText(finalSummary);renderList();onStartupPlaylistLoadFinished(true,loaded+" CHAÎNES CHARGÉES • PRÊT À REGARDER");
