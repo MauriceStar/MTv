@@ -457,7 +457,7 @@ private final ArrayList<MediaEntry> progressiveSearchResults=new ArrayList<>();
         catalogRecycler.setVerticalScrollBarEnabled(true);
         catalogRecycler.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
         catalogRecycler.setVisibility(View.GONE);
-        catalogAdapter=new CatalogRecyclerAdapter(this,
+        catalogAdapter=new CatalogRecyclerAdapter(this,0xFF287BFF,
             entry->openContent(entry),
             entry->{boolean added;if(favorites.contains(entry.url)){favorites.remove(entry.url);added=false;}else{favorites.add(entry.url);added=true;}prefs.edit().putStringSet(profileFavoritesKey(),new HashSet<>(favorites)).apply();return added;},
             entry->showAssignFavoriteGroup(entry),
