@@ -1536,6 +1536,12 @@ private void loadAllPlaylists(boolean force){
                 @Override public void onMediaItemTransition(MediaItem item,int reason){
                     if(item==null||item.localConfiguration==null||item.localConfiguration.uri==null)return;
                     String uri=item.localConfiguration.uri.toString();
+                    // Un changement de média invalide toute reprise différée du flux précédent.
+                    MediaEntry previousEntry=currentEntry;
+                    if(previousEntry!=null&&previousEntry.url!=null&&!previousEntry.url.equals(uri)&&pendingPlaybackRetry!=null){
+                        mainHandler.removeCallbacks(pendingPlaybackRetry);
+                        pendingPlaybackRetry=null;
+                    }
                     transientRetryAttempts.remove(uri);
                     for(MediaEntry entry:queue)if(entry!=null&&entry.url!=null&&entry.url.equals(uri)){
                         currentEntry=entry;lastPlayedUrl=entry.url;
