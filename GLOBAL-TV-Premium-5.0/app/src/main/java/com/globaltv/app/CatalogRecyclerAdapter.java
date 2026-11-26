@@ -63,7 +63,7 @@ final class CatalogRecyclerAdapter extends RecyclerView.Adapter<CatalogRecyclerA
         root.setClickable(true);
         root.setBackground(background(0xFF17212B,13));
         root.setId(View.generateViewId());
-        RecyclerView.LayoutParams params=new RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(208));
+        RecyclerView.LayoutParams params=new RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(244));
         params.setMargins(dp(5),dp(5),dp(5),dp(5));
         root.setLayoutParams(params);
 
