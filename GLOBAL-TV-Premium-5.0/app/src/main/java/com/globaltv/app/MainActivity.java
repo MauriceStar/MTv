@@ -815,7 +815,7 @@ private void loadPlaylist(String url){if(url!=null&&(url.startsWith("http://")||
   if(ch==-1&&line.length()==0)return null;
   return line.toString();
  }
- private M3uAppendResult appendM3uPlaylist(String address,ArrayList<MediaEntry> merged,HashMap<String,HashSet<String>> seenStreamEntries,int request)throws Exception{
+ private M3uAppendResult appendM3uPlaylist(String address,ArrayList<MediaEntry> merged,HashSet<String> seenStreamEntries,int request)throws Exception{
  HttpURLConnection connection=open(address);connection.setConnectTimeout(6000);connection.setReadTimeout(10000);
  try{
   int code=connection.getResponseCode();if(code<200||code>=300)throw new IOException("Serveur HTTP "+code);
@@ -836,7 +836,7 @@ private void loadPlaylist(String url){if(url!=null&&(url.startsWith("http://")||
      int l=line.indexOf("tvg-logo=\"");
      if(l>=0){int e=line.indexOf('"',l+10);if(e>l)logo=line.substring(l+10,e);}
     }else if(!line.isEmpty()&&!line.startsWith("#")&&name!=null){
-     if(line.startsWith("https://")||line.startsWith("http://")){String identity=name.trim().toLowerCase(Locale.ROOT)+"\u001F"+group.trim().toLowerCase(Locale.ROOT)+"\u001F"+tvgId.trim().toLowerCase(Locale.ROOT);HashSet<String> identities=seenStreamEntries.get(line);if(identities==null){identities=new HashSet<>();seenStreamEntries.put(line,identities);}if(identities.add(identity)){MediaEntry entry=new MediaEntry(name,line,group,logo,"m3u");entry.tvgId=tvgId;entry.sourceId=Uri.parse(address).getHost();merged.add(entry);count++;if(merged.size()==250||(merged.size()>250&&merged.size()%1000==0)){ArrayList<MediaEntry> partial=new ArrayList<>(merged);postUi(()->{if(request!=catalogRequestId||destroyed)return;all.clear();all.addAll(partial);homeFeaturedCache=null;if(!splashLoadFinished){status.setText("Catalogue disponible • chargement en arrière-plan");renderList();onStartupPlaylistLoadFinished(true,"CATALOGUE DISPONIBLE • CHARGEMENT EN COURS");}else if(!section.equals("ACCUEIL"))renderList();});}}}
+     if(line.startsWith("https://")||line.startsWith("http://")){String identity=line+"\u001F"+name.trim().toLowerCase(Locale.ROOT)+"\u001F"+group.trim().toLowerCase(Locale.ROOT)+"\u001F"+tvgId.trim().toLowerCase(Locale.ROOT);if(seenStreamEntries.add(identity)){MediaEntry entry=new MediaEntry(name,line,group,logo,"m3u");entry.tvgId=tvgId;entry.sourceId=Uri.parse(address).getHost();merged.add(entry);count++;if(merged.size()==250||(merged.size()>250&&merged.size()%3000==0)){ArrayList<MediaEntry> partial=new ArrayList<>(merged);postUi(()->{if(request!=catalogRequestId||destroyed)return;all.clear();all.addAll(partial);homeFeaturedCache=null;if(!splashLoadFinished){status.setText("Catalogue disponible • chargement en arrière-plan");renderList();onStartupPlaylistLoadFinished(true,"CATALOGUE DISPONIBLE • CHARGEMENT EN COURS");}else if(!section.equals("ACCUEIL"))renderList();});}}}
      name=null;tvgId="";
     }
    }
@@ -858,7 +858,7 @@ private void loadAllPlaylists(boolean force){
  final int request=++catalogRequestId;progressiveSearchRequestId++;progressiveSearchCacheQuery="";progressiveSearchCacheAt=0L;progressiveSearchResults.clear();databaseSearchRequestId++;databaseSearchQuery="";databaseSearchResults.clear();ArrayList<String> urls=new ArrayList<>(playlistSources);if(urls.isEmpty())urls.add(DEFAULT_PLAYLIST);
  status.setText("Chargement de "+urls.size()+" source(s) M3U…");
  executeIo(()->{
-  ArrayList<MediaEntry> merged=new ArrayList<>();HashMap<String,HashSet<String>> seenStreamEntries=new HashMap<>();ArrayList<String> errors=new ArrayList<>();ArrayList<String> sourceResults=new ArrayList<>();
+  ArrayList<MediaEntry> merged=new ArrayList<>();HashSet<String> seenStreamEntries=new HashSet<>();ArrayList<String> errors=new ArrayList<>();ArrayList<String> sourceResults=new ArrayList<>();
   int completedSources=0;
   LinkedHashSet<String> incompleteThisLoad=new LinkedHashSet<>();
   for(int sourceIndex=0;sourceIndex<urls.size();sourceIndex++){
