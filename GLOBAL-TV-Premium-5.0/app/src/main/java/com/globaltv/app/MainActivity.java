@@ -469,7 +469,7 @@ private String[] progressiveSearchTokens=new String[0];
         catalogAdapter.setFavoriteStateProvider(entry->favorites.contains(entry.url));
         catalogRecycler.setAdapter(catalogAdapter);
         catalogRecycler.addOnScrollListener(new RecyclerView.OnScrollListener(){
-            @Override public void onScrolled(@NonNull RecyclerView recyclerView,int dx,int dy){
+            @Override public void onScrolled(RecyclerView recyclerView,int dx,int dy){
                 super.onScrolled(recyclerView,dx,dy);
                 if(dy<=0||databaseSearchQuery==null||databaseSearchQuery.isEmpty()||progressiveSearchInFlight)return;
                 RecyclerView.LayoutManager manager=recyclerView.getLayoutManager();
@@ -574,6 +574,8 @@ private String[] progressiveSearchTokens=new String[0];
         return;
     }
     if(key.equals(databaseSearchQuery))return;
+    progressiveSearchRequestId++;
+    progressiveSearchInFlight=false;
     databaseSearchQuery=key;
     final int request=++databaseSearchRequestId;
     databaseSearchResults.clear();
