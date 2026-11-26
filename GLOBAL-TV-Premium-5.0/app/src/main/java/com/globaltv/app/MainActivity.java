@@ -50,7 +50,7 @@ public class MainActivity extends AppCompatActivity {
         "https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8",
         "https://raw.githubusercontent.com/reklamalinir/M3U-1/master/m3u%20playlists/3-%20Africa%20African%20Iptv%20Channels.m3u"
     };
-    private static final int BG=0xFF080A0D, PANEL=0xFF151A22, CARD=0xFF202733, MUTED=0xFFAAB6C8, ACCENT=0xFF287BFF, CYAN=0xFF287BFF, FOCUS_GOLD=0xFF56A0FF, FOCUS_RED=0xFF287BFF;
+    private static final int BG=0xFF080706, PANEL=0xFF17130F, CARD=0xFF241C15, MUTED=0xFFB5A18B, ACCENT=0xFFB98532, CYAN=0xFFE3B45B, FOCUS_GOLD=0xFFFFC84A, FOCUS_RED=0xFFFF5A36;
     // Pool borne pour eviter une file de taches sans limite sur les box peu puissantes.
     private final ThreadPoolExecutor io=new ThreadPoolExecutor(2,2,30L,TimeUnit.SECONDS,
         new ArrayBlockingQueue<Runnable>(12),
@@ -508,9 +508,10 @@ private final ArrayList<MediaEntry> progressiveSearchResults=new ArrayList<>();
 
 
     private void executeIo(Runnable task){
-        if(destroyed)return;
+        if(destroyed||task==null)return;
         try{io.execute(task);}catch(RejectedExecutionException ex){
-            if(!destroyed)postUi(()->Toast.makeText(this,"Trop d’operations en cours. Reessaie dans un instant.",Toast.LENGTH_LONG).show());
+            // Ne jamais inonder l’écran de popups lorsque la file de fond est saturée.
+            android.util.Log.w("MTv-IO","Background queue saturated; task deferred/skipped",ex);
         }
     }
     private void postUi(Runnable task){
@@ -778,7 +779,7 @@ private void loadPlaylist(String url){if(url!=null&&(url.startsWith("http://")||
      int l=line.indexOf("tvg-logo=\"");
      if(l>=0){int e=line.indexOf('"',l+10);if(e>l)logo=line.substring(l+10,e);}
     }else if(!line.isEmpty()&&!line.startsWith("#")&&name!=null){
-     if(line.startsWith("https://")||line.startsWith("http://")){String identity=name.trim().toLowerCase(Locale.ROOT)+"\u001F"+group.trim().toLowerCase(Locale.ROOT)+"\u001F"+tvgId.trim().toLowerCase(Locale.ROOT);HashSet<String> identities=seenStreamEntries.get(line);if(identities==null){identities=new HashSet<>();seenStreamEntries.put(line,identities);}if(identities.add(identity)){MediaEntry entry=new MediaEntry(name,line,group,logo,"m3u");entry.tvgId=tvgId;entry.sourceId=Uri.parse(address).getHost();merged.add(entry);count++;}}
+     if(line.startsWith("https://")||line.startsWith("http://")){String identity=name.trim().toLowerCase(Locale.ROOT)+"\u001F"+group.trim().toLowerCase(Locale.ROOT)+"\u001F"+tvgId.trim().toLowerCase(Locale.ROOT);HashSet<String> identities=seenStreamEntries.get(line);if(identities==null){identities=new HashSet<>();seenStreamEntries.put(line,identities);}if(identities.add(identity)){MediaEntry entry=new MediaEntry(name,line,group,logo,"m3u");entry.tvgId=tvgId;entry.sourceId=Uri.parse(address).getHost();merged.add(entry);count++;if(merged.size()==250||(merged.size()>250&&merged.size()%1000==0)){ArrayList<MediaEntry> partial=new ArrayList<>(merged);postUi(()->{if(request!=catalogRequestId||destroyed)return;all.clear();all.addAll(partial);homeFeaturedCache=null;if(!splashLoadFinished){status.setText("Catalogue disponible • chargement en arrière-plan");renderList();onStartupPlaylistLoadFinished(true,"CATALOGUE DISPONIBLE • CHARGEMENT EN COURS");}else if(!section.equals("ACCUEIL"))renderList();});}}}
      name=null;tvgId="";
     }
    }
@@ -1323,7 +1324,7 @@ private void loadAllPlaylists(){
         }
         int selectedIndex=queue.indexOf(selected);if(selectedIndex<0){queue.add(0,selected);selectedIndex=0;}
         // Limite la file Media3 : une playlist M3U peut contenir des milliers de flux.
-        final int maxQueue=80;if(queue.size()>maxQueue){int from=Math.max(0,Math.min(selectedIndex-maxQueue/2,queue.size()-maxQueue));queue=new ArrayList<>(queue.subList(from,from+maxQueue));}
+        final int maxQueue=16;if(queue.size()>maxQueue){int from=Math.max(0,Math.min(selectedIndex-maxQueue/2,queue.size()-maxQueue));queue=new ArrayList<>(queue.subList(from,from+maxQueue));}
         return queue;
     }
     private MediaEntry nextPlayable(MediaEntry failed){
@@ -1456,7 +1457,7 @@ private void loadAllPlaylists(){
                             activePlayer.seekTo(nextIndex,0L);activePlayer.prepare();activePlayer.play();
                         }else{
                             activePlayer.stop();
-                            Toast.makeText(MainActivity.this,"Aucun autre flux disponible dans cette rubrique.",Toast.LENGTH_LONG).show();
+                            status.setText("Flux indisponible • aucune autre chaîne disponible dans cette rubrique.");
                         }
                     });
                 }
@@ -1476,7 +1477,7 @@ private void loadAllPlaylists(){
             playbackSaveRunnable=()->{if(player!=activePlayer||destroyed)return;savePlaybackPosition();mainHandler.postDelayed(playbackSaveRunnable,15000L);};
             mainHandler.postDelayed(playbackSaveRunnable,15000L);
             status.setText("Lecture : "+c.name);
-        }catch(Exception e){PlaybackDiagnostics.record(this,-1,safeHost(c.url),e.getClass().getSimpleName());android.util.Log.w("MTv-Player","Player initialization failed host="+safeHost(c.url)+" type="+e.getClass().getSimpleName());releasePlayer();Toast.makeText(this,"Impossible de lancer ce flux",Toast.LENGTH_LONG).show();}
+        }catch(Exception e){PlaybackDiagnostics.record(this,-1,safeHost(c.url),e.getClass().getSimpleName());android.util.Log.w("MTv-Player","Player initialization failed host="+safeHost(c.url)+" type="+e.getClass().getSimpleName());releasePlayer();if(status!=null)status.setText("Impossible de lancer ce flux • essaie une autre chaîne.");}
     }
 
     private void styleFullscreenPlayerControls(){
