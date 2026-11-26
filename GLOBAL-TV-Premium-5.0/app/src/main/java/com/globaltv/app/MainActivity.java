@@ -749,7 +749,7 @@ private void loadCachedCatalogThenRefresh(){
     renderList();
     if(!splashLoadFinished)onStartupPlaylistLoadFinished(true,"CATALOGUE LOCAL DISPONIBLE");
    }
-   loadAllPlaylists();
+   loadAllPlaylists(false);
   });
  });
 }
