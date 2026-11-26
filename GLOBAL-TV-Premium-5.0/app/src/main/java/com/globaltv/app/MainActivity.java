@@ -774,13 +774,14 @@ private void loadCachedCatalogThenRefresh(){
   });
  });
 }
-private void persistCatalogToDatabase(List<MediaEntry> entries,String fallbackSource,int request){
- if(entries==null||entries.isEmpty()||request!=catalogRequestId||destroyed)return;
+private boolean persistCatalogToDatabase(List<MediaEntry> entries,String fallbackSource,int request){
+ if(entries==null||entries.isEmpty()||request!=catalogRequestId||destroyed)return false;
+ int persistedRows=0;
  try{
   CatalogDao dao=CatalogDatabase.getInstance(getApplicationContext()).catalogDao();
   ArrayList<CatalogEntryEntity> batch=new ArrayList<>(400);
   for(MediaEntry entry:entries){
-   if(request!=catalogRequestId||destroyed)return;
+   if(request!=catalogRequestId||destroyed)return false;
    if(entry==null||entry.url==null||entry.url.isEmpty())continue;
    CatalogEntryEntity row=new CatalogEntryEntity();
    String identity=entry.url+"\\u001F"+(entry.name==null?"":entry.name)+"\\u001F"+(entry.group==null?"":entry.group)+"\\u001F"+(entry.tvgId==null?"":entry.tvgId)+"\\u001F"+(entry.type==null?"":entry.type);
@@ -796,10 +797,14 @@ private void persistCatalogToDatabase(List<MediaEntry> entries,String fallbackSo
    row.director=entry.director==null?"":entry.director;row.seasonNumber=entry.seasonNumber;
    row.episodeNumber=entry.episodeNumber;row.seriesTitle=entry.seriesTitle==null?"":entry.seriesTitle;
    row.updatedAt=System.currentTimeMillis();batch.add(row);
-   if(batch.size()>=400){dao.upsertAll(batch);batch.clear();}
+   if(batch.size()>=400){dao.upsertAll(batch);persistedRows+=batch.size();batch.clear();}
   }
-  if(!batch.isEmpty()&&request==catalogRequestId&&!destroyed)dao.upsertAll(batch);
- }catch(Exception e){android.util.Log.w("MTv-Catalog","Local catalog persistence failed",e);}
+  if(!batch.isEmpty()){
+   if(request!=catalogRequestId||destroyed)return false;
+   dao.upsertAll(batch);persistedRows+=batch.size();
+  }
+  return persistedRows>0&&request==catalogRequestId&&!destroyed;
+ }catch(Exception e){android.util.Log.w("MTv-Catalog","Local catalog persistence failed",e);return false;}
 }
 private void loadPlaylist(String url){if(url!=null&&(url.startsWith("http://")||url.startsWith("https://"))){playlistSources.add(url);prefs.edit().putStringSet("m3u_sources",new HashSet<>(playlistSources)).apply();}loadAllPlaylists();}
     private String readBoundedPlaylistLine(BufferedReader reader)throws IOException{
@@ -878,13 +883,13 @@ private void loadAllPlaylists(boolean force){
   if(request!=catalogRequestId||destroyed)return;
   synchronized(incompleteM3uSources){incompleteM3uSources.clear();incompleteM3uSources.addAll(incompleteThisLoad);}
   prefs.edit().putStringSet("incomplete_m3u_sources",new HashSet<>(incompleteThisLoad)).apply();
-  persistCatalogToDatabase(merged,"M3U",request);seenStreamEntries.clear();final int loaded=merged.size();final int checkedSources=completedSources;final boolean capped=loaded>=MAX_CATALOG_ITEMS;
+  prefs.edit().remove("catalog_last_refresh").commit();final boolean catalogPersisted=persistCatalogToDatabase(merged,"M3U",request);seenStreamEntries.clear();final int loaded=merged.size();final int checkedSources=completedSources;final boolean capped=loaded>=MAX_CATALOG_ITEMS;
   StringBuilder summary=new StringBuilder().append(loaded).append(" éléments • ").append(checkedSources).append("/").append(urls.size()).append(" sources analysées");
   if(!errors.isEmpty())summary.append(" • ").append(errors.size()).append(" échec(s)");
   if(capped)summary.append(" • limite de ").append(MAX_CATALOG_ITEMS).append(" atteinte, sources restantes ignorées");
   if(!sourceResults.isEmpty()){summary.append(" • ");int shown=Math.min(4,sourceResults.size());for(int i=0;i<shown;i++){if(i>0)summary.append(" | ");summary.append(sourceResults.get(i));}if(sourceResults.size()>shown)summary.append(" | +").append(sourceResults.size()-shown).append(" autre(s)");}
   final String firstError=errors.isEmpty()?null:errors.get(0);final String finalSummary=summary.toString();errors.clear();sourceResults.clear();
-  prefs.edit().putLong("catalog_last_refresh",System.currentTimeMillis()).apply();
+  if(catalogPersisted&&loaded>0)prefs.edit().putLong("catalog_last_refresh",System.currentTimeMillis()).apply();
   postUi(()->{if(request!=catalogRequestId)return;homeFeaturedCache=null;normalizedSearchIndex.clear();all.clear();all.addAll(merged);merged.clear();sourceMode="M3U";sourceLabel.setText("SOURCES : "+urls.size()+" M3U");
    if(loaded==0){String problem=firstError==null?"Aucune chaîne reçue. Vérifie tes sources.":"Erreur M3U : "+firstError;status.setText(problem+" • "+finalSummary);renderList();onStartupPlaylistLoadFinished(false,"AUCUNE PLAYLIST DISPONIBLE • VÉRIFIE TES SOURCES");return;}
    status.setText(finalSummary);renderList();onStartupPlaylistLoadFinished(true,loaded+" CHAÎNES CHARGÉES • PRÊT À REGARDER");
