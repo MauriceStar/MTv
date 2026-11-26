@@ -70,6 +70,8 @@ private final LinkedHashSet<String> incompleteM3uSources=new LinkedHashSet<>();
 private String progressiveSearchCacheQuery="";
 private long progressiveSearchCacheAt=0L;
 private final ArrayList<MediaEntry> progressiveSearchResults=new ArrayList<>();
+private volatile boolean progressiveSearchInFlight=false;
+private String[] progressiveSearchTokens=new String[0];
 
     // Index léger des champs statiques : évite de normaliser les mêmes noms à chaque recherche.
     private final Map<String,String> normalizedSearchIndex=new ConcurrentHashMap<>();
@@ -466,6 +468,19 @@ private final ArrayList<MediaEntry> progressiveSearchResults=new ArrayList<>();
             entry->{String detail=(entry.group==null?"":entry.group)+"  •  "+("live".equals(entry.type)||"m3u".equals(entry.type)?"En direct":"series".equals(entry.type)?"Série":"VOD");String now=findEpgProgram(epgNow,entry),next=findEpgProgram(epgNext,entry);if(!now.isEmpty())detail+="  •  En cours : "+now;if(!next.isEmpty())detail+="  •  Ensuite : "+next;return detail;});
         catalogAdapter.setFavoriteStateProvider(entry->favorites.contains(entry.url));
         catalogRecycler.setAdapter(catalogAdapter);
+        catalogRecycler.addOnScrollListener(new RecyclerView.OnScrollListener(){
+            @Override public void onScrolled(@NonNull RecyclerView recyclerView,int dx,int dy){
+                super.onScrolled(recyclerView,dx,dy);
+                if(dy<=0||databaseSearchQuery==null||databaseSearchQuery.isEmpty()||progressiveSearchInFlight)return;
+                RecyclerView.LayoutManager manager=recyclerView.getLayoutManager();
+                if(manager instanceof GridLayoutManager){
+                    GridLayoutManager grid=(GridLayoutManager)manager;
+                    int total=grid.getItemCount(),last=grid.findLastVisibleItemPosition();
+                    if(total>0&&last>=total-4&&progressiveSearchTokens.length>0)
+                        requestProgressiveM3uSearch(databaseSearchQuery,progressiveSearchTokens,databaseSearchRequestId);
+                }
+            }
+        });
         catalogContainer.addView(catalogRecycler,new FrameLayout.LayoutParams(-1,-1));
         catalogEmpty=text("Aucun résultat dans cette rubrique.",14,MUTED,false);
         catalogEmpty.setGravity(Gravity.CENTER);
@@ -569,6 +584,7 @@ private final ArrayList<MediaEntry> progressiveSearchResults=new ArrayList<>();
     }
     if(tokenList.isEmpty())return;
     final String[] tokens=tokenList.toArray(new String[0]);
+    progressiveSearchTokens=tokens.clone();
     executeIo(()->{
         ArrayList<MediaEntry> found=new ArrayList<>();
         try{
@@ -625,6 +641,8 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
  final HashSet<String> existingIdentities=new HashSet<>();
  for(MediaEntry entry:all)if(entry!=null)existingIdentities.add(catalogSearchIdentity(entry));
  for(MediaEntry entry:databaseSearchResults)if(entry!=null)existingIdentities.add(catalogSearchIdentity(entry));
+ if(progressiveSearchInFlight)return;
+ progressiveSearchInFlight=true;
  final int request=++progressiveSearchRequestId;
  executeIo(()->{
   ArrayList<MediaEntry> found=new ArrayList<>();
@@ -708,6 +726,7 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
   }
   final ArrayList<MediaEntry> results=found;
   postUi(()->{
+   if(request==progressiveSearchRequestId)progressiveSearchInFlight=false;
    if(request!=progressiveSearchRequestId||databaseRequest!=databaseSearchRequestId||!query.equals(databaseSearchQuery))return;
    progressiveSearchCacheQuery=query;progressiveSearchCacheAt=SystemClock.elapsedRealtime();
    progressiveSearchResults.clear();progressiveSearchResults.addAll(results);
