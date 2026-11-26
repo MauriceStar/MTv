@@ -49,7 +49,7 @@ public class MainActivity extends AppCompatActivity {
         "https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8",
         "https://raw.githubusercontent.com/reklamalinir/M3U-1/master/m3u%20playlists/3-%20Africa%20African%20Iptv%20Channels.m3u"
     };
-    private static final int BG=0xFF090806, PANEL=0xFF17130D, CARD=0xFF241D12, MUTED=0xFFB5A27C, ACCENT=0xFFB98532, CYAN=0xFFE6C77A, FOCUS_GOLD=0xFFFFD98A, FOCUS_RED=0xFFFF9F43;
+    private static final int BG=0xFF080706, PANEL=0xFF17130F, CARD=0xFF241C15, MUTED=0xFFB5A18B, ACCENT=0xFFB98532, CYAN=0xFFE3B45B, FOCUS_GOLD=0xFFFFC84A, FOCUS_RED=0xFFFF5A36;
     // Pool borne pour eviter une file de taches sans limite sur les box peu puissantes.
     private final ThreadPoolExecutor io=new ThreadPoolExecutor(2,2,30L,TimeUnit.SECONDS,
         new ArrayBlockingQueue<Runnable>(12),
@@ -275,7 +275,7 @@ private final ArrayList<MediaEntry> progressiveSearchResults=new ArrayList<>();
     private void buildUi(){
         root=row();root.setBackgroundColor(BG);setContentView(root);
         sidebarShell=column();sidebarShell.setBackgroundColor(0xFF100D08);root.addView(sidebarShell,new LinearLayout.LayoutParams(dp(220),-1));
-        LinearLayout brand=row();brand.setGravity(Gravity.CENTER);brand.setPadding(dp(2),dp(2),dp(2),dp(2));GradientDrawable brandBg=new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,new int[]{0xFF171109,0xFF3D2A10,0xFF171109});brandBg.setCornerRadius(dp(14));brand.setBackground(brandBg);android.widget.ImageView brandLogo=new android.widget.ImageView(this);// Keep the approved logo as a single bitmap asset; no custom drawing or text recoloring.
+        LinearLayout brand=row();brand.setGravity(Gravity.CENTER);brand.setPadding(dp(2),dp(2),dp(2),dp(2));GradientDrawable brandBg=new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,new int[]{0xFF101827,0xFF1A2436,0xFF101827});brandBg.setCornerRadius(dp(14));brand.setBackground(brandBg);android.widget.ImageView brandLogo=new android.widget.ImageView(this);// Keep the approved logo as a single bitmap asset; no custom drawing or text recoloring.
         brandLogo.setImageResource(R.drawable.mtv_brand_logo);brandLogo.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);brandLogo.setAdjustViewBounds(true);brandLogo.setContentDescription("Logo MTv avec parabole et satellite");brand.addView(brandLogo,new LinearLayout.LayoutParams(-1,dp(78)));LinearLayout.LayoutParams brandParams=new LinearLayout.LayoutParams(-1,dp(86));brandParams.setMargins(dp(10),dp(10),dp(10),dp(9));sidebarShell.addView(brand,brandParams);
         sidebarScroll=new ScrollView(this);sidebarScroll.setFillViewport(true);sidebarScroll.setVerticalScrollBarEnabled(true);sidebarScroll.setScrollbarFadingEnabled(false);sidebarScroll.setSmoothScrollingEnabled(true);sidebarScroll.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);sidebarShell.addView(sidebarScroll,new LinearLayout.LayoutParams(-1,0,1f));
         sidebar=column();sidebar.setPadding(dp(18),dp(8),dp(12),dp(14));sidebar.setBackgroundColor(0xFF100D08);sidebarScroll.addView(sidebar,new ScrollView.LayoutParams(-1,-2));
