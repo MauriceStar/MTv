@@ -76,6 +76,7 @@ private final ArrayList<MediaEntry> progressiveSearchResults=new ArrayList<>();
     private ArrayList<MediaEntry> homeFeaturedCache=null;
 
     private final ArrayList<View> homeRailFocusCards = new ArrayList<>();
+    private final Set<String> countedWatchUrls = new HashSet<>();
 
     private ArrayList<MediaEntry> getHomeHistoryEntries(int limit){
         ArrayList<MediaEntry> result=new ArrayList<>();
@@ -1283,7 +1284,7 @@ private void loadAllPlaylists(){
             }
         }
     }
-    private void play(MediaEntry c){recordManualWatch(c);failedInCurrentRun.clear();transientRetryAttempts.clear();startPlayer(c);}
+    private void play(MediaEntry c){countedWatchUrls.clear();failedInCurrentRun.clear();transientRetryAttempts.clear();startPlayer(c);}
     private List<MediaEntry> playableQueue(MediaEntry selected){
         List<MediaEntry> source=section.equals("MTV")?mtvItems:all;
         ArrayList<MediaEntry> queue=new ArrayList<>();
@@ -1375,7 +1376,7 @@ private void loadAllPlaylists(){
             }
             activePlayer.addListener(new Player.Listener(){
                 @Override public void onPlaybackStateChanged(int state){
-                    if(state==Player.STATE_READY){MediaEntry playing=currentEntry;String readyUrl=playing==null?c.url:playing.url;transientRetryAttempts.remove(readyUrl);recordSuccessfulStream(readyUrl);}
+                    if(state==Player.STATE_READY){MediaEntry playing=currentEntry;String readyUrl=playing==null?c.url:playing.url;transientRetryAttempts.remove(readyUrl);recordSuccessfulStream(readyUrl);if(playing!=null&&countedWatchUrls.add(readyUrl))recordManualWatch(playing);}
                     else if(state==Player.STATE_ENDED){clearPlaybackPosition(currentEntry);}
                 }
                 @Override public void onPlayerError(androidx.media3.common.PlaybackException e){
