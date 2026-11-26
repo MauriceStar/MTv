@@ -74,6 +74,123 @@ private final ArrayList<MediaEntry> progressiveSearchResults=new ArrayList<>();
     private final Map<String,String> normalizedSearchIndex=new HashMap<>();
     // Les vignettes de la page d’accueil sont calculées une seule fois par catalogue.
     private ArrayList<MediaEntry> homeFeaturedCache=null;
+
+    private final ArrayList<View> homeRailFocusCards = new ArrayList<>();
+
+    private ArrayList<MediaEntry> getHomeHistoryEntries(int limit){
+        ArrayList<MediaEntry> result=new ArrayList<>();
+        if(all==null||prefs==null)return result;
+        Map<String,?> saved=prefs.getAll();
+        for(MediaEntry entry:all){
+            if(entry==null||entry.url==null||entry.url.isEmpty())continue;
+            if(!saved.containsKey("history_"+key(entry.url)))continue;
+            if(PROFILE_CHILD.equals(activeProfile)&&isAdultEntry(entry))continue;
+            result.add(entry);
+        }
+        Collections.sort(result,(a,b)->{
+            Object av=saved.get("history_time_"+key(a.url)),bv=saved.get("history_time_"+key(b.url));
+            long at=av instanceof Number?((Number)av).longValue():0L;
+            long bt=bv instanceof Number?((Number)bv).longValue():0L;
+            return Long.compare(bt,at);
+        });
+        if(result.size()>limit)return new ArrayList<>(result.subList(0,limit));
+        return result;
+    }
+
+    private ArrayList<MediaEntry> getHomeFavoriteEntries(int limit){
+        ArrayList<MediaEntry> result=new ArrayList<>();
+        if(all==null||favorites.isEmpty())return result;
+        for(MediaEntry entry:all){
+            if(entry==null||entry.url==null||!favorites.contains(entry.url))continue;
+            if(PROFILE_CHILD.equals(activeProfile)&&isAdultEntry(entry))continue;
+            result.add(entry);
+            if(result.size()>=limit)break;
+        }
+        return result;
+    }
+
+    private ArrayList<MediaEntry> getHomeMostWatchedEntries(int limit){
+        ArrayList<MediaEntry> result=new ArrayList<>();
+        if(all==null||prefs==null)return result;
+        final Map<String,Integer> counts=new HashMap<>();
+        for(MediaEntry entry:all){
+            if(entry==null||entry.url==null||entry.url.isEmpty())continue;
+            if(PROFILE_CHILD.equals(activeProfile)&&isAdultEntry(entry))continue;
+            int count=prefs.getInt("watch_count_"+key(entry.url),0);
+            if(count>0){result.add(entry);counts.put(entry.url,count);}
+        }
+        Collections.sort(result,(a,b)->Integer.compare(counts.get(b.url),counts.get(a.url)));
+        if(result.size()>limit)return new ArrayList<>(result.subList(0,limit));
+        return result;
+    }
+
+    private void recordManualWatch(MediaEntry entry){
+        if(entry==null||entry.url==null||entry.url.isEmpty()||prefs==null)return;
+        String countKey="watch_count_"+key(entry.url);
+        int count=prefs.getInt(countKey,0);
+        prefs.edit().putInt(countKey,Math.min(100000,count+1)).putLong("watch_last_"+key(entry.url),System.currentTimeMillis()).apply();
+    }
+
+    private void addHomeRail(String title,List<MediaEntry> entries,int accent){
+        if(entries==null||entries.isEmpty())return;
+        TextView heading=text(title,12,accent,true);
+        heading.setId(View.generateViewId());heading.setLetterSpacing(0.07f);heading.setFocusable(true);
+        heading.setPadding(dp(2),dp(5),dp(2),dp(3));
+        if(!homeRailFocusCards.isEmpty())for(View previous:homeRailFocusCards)previous.setNextFocusDownId(heading.getId());
+        LinearLayout.LayoutParams headingParams=new LinearLayout.LayoutParams(-1,dp(35));headingParams.topMargin=dp(8);
+        list.addView(heading,headingParams);
+        HorizontalScrollView scroller=new HorizontalScrollView(this);scroller.setHorizontalScrollBarEnabled(false);scroller.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        LinearLayout rail=row();scroller.addView(rail);list.addView(scroller,new LinearLayout.LayoutParams(-1,dp(154)));
+        ArrayList<View> currentCards=new ArrayList<>();View previous=null;int count=0;
+        for(MediaEntry entry:entries){
+            if(entry==null||count>=8)continue;
+            LinearLayout card=column();card.setId(View.generateViewId());card.setGravity(Gravity.CENTER_HORIZONTAL);
+            card.setPadding(dp(7),dp(7),dp(7),dp(6));card.setBackground(bg(PANEL,11));card.setFocusable(true);card.setClickable(true);
+            if(previous==null){heading.setNextFocusDownId(card.getId());card.setNextFocusUpId(heading.getId());}
+            else{previous.setNextFocusRightId(card.getId());card.setNextFocusLeftId(previous.getId());}
+            LinearLayout.LayoutParams cardParams=new LinearLayout.LayoutParams(dp(148),dp(142));cardParams.rightMargin=dp(9);rail.addView(card,cardParams);
+            ImageView artwork=new ImageView(this);artwork.setScaleType(ImageView.ScaleType.FIT_CENTER);artwork.setBackground(bg(CARD,7));
+            card.addView(artwork,new LinearLayout.LayoutParams(dp(132),dp(82)));
+            if(entry.logo!=null&&!entry.logo.isEmpty())com.bumptech.glide.Glide.with(this).load(entry.logo).override(dp(132),dp(82)).fitCenter().dontAnimate().placeholder(bg(CARD,7)).error(bg(CARD,7)).into(artwork);
+            TextView name=text(entry.name==null?"Contenu":entry.name,11,Color.WHITE,true);name.setGravity(Gravity.CENTER);name.setMaxLines(1);card.addView(name,new LinearLayout.LayoutParams(-1,dp(25)));
+            String kind=("live".equals(entry.type)||"m3u".equals(entry.type))?"EN DIRECT":(entry.group==null||entry.group.isEmpty()?"À DÉCOUVRIR":entry.group);
+            TextView detail=text(kind,9,MUTED,true);detail.setGravity(Gravity.CENTER);detail.setMaxLines(1);card.addView(detail,new LinearLayout.LayoutParams(-1,dp(18)));
+            card.setOnFocusChangeListener((v,focused)->{if(focused){GradientDrawable selected=bg(PANEL,11);selected.setStroke(dp(2),accent);v.setBackground(selected);v.animate().scaleX(1.035f).scaleY(1.035f).setDuration(100).start();}else{v.setBackground(bg(PANEL,11));v.animate().scaleX(1f).scaleY(1f).setDuration(100).start();}});
+            card.setOnClickListener(v->openContent(entry));
+            currentCards.add(card);previous=card;count++;
+        }
+        homeRailFocusCards.clear();homeRailFocusCards.addAll(currentCards);
+    }
+
+    private void addHomeWorldRegions(int accent){
+        TextView heading=text("EXPLORER LES CHAÎNES DU MONDE",12,accent,true);
+        heading.setId(View.generateViewId());heading.setFocusable(true);heading.setLetterSpacing(0.07f);
+        if(!homeRailFocusCards.isEmpty())for(View previous:homeRailFocusCards)previous.setNextFocusDownId(heading.getId());
+        LinearLayout.LayoutParams hp=new LinearLayout.LayoutParams(-1,dp(34));hp.topMargin=dp(10);list.addView(heading,hp);
+        HorizontalScrollView scroller=new HorizontalScrollView(this);scroller.setHorizontalScrollBarEnabled(false);LinearLayout regions=row();scroller.addView(regions);list.addView(scroller,new LinearLayout.LayoutParams(-1,dp(48)));
+        String[] names={"Afrique","Europe","Asie","Amérique du Nord","Amérique du Sud","Océanie"};
+        ArrayList<View> pills=new ArrayList<>();View previous=null;
+        for(String region:names){
+            TextView pill=text(region,11,Color.WHITE,true);pill.setId(View.generateViewId());pill.setGravity(Gravity.CENTER);pill.setPadding(dp(15),0,dp(15),0);pill.setBackground(bg(CARD,18));pill.setFocusable(true);pill.setClickable(true);
+            if(previous==null){heading.setNextFocusDownId(pill.getId());pill.setNextFocusUpId(heading.getId());}
+            else{previous.setNextFocusRightId(pill.getId());pill.setNextFocusLeftId(previous.getId());}
+            pill.setOnFocusChangeListener((v,focused)->{if(focused){GradientDrawable d=bg(accent,18);d.setStroke(dp(2),FOCUS_GOLD);v.setBackground(d);((TextView)v).setTextColor(Color.BLACK);}else{v.setBackground(bg(CARD,18));((TextView)v).setTextColor(Color.WHITE);}});
+            pill.setOnClickListener(v->{navigateTo("TV EN DIRECT");activeFilter=region;updateChips();renderList();});
+            LinearLayout.LayoutParams pp=new LinearLayout.LayoutParams(-2,dp(38));pp.rightMargin=dp(8);regions.addView(pill,pp);pills.add(pill);previous=pill;
+        }
+        homeRailFocusCards.clear();homeRailFocusCards.addAll(pills);
+    }
+
+    private LinearLayout homeActionTile(String glyph,String title,String subtitle,int accent,String target){
+        LinearLayout tile=column();tile.setId(View.generateViewId());tile.setGravity(Gravity.CENTER_VERTICAL);tile.setPadding(dp(13),dp(8),dp(10),dp(8));tile.setBackground(bg(CARD,13));tile.setFocusable(true);tile.setClickable(true);
+        TextView icon=text(glyph,23,accent,true);icon.setGravity(Gravity.CENTER);tile.addView(icon,new LinearLayout.LayoutParams(-1,dp(31)));
+        TextView label=text(title,12,Color.WHITE,true);label.setGravity(Gravity.CENTER);tile.addView(label,new LinearLayout.LayoutParams(-1,dp(22)));
+        TextView hint=text(subtitle,9,MUTED,false);hint.setGravity(Gravity.CENTER);hint.setMaxLines(1);tile.addView(hint,new LinearLayout.LayoutParams(-1,dp(17)));
+        tile.setOnFocusChangeListener((v,focused)->{if(focused){GradientDrawable d=bg(PANEL,13);d.setStroke(dp(2),accent);v.setBackground(d);v.animate().scaleX(1.035f).scaleY(1.035f).setDuration(100).start();}else{v.setBackground(bg(CARD,13));v.animate().scaleX(1f).scaleY(1f).setDuration(100).start();}});
+        tile.setOnClickListener(v->{if("FAVORIS".equals(target)&&favorites.isEmpty()){Toast.makeText(this,"Ajoute d’abord des chaînes à tes favoris.",Toast.LENGTH_SHORT).show();return;}navigateTo(target);});
+        return tile;
+    }
+
     private volatile boolean destroyed=false;
     private volatile int catalogRequestId=0;
     private volatile int mtvPlaylistRequestId=0;
@@ -894,47 +1011,31 @@ private void loadAllPlaylists(){
                 renderList();
             }).show();
     }
+
     private void renderHome(){
-        showLinearCatalog();list.removeAllViews();
-        LinearLayout hero=row();hero.setGravity(Gravity.CENTER_VERTICAL);GradientDrawable heroBg=new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,new int[]{0xFF3B2A0E,0xFF76501B,0xFF21180D});heroBg.setCornerRadius(dp(20));hero.setBackground(heroBg);hero.setPadding(dp(18),dp(13),dp(16),dp(13));LinearLayout.LayoutParams hp=new LinearLayout.LayoutParams(-1,dp(190));hp.topMargin=dp(10);hp.bottomMargin=dp(14);list.addView(hero,hp);
-        LinearLayout heroCopy=column();hero.addView(heroCopy,new LinearLayout.LayoutParams(0,-1,1f));
-        TextView heroTag=text("✦  À LA UNE  •  MTv",11,0xFFFFD66E,true);heroCopy.addView(heroTag,new LinearLayout.LayoutParams(-1,dp(25)));
-        TextView heroTitle=text("Le meilleur du divertissement, en un seul endroit.",19,Color.WHITE,true);heroTitle.setMaxLines(2);heroCopy.addView(heroTitle,new LinearLayout.LayoutParams(-1,dp(55)));
-        TextView heroSub=text("Explore, choisis et profite de tes programmes.",11,0xFFE3EAF8,false);heroCopy.addView(heroSub,new LinearLayout.LayoutParams(-1,dp(25)));
-        TextView discover=text("▶  EXPLORER",11,0xFF21180D,true);discover.setId(View.generateViewId());discover.setGravity(Gravity.CENTER);discover.setBackground(bg(0xFFFFD98A,10));discover.setFocusable(true);discover.setClickable(true);LinearLayout.LayoutParams discoverP=new LinearLayout.LayoutParams(dp(124),dp(40));discoverP.topMargin=dp(5);discoverP.bottomMargin=dp(3);heroCopy.addView(discover,discoverP);discover.setOnFocusChangeListener((v,focus)->stylePlayerButton((TextView)v,focus));discover.setOnClickListener(v->navigateTo("TV EN DIRECT"));if(search!=null)search.setNextFocusDownId(discover.getId());
-        LinearLayout art=column();art.setGravity(Gravity.CENTER);GradientDrawable artBg=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{0xFFFFD98A,0xFFB98532,0xFF76501B,0xFF2A1C0A});artBg.setCornerRadius(dp(22));art.setBackground(artBg);LinearLayout.LayoutParams artP=new LinearLayout.LayoutParams(dp(112),dp(124));artP.leftMargin=dp(10);hero.addView(art,artP);
-        TextView artIcon=text("▶",36,Color.WHITE,true);artIcon.setGravity(Gravity.CENTER);art.addView(artIcon,new LinearLayout.LayoutParams(-1,dp(68)));
-        TextView artBrand=text("MTv  •  LIVE",10,Color.WHITE,true);artBrand.setGravity(Gravity.CENTER);art.addView(artBrand,new LinearLayout.LayoutParams(-1,dp(24)));
-        TextView catTitle=text("EXPLORER LES RUBRIQUES  •  PERSONNALISER",12,0xFFFFC45C,true);catTitle.setId(View.generateViewId());discover.setNextFocusDownId(catTitle.getId());catTitle.setLetterSpacing(0.04f);catTitle.setFocusable(true);catTitle.setClickable(true);catTitle.setOnClickListener(v->showHomePersonalizationDialog());catTitle.setOnFocusChangeListener((v,focus)->{if(focus){((TextView)v).setTextColor(FOCUS_GOLD);v.setBackground(bg(PANEL,6));}else{((TextView)v).setTextColor(0xFFFFC45C);v.setBackgroundColor(Color.TRANSPARENT);}});list.addView(catTitle,new LinearLayout.LayoutParams(-1,dp(29)));
-        HorizontalScrollView categoryScroll=new HorizontalScrollView(this);categoryScroll.setHorizontalScrollBarEnabled(false);categoryScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);LinearLayout categoryRow=row();categoryScroll.addView(categoryRow);list.addView(categoryScroll,new LinearLayout.LayoutParams(-1,dp(100)));
-        String[][] quick=homeQuickCategories();Set<String> visibleHomeCategories=getHomeCategories();
-        int previousTileId=View.NO_ID;ArrayList<View> homeTiles=new ArrayList<>();for(String[] item:quick){if(!visibleHomeCategories.contains(item[2]))continue;LinearLayout tile=column();tile.setId(View.generateViewId());if(previousTileId!=View.NO_ID){tile.setNextFocusLeftId(previousTileId);for(View previous:homeTiles)if(previous.getId()==previousTileId)previous.setNextFocusRightId(tile.getId());}else tile.setNextFocusUpId(catTitle.getId());previousTileId=tile.getId();homeTiles.add(tile);tile.setGravity(Gravity.CENTER);tile.setPadding(dp(7),dp(7),dp(7),dp(5));GradientDrawable tileBg=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{Color.parseColor("#"+item[3].substring(2)),0xFF21180D});tileBg.setCornerRadius(dp(13));tile.setBackground(tileBg);tile.setFocusable(true);tile.setClickable(true);LinearLayout.LayoutParams tp=new LinearLayout.LayoutParams(dp(104),dp(84));tp.rightMargin=dp(9);categoryRow.addView(tile,tp);
-            TextView glyph=text(item[0],25,Color.WHITE,true);glyph.setGravity(Gravity.CENTER);tile.addView(glyph,new LinearLayout.LayoutParams(-1,dp(43)));
-            TextView label=text(item[1],9,Color.WHITE,true);label.setGravity(Gravity.CENTER);label.setMaxLines(2);tile.addView(label,new LinearLayout.LayoutParams(-1,dp(27)));
-            tile.setOnFocusChangeListener((v,focus)->{if(focus){GradientDrawable d=bg(0xFFFFD98A,13);d.setStroke(dp(3),0xFFFF7A00);v.setBackground(d);v.animate().scaleX(1.055f).scaleY(1.055f).setDuration(110).start();}else{v.setBackground(tileBg);v.animate().scaleX(1f).scaleY(1f).setDuration(110).start();}});
-            tile.setOnClickListener(v->navigateTo(item[2]));
-        }
-        TextView featuredTitle=text("À DÉCOUVRIR  •  PROGRAMMES & DIRECTS",12,0xFFFFC45C,true);featuredTitle.setId(View.generateViewId());featuredTitle.setFocusable(true);catTitle.setNextFocusDownId(homeTiles.isEmpty()?featuredTitle.getId():homeTiles.get(0).getId());for(View tile:homeTiles)tile.setNextFocusDownId(featuredTitle.getId());featuredTitle.setLetterSpacing(0.06f);LinearLayout.LayoutParams ft=new LinearLayout.LayoutParams(-1,dp(34));ft.topMargin=dp(9);list.addView(featuredTitle,ft);
-        HorizontalScrollView featuredScroll=new HorizontalScrollView(this);featuredScroll.setHorizontalScrollBarEnabled(false);LinearLayout featured=row();featuredScroll.addView(featured);list.addView(featuredScroll,new LinearLayout.LayoutParams(-1,dp(188)));
-        if(all==null||all.isEmpty()){TextView empty=text("Charge une playlist pour découvrir les chaînes et programmes.",12,MUTED,false);list.addView(empty);return;}
-        if(homeFeaturedCache==null){
-            homeFeaturedCache=new ArrayList<>();
-            String homeSection=section;
-            String[] featuredSections={"TV EN DIRECT","SPORTS","FILMS","CINÉMA","SÉRIES","DIVERTISSEMENT","INFOS","MUSIQUE","DOCUMENTAIRE","MAGAZINE","JEUNESSE","NOVELAS","ANIMÉS","ÉDUCATION","RELIGION","SCIENCE & TECHNOLOGIE"};
-            HashSet<String> featuredUrls=new HashSet<>();
-            try{for(String category:featuredSections){section=category;for(MediaEntry entry:all){if(entry==null||entry.name==null||entry.name.isEmpty()||entry.url==null||featuredUrls.contains(entry.url))continue;if(matchSection(entry)){homeFeaturedCache.add(entry);featuredUrls.add(entry.url);break;}}}}finally{section=homeSection;}
-        }
-        ArrayList<MediaEntry> featuredEntries=homeFeaturedCache;
-        int count=0;
-        for(MediaEntry entry:featuredEntries){
-            LinearLayout card=column();card.setId(View.generateViewId());if(featured.getChildCount()==0)card.setNextFocusUpId(featuredTitle.getId());else{View previous=featured.getChildAt(featured.getChildCount()-1);previous.setNextFocusRightId(card.getId());card.setNextFocusLeftId(previous.getId());}card.setGravity(Gravity.CENTER_HORIZONTAL);card.setPadding(dp(8),dp(8),dp(8),dp(6));card.setBackground(bg(PANEL,12));card.setFocusable(true);card.setClickable(true);LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(dp(174),dp(172));cp.rightMargin=dp(10);featured.addView(card,cp);
-            ImageView logo=new ImageView(this);logo.setScaleType(ImageView.ScaleType.FIT_CENTER);logo.setBackground(bg(CARD,8));card.addView(logo,new LinearLayout.LayoutParams(dp(158),dp(102)));if(entry.logo!=null&&!entry.logo.isEmpty())com.bumptech.glide.Glide.with(this).load(entry.logo).override(dp(158),dp(102)).fitCenter().dontAnimate().placeholder(bg(CARD,8)).error(bg(CARD,8)).into(logo);
-            TextView label=text(entry.name,12,Color.WHITE,true);label.setGravity(Gravity.CENTER);label.setMaxLines(1);card.addView(label,new LinearLayout.LayoutParams(-1,dp(25)));String programme=findEpgProgram(epgNow,entry);String cardDetail=!programme.isEmpty()?"EN COURS • "+programme:(("live".equals(entry.type)||"m3u".equals(entry.type))?"EN DIRECT":(entry.group==null?"À DÉCOUVRIR":entry.group));TextView sub=text(cardDetail,9,0xFFB8C8DE,true);sub.setGravity(Gravity.CENTER);sub.setMaxLines(1);card.addView(sub,new LinearLayout.LayoutParams(-1,dp(20)));
-            card.setOnFocusChangeListener((v,focus)->{if(focus){GradientDrawable d=bg(0xFF3C2B12,12);d.setStroke(dp(2),FOCUS_GOLD);v.setBackground(d);v.animate().scaleX(1.05f).scaleY(1.05f).setDuration(110).start();}else{v.setBackground(bg(PANEL,12));v.animate().scaleX(1f).scaleY(1f).setDuration(110).start();}});
-            card.setOnClickListener(v->play(entry));count++;
-        }
-        if(count>0){featuredTitle.setNextFocusDownId(featured.getChildAt(0).getId());}if(count==0){TextView empty=text("Tes chaînes apparaîtront ici dès que la playlist sera chargée.",12,MUTED,false);list.addView(empty);}
+        showLinearCatalog();list.removeAllViews();homeRailFocusCards.clear();
+        TextView eyebrow=text("MTv  /  VOTRE TÉLÉVISION",11,CYAN,true);eyebrow.setLetterSpacing(0.16f);list.addView(eyebrow,new LinearLayout.LayoutParams(-1,dp(25)));
+        LinearLayout hero=row();hero.setGravity(Gravity.CENTER_VERTICAL);GradientDrawable heroBg=new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,new int[]{0xFF17110B,0xFF493018,0xFF21130E});heroBg.setCornerRadius(dp(18));hero.setBackground(heroBg);hero.setPadding(dp(18),dp(14),dp(15),dp(14));
+        LinearLayout.LayoutParams heroParams=new LinearLayout.LayoutParams(-1,dp(166));heroParams.bottomMargin=dp(12);list.addView(hero,heroParams);
+        LinearLayout copy=column();hero.addView(copy,new LinearLayout.LayoutParams(0,-1,1f));
+        TextView tag=text("SÉLECTION PREMIUM  •  EN DIRECT",10,0xFFFFC36A,true);copy.addView(tag,new LinearLayout.LayoutParams(-1,dp(22)));
+        TextView title=text("Le direct et vos programmes, réunis au même endroit.",19,Color.WHITE,true);title.setMaxLines(2);copy.addView(title,new LinearLayout.LayoutParams(-1,dp(55)));
+        TextView sub=text("Retrouvez vos chaînes, vos favoris et vos découvertes.",10,0xFFD8C8B4,false);copy.addView(sub,new LinearLayout.LayoutParams(-1,dp(24)));
+        TextView live=text("▶  REGARDER LE DIRECT",10,0xFF1B1008,true);live.setId(View.generateViewId());live.setGravity(Gravity.CENTER);live.setBackground(bg(0xFFFFB24A,10));live.setFocusable(true);live.setClickable(true);LinearLayout.LayoutParams liveParams=new LinearLayout.LayoutParams(dp(164),dp(38));liveParams.topMargin=dp(5);copy.addView(live,liveParams);live.setOnFocusChangeListener((v,f)->stylePlayerButton((TextView)v,f));live.setOnClickListener(v->navigateTo("TV EN DIRECT"));
+        TextView stamp=text("LIVE",24,0xFFFFCF70,true);stamp.setGravity(Gravity.CENTER);stamp.setBackground(bg(0xFF5C2B17,16));hero.addView(stamp,new LinearLayout.LayoutParams(dp(94),dp(94)));if(search!=null)search.setNextFocusDownId(live.getId());
+        TextView categoryHeading=text("VOS UNIVERS",12,CYAN,true);categoryHeading.setId(View.generateViewId());categoryHeading.setFocusable(true);categoryHeading.setLetterSpacing(0.1f);live.setNextFocusDownId(categoryHeading.getId());list.addView(categoryHeading,new LinearLayout.LayoutParams(-1,dp(34)));
+        HorizontalScrollView categoryScroll=new HorizontalScrollView(this);categoryScroll.setHorizontalScrollBarEnabled(false);categoryScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);LinearLayout categoryRow=row();categoryScroll.addView(categoryRow);list.addView(categoryScroll,new LinearLayout.LayoutParams(-1,dp(92)));
+        String[][] quick=homeQuickCategories();int[] warm={0xFF68421B,0xFF78331E,0xFF925B20,0xFF4A2A18};View previous=null;int index=0;
+        for(String[] item:quick){if(!getHomeCategories().contains(item[2]))continue;LinearLayout tile=column();tile.setId(View.generateViewId());tile.setGravity(Gravity.CENTER);tile.setPadding(dp(6),dp(5),dp(6),dp(4));GradientDrawable tileBg=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{warm[index%warm.length],PANEL});tileBg.setCornerRadius(dp(11));tile.setBackground(tileBg);tile.setFocusable(true);tile.setClickable(true);if(previous==null){categoryHeading.setNextFocusDownId(tile.getId());tile.setNextFocusUpId(categoryHeading.getId());}else{previous.setNextFocusRightId(tile.getId());tile.setNextFocusLeftId(previous.getId());}LinearLayout.LayoutParams tp=new LinearLayout.LayoutParams(dp(105),dp(78));tp.rightMargin=dp(8);categoryRow.addView(tile,tp);TextView glyph=text(item[0],23,0xFFFFD28A,true);glyph.setGravity(Gravity.CENTER);tile.addView(glyph,new LinearLayout.LayoutParams(-1,dp(40)));TextView label=text(item[1],9,Color.WHITE,true);label.setGravity(Gravity.CENTER);label.setMaxLines(2);tile.addView(label,new LinearLayout.LayoutParams(-1,dp(28)));tile.setOnFocusChangeListener((v,focused)->{if(focused){GradientDrawable d=bg(0xFFFFB24A,11);d.setStroke(dp(2),0xFFFF5A36);v.setBackground(d);}else v.setBackground(tileBg);});tile.setOnClickListener(v->navigateTo(item[2]));previous=tile;index++;}
+        if(previous!=null)homeRailFocusCards.add(previous);
+        ArrayList<MediaEntry> history=getHomeHistoryEntries(8);addHomeRail("REPRENDRE LA LECTURE",history,0xFFFFB24A);
+        ArrayList<MediaEntry> favs=getHomeFavoriteEntries(8);addHomeRail("MES FAVORIS",favs,0xFFFFC84A);
+        ArrayList<MediaEntry> top=getHomeMostWatchedEntries(8);
+        if(!top.isEmpty())addHomeRail("LES PLUS REGARDÉES SUR CET APPAREIL",top,0xFFFF5A36);
+        else if(!history.isEmpty())addHomeRail("VOS DERNIÈRES CHAÎNES",history,0xFFE3B45B);
+        addHomeWorldRegions(0xFFFFB24A);
     }
+
     private void renderHistory(){
         showLinearCatalog();try{renderHistoryContent();}catch(Exception historyError){
             try{if(list!=null){list.removeAllViews();TextView fallback=text("Impossible d’afficher l’historique pour le moment. Réessaie après le rechargement des chaînes.",13,MUTED,false);fallback.setPadding(dp(12),dp(24),dp(12),dp(20));list.addView(fallback);}}catch(Exception ignored){}
@@ -1182,7 +1283,7 @@ private void loadAllPlaylists(){
             }
         }
     }
-    private void play(MediaEntry c){failedInCurrentRun.clear();transientRetryAttempts.clear();startPlayer(c);}
+    private void play(MediaEntry c){recordManualWatch(c);failedInCurrentRun.clear();transientRetryAttempts.clear();startPlayer(c);}
     private List<MediaEntry> playableQueue(MediaEntry selected){
         List<MediaEntry> source=section.equals("MTV")?mtvItems:all;
         ArrayList<MediaEntry> queue=new ArrayList<>();
