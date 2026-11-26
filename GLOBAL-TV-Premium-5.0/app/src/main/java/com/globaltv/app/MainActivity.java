@@ -374,7 +374,7 @@ private final ArrayList<MediaEntry> progressiveSearchResults=new ArrayList<>();
             progressBar.setMax(1000);
             progressBar.setProgress(0);
             if (android.os.Build.VERSION.SDK_INT >= 21) {
-                progressBar.setProgressTintList(android.content.res.ColorStateList.valueOf(0xFFFFC52B));
+                progressBar.setProgressTintList(android.content.res.ColorStateList.valueOf(0xFF287BFF));
                 progressBar.setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(0x66FFFFFF));
             }
             LinearLayout.LayoutParams barParams = new LinearLayout.LayoutParams(-1, dp(9));
@@ -393,7 +393,7 @@ private final ArrayList<MediaEntry> progressiveSearchResults=new ArrayList<>();
 
     private void buildUi(){
         root=row();root.setBackgroundColor(BG);setContentView(root);
-        sidebarShell=column();sidebarShell.setBackgroundColor(0xFF100D08);root.addView(sidebarShell,new LinearLayout.LayoutParams(dp(220),-1));
+        sidebarShell=column();sidebarShell.setBackgroundColor(0xFF10151D);root.addView(sidebarShell,new LinearLayout.LayoutParams(dp(220),-1));
         LinearLayout brand=row();brand.setGravity(Gravity.CENTER);brand.setPadding(dp(2),dp(2),dp(2),dp(2));GradientDrawable brandBg=new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,new int[]{0xFF101827,0xFF1A2436,0xFF101827});brandBg.setCornerRadius(dp(14));brand.setBackground(brandBg);android.widget.ImageView brandLogo=new android.widget.ImageView(this);// Keep the approved logo as a single bitmap asset; no custom drawing or text recoloring.
         brandLogo.setImageResource(R.drawable.mtv_brand_logo);brandLogo.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);brandLogo.setAdjustViewBounds(true);brandLogo.setContentDescription("Logo MTv avec parabole et satellite");brand.addView(brandLogo,new LinearLayout.LayoutParams(-1,dp(78)));LinearLayout.LayoutParams brandParams=new LinearLayout.LayoutParams(-1,dp(86));brandParams.setMargins(dp(10),dp(10),dp(10),dp(9));sidebarShell.addView(brand,brandParams);
         sidebarScroll=new ScrollView(this);sidebarScroll.setFillViewport(true);sidebarScroll.setVerticalScrollBarEnabled(true);sidebarScroll.setScrollbarFadingEnabled(false);sidebarScroll.setSmoothScrollingEnabled(true);sidebarScroll.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);sidebarShell.addView(sidebarScroll,new LinearLayout.LayoutParams(-1,0,1f));
@@ -485,7 +485,7 @@ private final ArrayList<MediaEntry> progressiveSearchResults=new ArrayList<>();
     private void addNav(String label,String target){TextView v=text(label,14,0xFFD9E1F2,true);v.setPadding(dp(13),0,dp(8),0);v.setId(View.generateViewId());v.setFocusable(true);v.setClickable(true);v.setBackground(bg(0x00172035,10));navViews.put(target,v);
         v.setOnFocusChangeListener((view,hasFocus)->refreshNavStyle(target,hasFocus));
         LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,dp(47));p.bottomMargin=dp(3);sidebar.addView(v,p);v.setOnClickListener(w->navigateTo(target));refreshNavStyle(target,v.hasFocus());}
-    private void refreshNavStyle(String target,boolean focused){TextView v=navViews.get(target);if(v==null)return;boolean selected=section.equals(target);if(selected){GradientDrawable d=bg(0xFF76501B,10);d.setStroke(dp(2),0xFFFFD98A);v.setBackground(d);v.setTextColor(Color.WHITE);}else if(focused){GradientDrawable d=bg(FOCUS_GOLD,10);d.setStroke(dp(2),FOCUS_RED);v.setBackground(d);v.setTextColor(0xFF21180D);}else{v.setBackground(bg(0x00172035,10));v.setTextColor(0xFFD9E1F2);}}
+    private void refreshNavStyle(String target,boolean focused){TextView v=navViews.get(target);if(v==null)return;boolean selected=section.equals(target);if(selected){GradientDrawable d=bg(0xFF173A66,10);d.setStroke(dp(2),0xFF56A0FF);v.setBackground(d);v.setTextColor(Color.WHITE);}else if(focused){GradientDrawable d=bg(FOCUS_GOLD,10);d.setStroke(dp(2),FOCUS_RED);v.setBackground(d);v.setTextColor(0xFF071326);}else{v.setBackground(bg(0x00172035,10));v.setTextColor(0xFFD9E1F2);}}
     private void refreshAllNavStyles(){for(String target:navViews.keySet())refreshNavStyle(target,navViews.get(target).hasFocus());}
     private void navigateTo(String target){
  if(PROFILE_CHILD.equals(activeProfile)&&isAdultWebSection(target)){Toast.makeText(this,"Cette rubrique est réservée au profil Adulte.",Toast.LENGTH_LONG).show();return;}
@@ -1129,7 +1129,7 @@ private void loadAllPlaylists(){
             }
             LinearLayout item=row();item.setPadding(dp(12),dp(5),dp(12),dp(5));item.setBackground(bg(PANEL,11));item.setFocusable(true);item.setClickable(true);
             LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(-1,dp(64));ip.bottomMargin=dp(7);list.addView(item,ip);if(chips!=null&&chips.getChildCount()>0)item.setNextFocusUpId(chips.getChildAt(0).getId());
-            TextView symbol=text(("live".equals(type)||"m3u".equals(type))?"TV":"▶",16,0xFFFFD98A,true);symbol.setGravity(Gravity.CENTER);symbol.setBackground(bg(CARD,8));item.addView(symbol,new LinearLayout.LayoutParams(dp(54),dp(48)));
+            TextView symbol=text(("live".equals(type)||"m3u".equals(type))?"TV":"▶",16,0xFF56A0FF,true);symbol.setGravity(Gravity.CENTER);symbol.setBackground(bg(CARD,8));item.addView(symbol,new LinearLayout.LayoutParams(dp(54),dp(48)));
             LinearLayout meta=column();meta.setGravity(Gravity.CENTER_VERTICAL);meta.setPadding(dp(12),0,0,0);item.addView(meta,new LinearLayout.LayoutParams(0,-1,1f));
             TextView title=text(name,13,Color.WHITE,true);title.setMaxLines(1);meta.addView(title,new LinearLayout.LayoutParams(-1,dp(24)));
             TextView subtitle=text(detail,10,MUTED,false);subtitle.setMaxLines(1);meta.addView(subtitle,new LinearLayout.LayoutParams(-1,dp(20)));
@@ -1197,7 +1197,7 @@ private void loadAllPlaylists(){
             details.addView(channelName,new LinearLayout.LayoutParams(-1,dp(21)));
             String currentStart=epgTimeLabel(epgNowStart,entry),currentStop=epgTimeLabel(epgNowStop,entry),nextStartLabel=epgTimeLabel(epgNextStart,entry);
             String currentTime=currentStart.isEmpty()||currentStop.isEmpty()?"":currentStart+"–"+currentStop+"  •  ";
-            TextView nowLine=text(current.isEmpty()?"EN COURS  •  Programme non renseigné":"EN COURS  •  "+currentTime+current,10,current.isEmpty()?MUTED:0xFFFFD16B,true);
+            TextView nowLine=text(current.isEmpty()?"EN COURS  •  Programme non renseigné":"EN COURS  •  "+currentTime+current,10,current.isEmpty()?MUTED:0xFF56A0FF,true);
             nowLine.setMaxLines(1);details.addView(nowLine,new LinearLayout.LayoutParams(-1,dp(19)));
             android.widget.ProgressBar progressBar=new android.widget.ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);
             progressBar.setMax(100);long startMs=epgTimeValue(epgNowStart,entry),stopMs=epgTimeValue(epgNowStop,entry),nowTime=System.currentTimeMillis();
@@ -1485,7 +1485,7 @@ private void loadAllPlaylists(){
         if(view==null)return;
         if(view!=playerView&&view.isFocusable()){
             view.setOnFocusChangeListener((v,focused)->{
-                if(focused){GradientDrawable d=bg(0xFFFFD98A,9);d.setStroke(dp(3),0xFFFF7900);v.setBackground(d);v.setElevation(dp(7));}
+                if(focused){GradientDrawable d=bg(0xFFFFD98A,9);d.setStroke(dp(3),0xFF287BFF);v.setBackground(d);v.setElevation(dp(7));}
                 else{v.setBackgroundColor(Color.TRANSPARENT);v.setElevation(0f);}
             });
         }
