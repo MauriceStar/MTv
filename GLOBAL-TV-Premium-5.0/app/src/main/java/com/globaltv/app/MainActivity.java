@@ -1313,7 +1313,13 @@ private void loadAllPlaylists(){
         List<MediaEntry> source=section.equals("MTV")?mtvItems:all;
         ArrayList<MediaEntry> queue=new ArrayList<>();
         String query=search==null?"":search.getText().toString().toLowerCase(Locale.ROOT);
-        for(MediaEntry entry:source){
+        // Construire uniquement la suite autour de la chaîne choisie : ne pas allouer
+        // une seconde liste de plusieurs dizaines de milliers d'éléments sur le thread UI.
+        int selectedSourceIndex=source.indexOf(selected);
+        if(selectedSourceIndex<0)selectedSourceIndex=0;
+        final int maxQueue=32;
+        for(int i=selectedSourceIndex;i<source.size()&&queue.size()<maxQueue;i++){
+            MediaEntry entry=source.get(i);
             if(entry==null||entry.url==null||!(entry.url.startsWith("http://")||entry.url.startsWith("https://")))continue;
             if(PROFILE_CHILD.equals(activeProfile)&&isAdultEntry(entry))continue;
             if(!matchSectionFor(entry))continue;
@@ -1322,9 +1328,7 @@ private void loadAllPlaylists(){
             if(activeFilter!=null&&!filterMatches(activeFilter,entry.group,entry.name))continue;
             queue.add(entry);
         }
-        int selectedIndex=queue.indexOf(selected);if(selectedIndex<0){queue.add(0,selected);selectedIndex=0;}
-        // Limite la file Media3 : une playlist M3U peut contenir des milliers de flux.
-        final int maxQueue=16;if(queue.size()>maxQueue){int from=Math.max(0,Math.min(selectedIndex-maxQueue/2,queue.size()-maxQueue));queue=new ArrayList<>(queue.subList(from,from+maxQueue));}
+        if(queue.isEmpty()||queue.get(0)!=selected)queue.add(0,selected);
         return queue;
     }
     private MediaEntry nextPlayable(MediaEntry failed){
