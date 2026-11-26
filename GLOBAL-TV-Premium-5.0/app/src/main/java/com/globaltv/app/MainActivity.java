@@ -795,7 +795,7 @@ private void loadPlaylist(String url){if(url!=null&&(url.startsWith("http://")||
   return line.toString();
  }
  private M3uAppendResult appendM3uPlaylist(String address,ArrayList<MediaEntry> merged,HashMap<String,HashSet<String>> seenStreamEntries,int request)throws Exception{
- HttpURLConnection connection=open(address);connection.setConnectTimeout(6000);connection.setReadTimeout(10000);connection.setRequestProperty("Accept-Encoding","gzip");
+ HttpURLConnection connection=open(address);connection.setConnectTimeout(6000);connection.setReadTimeout(10000);
  try{
   int code=connection.getResponseCode();if(code<200||code>=300)throw new IOException("Serveur HTTP "+code);
   InputStream input=connection.getInputStream();if(input==null)throw new IOException("Réponse vide du serveur");
