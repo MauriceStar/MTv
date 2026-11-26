@@ -216,8 +216,11 @@ private String[] progressiveSearchTokens=new String[0];
     private String activeProfile="Adulte";
     private static final String PROFILE_ADULT="Adulte", PROFILE_CHILD="Enfant";
     private final ArrayList<MediaEntry> all=new ArrayList<>();
+    // Snapshot immuable publié uniquement lors d'un changement réel du catalogue.
+    private volatile List<MediaEntry> catalogSnapshot=Collections.emptyList();
     // Catalogue isolé réservé aux sources MTV que l'utilisateur est autorisé à utiliser.
     private final ArrayList<MediaEntry> mtvItems=new ArrayList<>();
+    private volatile List<MediaEntry> mtvCatalogSnapshot=Collections.emptyList();
     private String mtvPlaylistUrl="";
     private final Set<String> favorites=new HashSet<>();
     private final Set<String> historyKeysCache=new HashSet<>();
@@ -764,7 +767,7 @@ private void loadCachedCatalogThenRefresh(){
   postUi(()->{
    if(destroyed)return;
    if(!snapshot.isEmpty()){
-    all.clear();all.addAll(snapshot);homeFeaturedCache=null;normalizedSearchIndex.clear();
+    all.clear();all.addAll(snapshot);publishCatalogSnapshot();homeFeaturedCache=null;normalizedSearchIndex.clear();
     sourceMode="M3U";sourceLabel.setText("CATALOGUE LOCAL");
     status.setText(snapshot.size()+" chaînes disponibles • actualisation en arrière-plan");
     renderList();
@@ -841,7 +844,7 @@ private void loadPlaylist(String url){if(url!=null&&(url.startsWith("http://")||
      int l=line.indexOf("tvg-logo=\"");
      if(l>=0){int e=line.indexOf('"',l+10);if(e>l)logo=line.substring(l+10,e);}
     }else if(!line.isEmpty()&&!line.startsWith("#")&&name!=null){
-     if(line.startsWith("https://")||line.startsWith("http://")){String identity=line+"\u001F"+name.trim().toLowerCase(Locale.ROOT)+"\u001F"+group.trim().toLowerCase(Locale.ROOT)+"\u001F"+tvgId.trim().toLowerCase(Locale.ROOT);if(seenStreamEntries.add(identity)){MediaEntry entry=new MediaEntry(name,line,group,logo,"m3u");entry.tvgId=tvgId;entry.sourceId=Uri.parse(address).getHost();merged.add(entry);count++;if(merged.size()==250||(merged.size()>250&&merged.size()%3000==0)){ArrayList<MediaEntry> partial=new ArrayList<>(merged);postUi(()->{if(request!=catalogRequestId||destroyed)return;all.clear();all.addAll(partial);homeFeaturedCache=null;if(!splashLoadFinished){status.setText("Catalogue disponible • chargement en arrière-plan");renderList();onStartupPlaylistLoadFinished(true,"CATALOGUE DISPONIBLE • CHARGEMENT EN COURS");}else if(!section.equals("ACCUEIL"))renderList();});}}}
+     if(line.startsWith("https://")||line.startsWith("http://")){String identity=line+"\u001F"+name.trim().toLowerCase(Locale.ROOT)+"\u001F"+group.trim().toLowerCase(Locale.ROOT)+"\u001F"+tvgId.trim().toLowerCase(Locale.ROOT);if(seenStreamEntries.add(identity)){MediaEntry entry=new MediaEntry(name,line,group,logo,"m3u");entry.tvgId=tvgId;entry.sourceId=Uri.parse(address).getHost();merged.add(entry);count++;if(merged.size()==250||(merged.size()>250&&merged.size()%3000==0)){ArrayList<MediaEntry> partial=new ArrayList<>(merged);postUi(()->{if(request!=catalogRequestId||destroyed)return;all.clear();all.addAll(partial);publishCatalogSnapshot();homeFeaturedCache=null;if(!splashLoadFinished){status.setText("Catalogue disponible • chargement en arrière-plan");renderList();onStartupPlaylistLoadFinished(true,"CATALOGUE DISPONIBLE • CHARGEMENT EN COURS");}else if(!section.equals("ACCUEIL"))renderList();});}}}
      name=null;tvgId="";
     }
    }
@@ -890,7 +893,7 @@ private void loadAllPlaylists(boolean force){
   if(!sourceResults.isEmpty()){summary.append(" • ");int shown=Math.min(4,sourceResults.size());for(int i=0;i<shown;i++){if(i>0)summary.append(" | ");summary.append(sourceResults.get(i));}if(sourceResults.size()>shown)summary.append(" | +").append(sourceResults.size()-shown).append(" autre(s)");}
   final String firstError=errors.isEmpty()?null:errors.get(0);final String finalSummary=summary.toString();errors.clear();sourceResults.clear();
   if(catalogPersisted&&loaded>0)prefs.edit().putLong("catalog_last_refresh",System.currentTimeMillis()).apply();
-  postUi(()->{if(request!=catalogRequestId)return;homeFeaturedCache=null;normalizedSearchIndex.clear();all.clear();all.addAll(merged);merged.clear();sourceMode="M3U";sourceLabel.setText("SOURCES : "+urls.size()+" M3U");
+  postUi(()->{if(request!=catalogRequestId)return;homeFeaturedCache=null;normalizedSearchIndex.clear();all.clear();all.addAll(merged);publishCatalogSnapshot();merged.clear();sourceMode="M3U";sourceLabel.setText("SOURCES : "+urls.size()+" M3U");
    if(loaded==0){String problem=firstError==null?"Aucune chaîne reçue. Vérifie tes sources.":"Erreur M3U : "+firstError;status.setText(problem+" • "+finalSummary);renderList();onStartupPlaylistLoadFinished(false,"AUCUNE PLAYLIST DISPONIBLE • VÉRIFIE TES SOURCES");return;}
    status.setText(finalSummary);renderList();onStartupPlaylistLoadFinished(true,loaded+" CHAÎNES CHARGÉES • PRÊT À REGARDER");
   });
@@ -922,7 +925,7 @@ private void loadAllPlaylists(boolean force){
   }catch(Exception e){err=e.getMessage();}
   final String error=err;final ArrayList<String> failures=endpointErrors;if(error==null)persistCatalogToDatabase(parsed,"XTREAM",request);if(request!=catalogRequestId||destroyed)return;
   postUi(()->{if(request!=catalogRequestId)return;if(error!=null){status.setText("Connexion Xtream impossible : "+error);return;}
-   homeFeaturedCache=null;normalizedSearchIndex.clear();all.clear();all.addAll(parsed);sourceMode="XTREAM";sourceLabel.setText("SOURCE : XTREAM");
+   homeFeaturedCache=null;normalizedSearchIndex.clear();all.clear();all.addAll(parsed);publishCatalogSnapshot();sourceMode="XTREAM";sourceLabel.setText("SOURCE : XTREAM");
    StringBuilder summary=new StringBuilder().append(parsed.size()).append(" éléments • Xtream");if(!endpointReports.isEmpty())summary.append(" • ").append(android.text.TextUtils.join(" | ",endpointReports));if(!failures.isEmpty())summary.append(" • Alertes : ").append(android.text.TextUtils.join(", ",failures));status.setText(summary.toString());renderList();
   });
  });
@@ -1294,6 +1297,9 @@ private void loadAllPlaylists(boolean force){
             more.setPadding(dp(8),dp(10),dp(8),dp(10));list.addView(more);
         }
     }
+    private void publishCatalogSnapshot(){
+        catalogSnapshot=Collections.unmodifiableList(new ArrayList<>(all));
+    }
     private void renderList(){
         if(catalogContainer==null||catalogAdapter==null)return;
         if(section.equals("HISTORIQUE")){catalogRequestId++;showLinearCatalog();renderHistory();return;}
@@ -1307,7 +1313,7 @@ private void loadAllPlaylists(boolean force){
         final String filterSnapshot=activeFilter;
         final String profileSnapshot=activeProfile;
         final boolean universalSearch=!query.isEmpty();
-        List<MediaEntry> source=sectionSnapshot.equals("MTV")?mtvItems:all;
+        List<MediaEntry> source=sectionSnapshot.equals("MTV")?mtvCatalogSnapshot:catalogSnapshot;
         final ArrayList<MediaEntry> sourceSnapshot=new ArrayList<>(source);
         final ArrayList<MediaEntry> databaseSnapshot=new ArrayList<>(databaseSearchResults);
         final HashSet<String> recentSnapshot=new HashSet<>(recentlyPlayable);
@@ -1391,7 +1397,7 @@ private void loadAllPlaylists(boolean force){
     }
     private void play(MediaEntry c){countedWatchUrls.clear();failedInCurrentRun.clear();transientRetryAttempts.clear();startPlayer(c);}
     private List<MediaEntry> playableQueue(MediaEntry selected){
-        List<MediaEntry> source=section.equals("MTV")?mtvItems:all;
+        List<MediaEntry> source=section.equals("MTV")?mtvCatalogSnapshot:catalogSnapshot;
         ArrayList<MediaEntry> queue=new ArrayList<>();
         String query=search==null?"":search.getText().toString().toLowerCase(Locale.ROOT);
         // Construire uniquement la suite autour de la chaîne choisie : ne pas allouer
@@ -1982,7 +1988,7 @@ private void loadAllPlaylists(boolean force){
             postUi(()->{
                 if(request!=mtvPlaylistRequestId)return;
                 if(err!=null){status.setText("Erreur source MTV : "+err);return;}
-                mtvItems.clear();mtvItems.addAll(parsed);
+                mtvItems.clear();mtvItems.addAll(parsed);mtvCatalogSnapshot=Collections.unmodifiableList(new ArrayList<>(mtvItems));
                 status.setText(parsed.size()+" éléments chargés • Source MTV dédiée");
                 if(section.equals("MTV"))renderList();
             });
