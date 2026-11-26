@@ -747,7 +747,7 @@ private void loadCachedCatalogThenRefresh(){
     sourceMode="M3U";sourceLabel.setText("CATALOGUE LOCAL");
     status.setText(snapshot.size()+" chaînes disponibles • actualisation en arrière-plan");
     renderList();
-    if(!splashLoadFinished)onStartupPlaylistLoadFinished(true,"CATALOGUE LOCAL DISPONIBLE");
+    if(!splashLoadFinished){splashLoadFinished=true;if(brandSplash!=null){brandSplash.setMessage("CATALOGUE LOCAL DISPONIBLE");brandSplash.setProgressComplete();}mainHandler.postDelayed(()->finishBrandSplash(),1800L);}
    }
    loadAllPlaylists(false);
   });
