@@ -72,7 +72,7 @@ private long progressiveSearchCacheAt=0L;
 private final ArrayList<MediaEntry> progressiveSearchResults=new ArrayList<>();
 
     // Index léger des champs statiques : évite de normaliser les mêmes noms à chaque recherche.
-    private final Map<String,String> normalizedSearchIndex=new HashMap<>();
+    private final Map<String,String> normalizedSearchIndex=new ConcurrentHashMap<>();
     // Les vignettes de la page d’accueil sont calculées une seule fois par catalogue.
     private ArrayList<MediaEntry> homeFeaturedCache=null;
 
@@ -1221,49 +1221,69 @@ private void loadAllPlaylists(){
     }
     private void renderList(){
         if(catalogContainer==null||catalogAdapter==null)return;
-        if(section.equals("HISTORIQUE")){showLinearCatalog();renderHistory();return;}
-        if(section.equals("GUIDE TV")){showLinearCatalog();renderEpgGuide();return;}
+        if(section.equals("HISTORIQUE")){catalogRequestId++;showLinearCatalog();renderHistory();return;}
+        if(section.equals("GUIDE TV")){catalogRequestId++;showLinearCatalog();renderEpgGuide();return;}
         String query=search==null?"":search.getText().toString().trim().toLowerCase(Locale.ROOT);
-        if(section.equals("ACCUEIL")&&query.isEmpty()){showLinearCatalog();renderHome();return;}
+        if(section.equals("ACCUEIL")&&query.isEmpty()){catalogRequestId++;showLinearCatalog();renderHome();return;}
         showVirtualCatalog();
         if(!query.isEmpty())requestDatabaseSearch(query);else{databaseSearchRequestId++;databaseSearchQuery="";databaseSearchResults.clear();}
-        boolean universalSearch=!query.isEmpty();
-        List<MediaEntry> source=universalSearch?all:(section.equals("MTV")?mtvItems:all);
-        ArrayList<MediaEntry> candidates=new ArrayList<>(source);
-        if(!universalSearch){
-            ArrayList<MediaEntry> preferred=new ArrayList<>(),other=new ArrayList<>();
-            HashSet<String> seen=new HashSet<>();
-            for(MediaEntry entry:candidates){if(entry==null||entry.url==null||!seen.add(entry.url))continue;if(recentlyPlayable.contains(entry.url))preferred.add(entry);else other.add(entry);}
-            preferred.addAll(other);candidates=preferred;
-        }else{
-            if(section.equals("MTV"))candidates.addAll(mtvItems);
-            HashSet<String> identities=new HashSet<>();
-            for(MediaEntry entry:candidates)if(entry!=null)identities.add(catalogSearchIdentity(entry));
-            for(MediaEntry entry:databaseSearchResults)if(entry!=null&&identities.add(catalogSearchIdentity(entry)))candidates.add(entry);
-        }
-        ArrayList<MediaEntry> visible=new ArrayList<>();
-        HashSet<String> seenEntries=new HashSet<>();
-        for(MediaEntry entry:candidates){
-            if(entry==null||entry.url==null||entry.url.isEmpty())continue;
-            if(PROFILE_CHILD.equals(activeProfile)&&isAdultEntry(entry))continue;
-            String identity=universalSearch?catalogSearchIdentity(entry):entry.url;
-            if(!seenEntries.add(identity))continue;
-            if(!universalSearch&&!matchSection(entry))continue;
-            if(universalSearch){if(!matchesUniversalSearch(entry,query))continue;}
-            else if(!filterMatches(activeFilter,entry.group,entry.name))continue;
-            visible.add(entry);
-        }
-        catalogAdapter.submit(visible);
-        renderedCatalogItems=visible.size();
-        renderedCatalogKeys.clear();
-        if(catalogEmpty!=null){catalogEmpty.setText(all.isEmpty()?"Aucun contenu chargé. Configure une source M3U ou Xtream dans Paramètres.":"Aucun résultat dans cette rubrique. Vérifie la source ou le filtre.");catalogEmpty.setVisibility(visible.isEmpty()?View.VISIBLE:View.GONE);}
-        if(catalogRecycler!=null)catalogRecycler.scrollToPosition(0);
+        final int request=++catalogRequestId;
+        final String sectionSnapshot=section;
+        final String filterSnapshot=activeFilter;
+        final String profileSnapshot=activeProfile;
+        final boolean universalSearch=!query.isEmpty();
+        List<MediaEntry> source=sectionSnapshot.equals("MTV")?mtvItems:all;
+        final ArrayList<MediaEntry> sourceSnapshot=new ArrayList<>(source);
+        final ArrayList<MediaEntry> databaseSnapshot=new ArrayList<>(databaseSearchResults);
+        final HashSet<String> recentSnapshot=new HashSet<>(recentlyPlayable);
+        final int sourceCount=all.size();
         if(search!=null){
-            if(section.equals("ACCUEIL"))search.setNextFocusDownId(catalogRecycler.getId());
+            if(sectionSnapshot.equals("ACCUEIL"))search.setNextFocusDownId(catalogRecycler.getId());
             else if(chips!=null&&chips.getChildCount()>0)search.setNextFocusDownId(chips.getChildAt(0).getId());
         }
+        executeIo(()->{
+            ArrayList<MediaEntry> candidates=new ArrayList<>(sourceSnapshot);
+            if(!universalSearch){
+                ArrayList<MediaEntry> preferred=new ArrayList<>(),other=new ArrayList<>();
+                HashSet<String> seen=new HashSet<>();
+                for(MediaEntry entry:candidates){
+                    if(entry==null||entry.url==null||!seen.add(entry.url))continue;
+                    if(recentSnapshot.contains(entry.url))preferred.add(entry);else other.add(entry);
+                }
+                preferred.addAll(other);candidates=preferred;
+            }else{
+                if(sectionSnapshot.equals("MTV"))candidates.addAll(new ArrayList<>(mtvItems));
+                HashSet<String> identities=new HashSet<>();
+                for(MediaEntry entry:candidates)if(entry!=null)identities.add(catalogSearchIdentity(entry));
+                for(MediaEntry entry:databaseSnapshot)if(entry!=null&&identities.add(catalogSearchIdentity(entry)))candidates.add(entry);
+            }
+            ArrayList<MediaEntry> visible=new ArrayList<>();
+            HashSet<String> seenEntries=new HashSet<>();
+            for(MediaEntry entry:candidates){
+                if(entry==null||entry.url==null||entry.url.isEmpty())continue;
+                if(PROFILE_CHILD.equals(profileSnapshot)&&isAdultEntry(entry))continue;
+                String identity=universalSearch?catalogSearchIdentity(entry):entry.url;
+                if(!seenEntries.add(identity))continue;
+                if(!universalSearch&&!matchSection(entry))continue;
+                if(universalSearch){if(!matchesUniversalSearch(entry,query))continue;}
+                else if(!filterMatches(filterSnapshot,entry.group,entry.name))continue;
+                visible.add(entry);
+            }
+            final ArrayList<MediaEntry> result=visible;
+            postUi(()->{
+                if(request!=catalogRequestId||!sectionSnapshot.equals(section))return;
+                catalogAdapter.submit(result);
+                renderedCatalogItems=result.size();
+                renderedCatalogKeys.clear();
+                if(catalogEmpty!=null){
+                    catalogEmpty.setText(sourceCount==0?"Aucun contenu chargé. Configure une source M3U ou Xtream dans Paramètres.":"Aucun résultat dans cette rubrique. Vérifie la source ou le filtre.");
+                    catalogEmpty.setVisibility(result.isEmpty()?View.VISIBLE:View.GONE);
+                }
+                if(catalogRecycler!=null)catalogRecycler.scrollToPosition(0);
+            });
+        });
     }
-    // Conserve l'élément focalisé lors d'une reconstruction du catalogue.
+        // Conserve l'élément focalisé lors d'une reconstruction du catalogue.
     private String focusedCatalogItemUrl(){
         View focused=getCurrentFocus();
         while(focused!=null){
