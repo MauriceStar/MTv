@@ -283,7 +283,7 @@ private final ArrayList<MediaEntry> progressiveSearchResults=new ArrayList<>();
         playlistSources.addAll(Arrays.asList(BUILT_IN_PLAYLISTS));
         if(savedPlaylistSources!=null)for(String savedSource:savedPlaylistSources)if(savedSource!=null&&!savedSource.trim().isEmpty())playlistSources.add(savedSource);
         prefs.edit().putStringSet("m3u_sources",new LinkedHashSet<>(playlistSources)).apply();
-        epgUrl=prefs.getString("epg_url","");mtvPlaylistUrl=prefs.getString("mtv_playlist_url","");lastPlayedUrl=prefs.getString("last_url","");buildUi();showBrandSplash();loadAllPlaylists();if(!epgUrl.isEmpty())loadEpg(epgUrl);}
+        epgUrl=prefs.getString("epg_url","");mtvPlaylistUrl=prefs.getString("mtv_playlist_url","");lastPlayedUrl=prefs.getString("last_url","");buildUi();showBrandSplash();loadCachedCatalogThenRefresh();if(!epgUrl.isEmpty())loadEpg(epgUrl);}
     // Adapte le nombre de cartes rendues à la classe mémoire réelle de l'appareil.
     // Le catalogue reste complet en mémoire (plafonné), seule la vue est limitée.
     private void configureMemoryBudget(){
@@ -717,6 +717,42 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
  });
 }
 
+private MediaEntry fromCatalogRow(CatalogEntryEntity row){
+ if(row==null||row.url==null||row.url.isEmpty())return null;
+ MediaEntry entry=new MediaEntry(row.name,row.url,row.groupName,row.logo,row.type);
+ entry.id=row.entryId;entry.container=row.container;entry.tvgId=row.tvgId;entry.sourceId=row.sourceId;
+ entry.plot=row.plot;entry.rating=row.rating;entry.year=row.year;entry.duration=row.duration;
+ entry.genre=row.genre;entry.cast=row.cast;entry.director=row.director;
+ entry.seasonNumber=row.seasonNumber;entry.episodeNumber=row.episodeNumber;entry.seriesTitle=row.seriesTitle;
+ return entry;
+}
+private void loadCachedCatalogThenRefresh(){
+ executeIo(()->{
+  ArrayList<MediaEntry> cached=new ArrayList<>();
+  try{
+   CatalogDao dao=CatalogDatabase.getInstance(getApplicationContext()).catalogDao();
+   int total=Math.min(MAX_CATALOG_ITEMS,Math.max(0,dao.count()));
+   for(int offset=0;offset<total;offset+=500){
+    if(destroyed)return;
+    List<CatalogEntryEntity> page=dao.page(Math.min(500,total-offset),offset);
+    if(page==null||page.isEmpty())break;
+    for(CatalogEntryEntity row:page){MediaEntry entry=fromCatalogRow(row);if(entry!=null)cached.add(entry);}
+   }
+  }catch(Exception cacheError){android.util.Log.w("MTv-Catalog","Local cache unavailable; falling back to network",cacheError);}
+  final ArrayList<MediaEntry> snapshot=cached;
+  postUi(()->{
+   if(destroyed)return;
+   if(!snapshot.isEmpty()){
+    all.clear();all.addAll(snapshot);homeFeaturedCache=null;normalizedSearchIndex.clear();
+    sourceMode="M3U";sourceLabel.setText("CATALOGUE LOCAL");
+    status.setText(snapshot.size()+" chaînes disponibles • actualisation en arrière-plan");
+    renderList();
+    if(!splashLoadFinished)onStartupPlaylistLoadFinished(true,"CATALOGUE LOCAL DISPONIBLE");
+   }
+   loadAllPlaylists();
+  });
+ });
+}
 private void persistCatalogToDatabase(List<MediaEntry> entries,String fallbackSource,int request){
  if(entries==null||entries.isEmpty()||request!=catalogRequestId||destroyed)return;
  try{
@@ -759,7 +795,7 @@ private void loadPlaylist(String url){if(url!=null&&(url.startsWith("http://")||
   return line.toString();
  }
  private M3uAppendResult appendM3uPlaylist(String address,ArrayList<MediaEntry> merged,HashMap<String,HashSet<String>> seenStreamEntries,int request)throws Exception{
- HttpURLConnection connection=open(address);
+ HttpURLConnection connection=open(address);connection.setConnectTimeout(6000);connection.setReadTimeout(10000);connection.setRequestProperty("Accept-Encoding","gzip");
  try{
   int code=connection.getResponseCode();if(code<200||code>=300)throw new IOException("Serveur HTTP "+code);
   InputStream input=connection.getInputStream();if(input==null)throw new IOException("Réponse vide du serveur");
@@ -789,7 +825,7 @@ private void loadPlaylist(String url){if(url!=null&&(url.startsWith("http://")||
  }finally{connection.disconnect();}
 }
 private void loadAllPlaylists(){
- final int request=++catalogRequestId;progressiveSearchRequestId++;progressiveSearchCacheQuery="";progressiveSearchCacheAt=0L;progressiveSearchResults.clear();databaseSearchRequestId++;databaseSearchQuery="";databaseSearchResults.clear();ArrayList<String> urls=new ArrayList<>(playlistSources);if(urls.isEmpty())urls.add(DEFAULT_PLAYLIST);SharedPreferences.Editor cursorReset=prefs.edit();for(String preferenceKey:prefs.getAll().keySet())if(preferenceKey.startsWith("progressive_m3u_cursor_")||preferenceKey.startsWith("progressive_m3u_version_"))cursorReset.remove(preferenceKey);cursorReset.apply();
+ final int request=++catalogRequestId;progressiveSearchRequestId++;progressiveSearchCacheQuery="";progressiveSearchCacheAt=0L;progressiveSearchResults.clear();databaseSearchRequestId++;databaseSearchQuery="";databaseSearchResults.clear();ArrayList<String> urls=new ArrayList<>(playlistSources);if(urls.isEmpty())urls.add(DEFAULT_PLAYLIST);
  status.setText("Chargement de "+urls.size()+" source(s) M3U…");
  executeIo(()->{
   ArrayList<MediaEntry> merged=new ArrayList<>();HashMap<String,HashSet<String>> seenStreamEntries=new HashMap<>();ArrayList<String> errors=new ArrayList<>();ArrayList<String> sourceResults=new ArrayList<>();
