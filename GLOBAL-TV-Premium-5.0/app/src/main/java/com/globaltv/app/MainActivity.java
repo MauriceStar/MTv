@@ -376,7 +376,7 @@ private final ArrayList<MediaEntry> progressiveSearchResults=new ArrayList<>();
             progressBar.setMax(1000);
             progressBar.setProgress(0);
             if (android.os.Build.VERSION.SDK_INT >= 21) {
-                progressBar.setProgressTintList(android.content.res.ColorStateList.valueOf(0xFF287BFF));
+                progressBar.setProgressTintList(android.content.res.ColorStateList.valueOf(0xFFFFC84A));
                 progressBar.setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(0x66FFFFFF));
             }
             LinearLayout.LayoutParams barParams = new LinearLayout.LayoutParams(-1, dp(9));
@@ -1200,7 +1200,7 @@ private void loadAllPlaylists(){
             details.addView(channelName,new LinearLayout.LayoutParams(-1,dp(21)));
             String currentStart=epgTimeLabel(epgNowStart,entry),currentStop=epgTimeLabel(epgNowStop,entry),nextStartLabel=epgTimeLabel(epgNextStart,entry);
             String currentTime=currentStart.isEmpty()||currentStop.isEmpty()?"":currentStart+"–"+currentStop+"  •  ";
-            TextView nowLine=text(current.isEmpty()?"EN COURS  •  Programme non renseigné":"EN COURS  •  "+currentTime+current,10,current.isEmpty()?MUTED:0xFF56A0FF,true);
+            TextView nowLine=text(current.isEmpty()?"EN COURS  •  Programme non renseigné":"EN COURS  •  "+currentTime+current,10,current.isEmpty()?MUTED:CYAN,true);
             nowLine.setMaxLines(1);details.addView(nowLine,new LinearLayout.LayoutParams(-1,dp(19)));
             android.widget.ProgressBar progressBar=new android.widget.ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);
             progressBar.setMax(100);long startMs=epgTimeValue(epgNowStart,entry),stopMs=epgTimeValue(epgNowStop,entry),nowTime=System.currentTimeMillis();
