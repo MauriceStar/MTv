@@ -1479,13 +1479,19 @@ private void loadAllPlaylists(boolean force){
                     String diagnosticAddress=diagnosticEntry!=null?diagnosticEntry.url:c.url;
                     PlaybackDiagnostics.record(MainActivity.this,e.errorCode,safeHost(diagnosticAddress),e.getClass().getSimpleName());
                     android.util.Log.w("MTv-Player","Playback error code="+e.errorCode+" host="+safeHost(diagnosticAddress)+" type="+e.getClass().getSimpleName());
+                    final int errorIndex=activePlayer.getCurrentMediaItemIndex();
+                    final String errorUrl=diagnosticEntry!=null&&diagnosticEntry.url!=null?diagnosticEntry.url:
+                            (errorIndex>=0&&errorIndex<queue.size()?queue.get(errorIndex).url:c.url);
                     postUi(()->{
                         if(player!=activePlayer||destroyed)return;
-                        int failedIndex=activePlayer.getCurrentMediaItemIndex();
                         MediaEntry activeEntry=currentEntry;
-                        String failedUrl=activeEntry!=null&&activeEntry.url!=null?activeEntry.url:
-                                (failedIndex>=0&&failedIndex<queue.size()?queue.get(failedIndex).url:c.url);
-                        if(failedUrl==null)failedUrl=c.url;
+                        String activeUrl=activeEntry!=null?activeEntry.url:null;
+                        if(activeUrl==null&&activePlayer.getCurrentMediaItemIndex()>=0&&activePlayer.getCurrentMediaItemIndex()<queue.size())
+                            activeUrl=queue.get(activePlayer.getCurrentMediaItemIndex()).url;
+                        // Une erreur déjà mise en file ne doit jamais faire sauter la chaîne sélectionnée entre-temps.
+                        if(errorUrl==null||!errorUrl.equals(activeUrl))return;
+                        int failedIndex=errorIndex;
+                        String failedUrl=errorUrl;
                         // Media3 peut renvoyer INDEX_UNSET (-1) lors d'un échec très précoce.
                         // On retrouve alors l'index depuis l'URL réelle avant de planifier une reprise.
                         if(failedIndex<0||failedIndex>=queue.size()||!failedUrl.equals(queue.get(failedIndex).url)){
