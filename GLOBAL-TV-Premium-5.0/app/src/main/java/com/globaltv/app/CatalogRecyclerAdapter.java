@@ -106,6 +106,8 @@ final class CatalogRecyclerAdapter extends RecyclerView.Adapter<CatalogRecyclerA
         favoriteParams.gravity=Gravity.END;
         favoriteParams.topMargin=dp(2);
         root.addView(favorite,favoriteParams);
+        root.setNextFocusDownId(favorite.getId());
+        favorite.setNextFocusUpId(root.getId());
         return new Holder(root,artwork,title,detail,favorite);
     }
 
