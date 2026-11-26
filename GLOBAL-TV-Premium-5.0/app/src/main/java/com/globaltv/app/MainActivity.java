@@ -114,11 +114,13 @@ private final ArrayList<MediaEntry> progressiveSearchResults=new ArrayList<>();
     private ArrayList<MediaEntry> getHomeMostWatchedEntries(int limit){
         ArrayList<MediaEntry> result=new ArrayList<>();
         if(all==null||prefs==null)return result;
+        final Map<String,?> saved=prefs.getAll();
         final Map<String,Integer> counts=new HashMap<>();
         for(MediaEntry entry:all){
             if(entry==null||entry.url==null||entry.url.isEmpty())continue;
             if(PROFILE_CHILD.equals(activeProfile)&&isAdultEntry(entry))continue;
-            int count=prefs.getInt("watch_count_"+key(entry.url),0);
+            Object stored=saved.get("watch_count_"+key(entry.url));
+            int count=stored instanceof Number?((Number)stored).intValue():0;
             if(count>0){result.add(entry);counts.put(entry.url,count);}
         }
         Collections.sort(result,(a,b)->Integer.compare(counts.get(b.url),counts.get(a.url)));
