@@ -1317,32 +1317,35 @@ private void loadAllPlaylists(boolean force){
             else if(chips!=null&&chips.getChildCount()>0)search.setNextFocusDownId(chips.getChildAt(0).getId());
         }
         executeIo(()->{
-            ArrayList<MediaEntry> candidates=new ArrayList<>(sourceSnapshot);
-            if(!universalSearch){
-                ArrayList<MediaEntry> preferred=new ArrayList<>(),other=new ArrayList<>();
-                HashSet<String> seen=new HashSet<>();
-                for(MediaEntry entry:candidates){
-                    if(entry==null||entry.url==null||!seen.add(entry.url))continue;
+            HashSet<String> seenEntries=new HashSet<>();
+            ArrayList<MediaEntry> visible;
+            if(universalSearch){
+                visible=new ArrayList<>();
+                for(MediaEntry entry:sourceSnapshot){
+                    if(entry==null||entry.url==null||entry.url.isEmpty())continue;
+                    if(PROFILE_CHILD.equals(profileSnapshot)&&isAdultEntry(entry))continue;
+                    if(!seenEntries.add(catalogSearchIdentity(entry)))continue;
+                    if(matchesUniversalSearch(entry,query))visible.add(entry);
+                }
+                for(MediaEntry entry:databaseSnapshot){
+                    if(entry==null||entry.url==null||entry.url.isEmpty())continue;
+                    if(PROFILE_CHILD.equals(profileSnapshot)&&isAdultEntry(entry))continue;
+                    if(!seenEntries.add(catalogSearchIdentity(entry)))continue;
+                    if(matchesUniversalSearch(entry,query))visible.add(entry);
+                }
+            }else{
+                ArrayList<MediaEntry> preferred=new ArrayList<>();
+                ArrayList<MediaEntry> other=new ArrayList<>();
+                for(MediaEntry entry:sourceSnapshot){
+                    if(entry==null||entry.url==null||entry.url.isEmpty())continue;
+                    if(!seenEntries.add(entry.url))continue;
+                    if(PROFILE_CHILD.equals(profileSnapshot)&&isAdultEntry(entry))continue;
+                    if(!matchSection(entry)||!filterMatches(filterSnapshot,entry.group,entry.name))continue;
                     if(recentSnapshot.contains(entry.url))preferred.add(entry);else other.add(entry);
                 }
-                preferred.addAll(other);candidates=preferred;
-            }else{
-                if(sectionSnapshot.equals("MTV"))candidates.addAll(new ArrayList<>(mtvItems));
-                HashSet<String> identities=new HashSet<>();
-                for(MediaEntry entry:candidates)if(entry!=null)identities.add(catalogSearchIdentity(entry));
-                for(MediaEntry entry:databaseSnapshot)if(entry!=null&&identities.add(catalogSearchIdentity(entry)))candidates.add(entry);
-            }
-            ArrayList<MediaEntry> visible=new ArrayList<>();
-            HashSet<String> seenEntries=new HashSet<>();
-            for(MediaEntry entry:candidates){
-                if(entry==null||entry.url==null||entry.url.isEmpty())continue;
-                if(PROFILE_CHILD.equals(profileSnapshot)&&isAdultEntry(entry))continue;
-                String identity=universalSearch?catalogSearchIdentity(entry):entry.url;
-                if(!seenEntries.add(identity))continue;
-                if(!universalSearch&&!matchSection(entry))continue;
-                if(universalSearch){if(!matchesUniversalSearch(entry,query))continue;}
-                else if(!filterMatches(filterSnapshot,entry.group,entry.name))continue;
-                visible.add(entry);
+                preferred.addAll(other);
+                other.clear();
+                visible=preferred;
             }
             final ArrayList<MediaEntry> result=visible;
             postUi(()->{
