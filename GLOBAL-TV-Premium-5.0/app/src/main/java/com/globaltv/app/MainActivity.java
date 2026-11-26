@@ -1096,11 +1096,17 @@ private void loadAllPlaylists(boolean force){
 
     private void renderHome(){
         showLinearCatalog();list.removeAllViews();homeRailFocusCards.clear();
-        LinearLayout hero=row();hero.setGravity(Gravity.CENTER_VERTICAL);GradientDrawable heroBg=new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,new int[]{0xFF101722,0xFF17243A,0xFF111923});heroBg.setCornerRadius(dp(18));hero.setBackground(heroBg);hero.setPadding(dp(18),dp(14),dp(15),dp(14));
-        LinearLayout.LayoutParams heroParams=new LinearLayout.LayoutParams(-1,dp(118));heroParams.bottomMargin=dp(10);list.addView(hero,heroParams);
-        LinearLayout copy=column();hero.addView(copy,new LinearLayout.LayoutParams(0,-1,1f));
-        TextView live=text("▶  REGARDER LE DIRECT",10,0xFF1B1008,true);live.setId(View.generateViewId());live.setGravity(Gravity.CENTER);live.setBackground(bg(ACCENT,10));live.setTextColor(Color.BLACK);live.setFocusable(true);live.setClickable(true);LinearLayout.LayoutParams liveParams=new LinearLayout.LayoutParams(dp(164),dp(38));liveParams.topMargin=dp(5);copy.addView(live,liveParams);live.setOnFocusChangeListener((v,f)->stylePlayerButton((TextView)v,f));live.setOnClickListener(v->navigateTo("TV EN DIRECT"));
-        TextView stamp=text("LIVE",24,0xFF72B0FF,true);stamp.setGravity(Gravity.CENTER);stamp.setBackground(bg(0xFF5C2B17,16));hero.addView(stamp,new LinearLayout.LayoutParams(dp(94),dp(94)));if(search!=null)search.setNextFocusDownId(live.getId());
+        LinearLayout hero=row();hero.setGravity(Gravity.CENTER_VERTICAL);GradientDrawable heroBg=new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,new int[]{0xFF101722,0xFF17243A,0xFF111923});heroBg.setCornerRadius(dp(18));hero.setBackground(heroBg);hero.setPadding(dp(18),dp(12),dp(15),dp(12));
+        LinearLayout.LayoutParams heroParams=new LinearLayout.LayoutParams(-1,dp(138));heroParams.bottomMargin=dp(10);list.addView(hero,heroParams);
+        LinearLayout copy=column();copy.setGravity(Gravity.CENTER_VERTICAL);hero.addView(copy,new LinearLayout.LayoutParams(0,-1,1f));
+        TextView welcome=text("Bienvenue sur MTv",17,Color.WHITE,true);welcome.setMaxLines(1);copy.addView(welcome,new LinearLayout.LayoutParams(-1,dp(27)));
+        TextView welcomeHint=text("Vos chaînes et vos découvertes, réunies au même endroit.",10,0xFFB8C6D8,false);welcomeHint.setMaxLines(2);copy.addView(welcomeHint,new LinearLayout.LayoutParams(-1,dp(30)));
+        TextView live=text("▶  REGARDER LE DIRECT",10,0xFF1B1008,true);live.setId(View.generateViewId());live.setGravity(Gravity.CENTER);live.setBackground(bg(ACCENT,10));live.setTextColor(Color.BLACK);live.setFocusable(true);live.setClickable(true);LinearLayout.LayoutParams liveParams=new LinearLayout.LayoutParams(dp(174),dp(36));liveParams.topMargin=dp(5);copy.addView(live,liveParams);live.setOnFocusChangeListener((v,f)->stylePlayerButton((TextView)v,f));live.setOnClickListener(v->navigateTo("TV EN DIRECT"));
+        LinearLayout signalPanel=column();signalPanel.setGravity(Gravity.CENTER);hero.addView(signalPanel,new LinearLayout.LayoutParams(dp(116),-1));
+        TextView signal=text("◉",37,0xFFFFB24A,true);signal.setGravity(Gravity.CENTER);GradientDrawable signalBg=bg(0xFF24354D,38);signalBg.setStroke(dp(1),0xFF5279A8);signal.setBackground(signalBg);signalPanel.addView(signal,new LinearLayout.LayoutParams(dp(72),dp(72)));
+        TextView signalTitle=text("SIGNAL ACTIF",9,0xFFFFC66D,true);signalTitle.setGravity(Gravity.CENTER);signalTitle.setLetterSpacing(0.08f);LinearLayout.LayoutParams signalTitleParams=new LinearLayout.LayoutParams(-1,dp(22));signalTitleParams.topMargin=dp(3);signalPanel.addView(signalTitle,signalTitleParams);
+        ValueAnimator signalPulse=ValueAnimator.ofFloat(0.88f,1.08f);signalPulse.setDuration(1050L);signalPulse.setRepeatCount(ValueAnimator.INFINITE);signalPulse.setRepeatMode(ValueAnimator.REVERSE);signalPulse.addUpdateListener(a->{float scale=(Float)a.getAnimatedValue();signal.setScaleX(scale);signal.setScaleY(scale);signal.setAlpha(0.78f+((scale-0.88f)*1.35f));});signal.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener(){public void onViewAttachedToWindow(View v){if(!signalPulse.isStarted())signalPulse.start();}public void onViewDetachedFromWindow(View v){signalPulse.cancel();}});if(signal.isAttachedToWindow())signalPulse.start();
+        if(search!=null)search.setNextFocusDownId(live.getId());
         TextView categoryHeading=text("✨",18,CYAN,true);categoryHeading.setId(View.generateViewId());categoryHeading.setFocusable(true);categoryHeading.setLetterSpacing(0.1f);live.setNextFocusDownId(categoryHeading.getId());list.addView(categoryHeading,new LinearLayout.LayoutParams(-1,dp(34)));
         HorizontalScrollView categoryScroll=new HorizontalScrollView(this);categoryScroll.setHorizontalScrollBarEnabled(false);categoryScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);LinearLayout categoryRow=row();categoryScroll.addView(categoryRow);list.addView(categoryScroll,new LinearLayout.LayoutParams(-1,dp(92)));
         String[][] quick=homeQuickCategories();int[] warm={0xFF68421B,0xFF78331E,0xFF925B20,0xFF4A2A18};View previous=null;int index=0;ArrayList<View> homeCategoryTiles=new ArrayList<>();
@@ -2348,7 +2354,10 @@ private void loadAllPlaylists(boolean force){
         }
         if(event.getAction()==KeyEvent.ACTION_DOWN&&event.getKeyCode()==KeyEvent.KEYCODE_BACK){
             if(webCustomView!=null){hideWebCustomView();return true;}
-            if(isWebSection(section)&&mtvWebView!=null&&mtvWebView.getVisibility()==View.VISIBLE){setWebSectionFullscreen(false);navigateTo("ACCUEIL");return true;}
+            if(isWebSection(section)&&mtvWebView!=null&&mtvWebView.getVisibility()==View.VISIBLE){
+                if(webSectionFullscreen){setWebSectionFullscreen(false);TextView currentNav=navViews.get(section);if(currentNav!=null)currentNav.requestFocus();return true;}
+                hideMtvWebView();navigateTo("ACCUEIL");return true;
+            }
             if(playerView!=null){if(playerFullscreen){togglePlayerExpanded();return true;}savePlaybackPosition();releasePlayer();if(status!=null)status.setVisibility(View.GONE);return true;}
         }
         if(event.getAction()==KeyEvent.ACTION_DOWN&&isWebSection(section)&&webContainer!=null&&webContainer.getVisibility()==View.VISIBLE&&event.getKeyCode()==KeyEvent.KEYCODE_DPAD_UP&&mtvWebView!=null&&mtvWebView.hasFocus()&&!mtvWebView.canScrollVertically(-1)){
