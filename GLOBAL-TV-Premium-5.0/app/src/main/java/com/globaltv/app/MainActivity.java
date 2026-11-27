@@ -125,7 +125,7 @@ private String[] progressiveSearchTokens=new String[0];
             int count=stored instanceof Number?((Number)stored).intValue():0;
             if(count>0){result.add(entry);counts.put(entry.url,count);}
         }
-        Collections.sort(result,(a,b)->Integer.compare(counts.get(b.url),counts.get(a.url)));
+        Collections.sort(result,(a,b)->{boolean af=isFrenchLanguageEntry(a),bf=isFrenchLanguageEntry(b);if(af!=bf)return af?-1:1;return Integer.compare(counts.get(b.url),counts.get(a.url));});
         if(result.size()>limit)return new ArrayList<>(result.subList(0,limit));
         return result;
     }
@@ -279,7 +279,7 @@ private String[] progressiveSearchTokens=new String[0];
     private String section="ACCUEIL",activeFilter="Tout",sourceMode="M3U",xtreamBase="",xtreamUser="",xtreamPass="";
 
     static class MediaEntry {
-        String name,url,group,logo,type,id,container,tvgId,sourceId;
+        String name,url,group,logo,type,id,container,tvgId,tvgLanguage,sourceId;
         String plot="",rating="",year="",duration="",genre="",cast="",director="";
         int seasonNumber=-1,episodeNumber=-1;
         String seriesTitle="";
@@ -544,14 +544,18 @@ private String[] progressiveSearchTokens=new String[0];
     private void updateChips(){if(chips==null)return;chips.removeAllViews();if(chipScroll!=null)chipScroll.setVisibility(section.equals("ACCUEIL")?View.GONE:View.VISIBLE);String[] opts;if(section.equals("FAVORIS")){ArrayList<String> values=new ArrayList<>();values.add("Tout");values.addAll(favoriteGroups.keySet());values.add("＋ Créer une liste");opts=values.toArray(new String[0]);}else opts=new String[]{"Tout","Afrique","Europe","Asie","Amérique du Nord","Amérique du Sud","Océanie","France","Togo","Bénin","Côte d’Ivoire","Ghana","Nigeria","Sénégal","Cameroun","Congo","RDC","Afrique du Sud","Maroc","Algérie","Tunisie","Égypte","Kenya","Ouganda","Tanzanie","Éthiopie","Rwanda","Zambie","Royaume-Uni","Allemagne","Espagne","Italie","Portugal","Belgique","Pays-Bas","Suisse","Autriche","Suède","Norvège","Danemark","Grèce","Pologne","Russie","USA","Canada","Mexique","Brésil","Argentine","Colombie","Chili","Pérou","Uruguay","Équateur","Inde","Chine","Japon","Corée du Sud","Pakistan","Bangladesh","Indonésie","Philippines","Thaïlande","Vietnam","Malaisie","Singapour","Turquie","Arabie saoudite","Émirats arabes unis","Australie","Nouvelle-Zélande","Fidji","Papouasie-Nouvelle-Guinée"};int previousId=View.NO_ID;for(String value:opts){final String filter=value;TextView c=text(value,12,activeFilter.equals(value)?Color.WHITE:0xFFB8C4D8,true);c.setGravity(Gravity.CENTER);c.setPadding(dp(15),0,dp(15),0);c.setBackground(bg(activeFilter.equals(value)?ACCENT:CARD,18));c.setFocusable(true);c.setFocusableInTouchMode(true);c.setClickable(true);c.setId(View.generateViewId());c.setNextFocusUpId(search.getId());if(previousId!=View.NO_ID)c.setNextFocusLeftId(previousId);if(previousId!=View.NO_ID)chips.getChildAt(chips.getChildCount()-1).setNextFocusRightId(c.getId());previousId=c.getId();c.setOnFocusChangeListener((v,focus)->{if(focus){if(filter.equals(activeFilter)){GradientDrawable d=bg(ACCENT,18);d.setStroke(dp(2),FOCUS_GOLD);v.setBackground(d);((TextView)v).setTextColor(Color.WHITE);}else{GradientDrawable d=bg(FOCUS_GOLD,18);d.setStroke(dp(2),FOCUS_RED);v.setBackground(d);((TextView)v).setTextColor(0xFF21180D);}Rect rect=new Rect();v.getDrawingRect(rect);chipScroll.requestChildRectangleOnScreen(v,rect,true);}else{v.setBackground(bg(filter.equals(activeFilter)?ACCENT:CARD,18));((TextView)v).setTextColor(filter.equals(activeFilter)?Color.WHITE:0xFFB8C4D8);}});c.setOnKeyListener((v,keyCode,event)->{if(event.getAction()!=KeyEvent.ACTION_DOWN)return false;if(keyCode==KeyEvent.KEYCODE_DPAD_CENTER||keyCode==KeyEvent.KEYCODE_ENTER){v.performClick();return true;}if(keyCode==KeyEvent.KEYCODE_DPAD_RIGHT||keyCode==KeyEvent.KEYCODE_DPAD_LEFT){int idx=chips.indexOfChild(v),next=idx+(keyCode==KeyEvent.KEYCODE_DPAD_RIGHT?1:-1);if(next>=0&&next<chips.getChildCount()){chips.getChildAt(next).requestFocus();return true;}}if(keyCode==KeyEvent.KEYCODE_DPAD_DOWN){focusFirstCatalogItem();return true;}return false;});LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-2,dp(38));p.rightMargin=dp(8);chips.addView(c,p);c.setOnClickListener(v->{if(section.equals("FAVORIS")&&filter.equals("＋ Créer une liste")){showCreateFavoriteGroup();return;}activeFilter=filter;maxRenderItems=120;updateChips();renderList();for(int i=0;i<chips.getChildCount();i++){View selected=chips.getChildAt(i);if(selected instanceof TextView&&filter.equals(((TextView)selected).getText().toString())){selected.requestFocus();break;}}});}search.setNextFocusDownId(chips.getChildAt(0).getId());}
 
 
-    private void executeIo(Runnable task){
-        if(destroyed||task==null)return;
-        try{io.execute(task);}catch(RejectedExecutionException ex){
-            // Ne jamais inonder l’écran de popups lorsque la file de fond est saturée.
-            android.util.Log.w("MTv-IO","Background queue saturated; task deferred/skipped",ex);
-        }
-    }
-    private void postUi(Runnable task){
+    private void executeIo(Runnable task){executeIo(task,0);}
+     private void executeIo(Runnable task,int retry){
+         if(destroyed||task==null||io.isShutdown())return;
+         try{io.execute(task);}catch(RejectedExecutionException ex){
+             if(!destroyed&&!io.isShutdown()&&retry<3){
+                 long delay=250L*(retry+1);
+                 android.util.Log.w("MTv-IO","Background queue saturated; retry "+(retry+1)+"/3 in "+delay+" ms");
+                 mainHandler.postDelayed(()->executeIo(task,retry+1),delay);
+             }else android.util.Log.w("MTv-IO","Background task skipped after bounded retries",ex);
+         }
+     }
+     private void postUi(Runnable task){
         if(task==null||destroyed)return;
         mainHandler.post(()->{
             if(destroyed||isFinishing())return;
@@ -622,7 +626,7 @@ private String[] progressiveSearchTokens=new String[0];
             for(CatalogEntryEntity row:candidates.values()){
                 StringBuilder fields=new StringBuilder(192);
                 String[] values={row.normalizedName,row.normalizedGroup,epgLookupKey(row.type),epgLookupKey(row.tvgId),
-                    epgLookupKey(row.plot),epgLookupKey(row.rating),epgLookupKey(row.year),epgLookupKey(row.duration),
+                    epgLookupKey(row.plot),epgLookupKey(row.rating),epgLookupKey(row.year),epgLookupKey(row.duration),epgLookupKey(row.tvgLanguage),
                     epgLookupKey(row.genre),epgLookupKey(row.cast),epgLookupKey(row.director),epgLookupKey(row.seriesTitle)};
                 for(String value:values)if(value!=null&&!value.isEmpty())fields.append(value).append(' ');
                 String haystack=fields.toString();
@@ -630,7 +634,7 @@ private String[] progressiveSearchTokens=new String[0];
                 for(String token:tokens)if(!haystack.contains(token)){matches=false;break;}
                 if(!matches)continue;
                 MediaEntry entry=new MediaEntry(row.name,row.url,row.groupName,row.logo,row.type);
-                entry.id=row.entryId;entry.container=row.container;entry.tvgId=row.tvgId;entry.sourceId=row.sourceId;
+                entry.id=row.entryId;entry.container=row.container;entry.tvgId=row.tvgId;entry.tvgLanguage=row.tvgLanguage;entry.sourceId=row.sourceId;
                 entry.plot=row.plot;entry.rating=row.rating;entry.year=row.year;entry.duration=row.duration;
                 entry.genre=row.genre;entry.cast=row.cast;entry.director=row.director;
                 entry.seasonNumber=row.seasonNumber;entry.episodeNumber=row.episodeNumber;entry.seriesTitle=row.seriesTitle;
@@ -703,7 +707,7 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
       if(skipped==null){reachedEnd=true;break;}
       lineNumber++;
      }
-     String line,name=null,group="Autres",logo="",tvgId="";
+     String line,name=null,group="Autres",logo="",tvgId="",tvgLanguage="";
      long sourceChars=0L;
      while(!reachedEnd&&found.size()<120){
       if(request!=progressiveSearchRequestId||databaseRequest!=databaseSearchRequestId||destroyed)break;
@@ -714,7 +718,7 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
       if(sourceChars>12L*1024L*1024L||totalChars>24L*1024L*1024L)break;
       line=line.trim();if(line.startsWith("\uFEFF"))line=line.substring(1);
       if(line.startsWith("#EXTINF:")){
-       name=line.substring(line.lastIndexOf(',')+1).trim();group="Autres";logo="";tvgId="";
+       name=line.substring(line.lastIndexOf(',')+1).trim();group="Autres";logo="";tvgId="";tvgLanguage="";
        int g=line.indexOf("group-title=\"");
        if(g>=0){int e=line.indexOf('"',g+13);if(e>g)group=line.substring(g+13,e);}
        int tid=line.indexOf("tvg-id=\"");
@@ -726,7 +730,7 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
         String searchable=epgLookupKey(name+" "+group+" "+tvgId);
         boolean matches=true;for(String token:tokens)if(!searchable.contains(token)){matches=false;break;}
         if(matches){
-         MediaEntry candidate=new MediaEntry(name,line,group,logo,"m3u");candidate.tvgId=tvgId;
+         MediaEntry candidate=new MediaEntry(name,line,group,logo,"m3u");candidate.tvgId=tvgId;candidate.tvgLanguage=tvgLanguage;
          String host=Uri.parse(address).getHost();candidate.sourceId=host==null?"M3U":host;
          String identity=catalogSearchIdentity(candidate);
          if(identities.add(identity))found.add(candidate);
@@ -841,17 +845,17 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
                                 if(reachedEnd){prefs.edit().putLong(cursorKey,-1L).putLong(byteCursorKey,-1L).apply();continue;}
                             }
                             long lineNumber=cursorLines;
-                            String line,name=null,group="Autres",logo="",tvgId="";long sourceChars=0L;
+                            String line,name=null,group="Autres",logo="",tvgId="",tvgLanguage="";long sourceChars=0L;
                             while(!reachedEnd&&scanGeneration==progressiveCategoryScanGeneration&&(player==null||!player.isPlaying())&&SystemClock.elapsedRealtime()-scanStartedAt<=12000L&&found.size()-foundBeforeSource<20&&found.size()<Math.min(MAX_PROGRESSIVE_CATEGORY_BATCH,remainingCapacity)){
                                 if(destroyed)break;line=readBoundedPlaylistLine(reader);if(line==null){reachedEnd=true;break;}
                                 lineNumber++;long lineSize=line.length()+1L;sourceChars+=lineSize;totalChars+=lineSize;
                                 if(sourceChars>1L*1024L*1024L||totalChars>4L*1024L*1024L)break;
                                 line=line.trim();if(line.startsWith("\uFEFF"))line=line.substring(1);
                                 if(line.startsWith("#EXTINF:")){
-                                    name=line.substring(line.lastIndexOf(',')+1).trim();group="Autres";logo="";tvgId="";
+                                    name=line.substring(line.lastIndexOf(',')+1).trim();group="Autres";logo="";tvgId="";tvgLanguage="";
                                     int g=line.indexOf("group-title=\"");if(g>=0){int e=line.indexOf('"',g+13);if(e>g)group=line.substring(g+13,e);}
                                     int tid=line.indexOf("tvg-id=\"");if(tid>=0){int e=line.indexOf('"',tid+8);if(e>tid)tvgId=line.substring(tid+8,e);}
-                                    int l=line.indexOf("tvg-logo=\"");if(l>=0){int e=line.indexOf('"',l+10);if(e>l)logo=line.substring(l+10,e);}
+                                    int l=line.indexOf("tvg-logo=\"");if(l>=0){int e=line.indexOf('"',l+10);if(e>l)logo=line.substring(l+10,e);}tvgLanguage=m3uAttributeValue(line,"tvg-language");
                                 }else if(!line.isEmpty()&&!line.startsWith("#")&&name!=null){
                                     if(line.startsWith("http://")||line.startsWith("https://")){
                                         MediaEntry candidate=new MediaEntry(name,line,group,logo,"m3u");candidate.tvgId=tvgId;
@@ -899,7 +903,7 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
                 String identity=entry.url+"\\u001F"+(entry.name==null?"":entry.name)+"\\u001F"+(entry.group==null?"":entry.group)+"\\u001F"+(entry.tvgId==null?"":entry.tvgId)+"\\u001F"+(entry.type==null?"":entry.type);
                 row.id=key(identity);row.url=entry.url;row.name=entry.name==null?"":entry.name;row.normalizedName=epgLookupKey(row.name);
                 row.groupName=entry.group==null?"":entry.group;row.normalizedGroup=epgLookupKey(row.groupName);row.type=entry.type==null?"":entry.type;
-                row.sourceId=entry.sourceId==null?"":entry.sourceId;row.logo=entry.logo==null?"":entry.logo;row.tvgId=entry.tvgId==null?"":entry.tvgId;
+                row.sourceId=entry.sourceId==null?"":entry.sourceId;row.logo=entry.logo==null?"":entry.logo;row.tvgId=entry.tvgId==null?"":entry.tvgId;row.tvgLanguage=entry.tvgLanguage==null?"":entry.tvgLanguage;
                 row.container=entry.container==null?"":entry.container;row.entryId=entry.id==null?"":entry.id;row.plot=entry.plot==null?"":entry.plot;
                 row.rating=entry.rating==null?"":entry.rating;row.year=entry.year==null?"":entry.year;row.duration=entry.duration==null?"":entry.duration;
                 row.genre=entry.genre==null?"":entry.genre;row.cast=entry.cast==null?"":entry.cast;row.director=entry.director==null?"":entry.director;
@@ -913,7 +917,7 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
     private MediaEntry fromCatalogRow(CatalogEntryEntity row){
  if(row==null||row.url==null||row.url.isEmpty())return null;
  MediaEntry entry=new MediaEntry(row.name,row.url,row.groupName,row.logo,row.type);
- entry.id=row.entryId;entry.container=row.container;entry.tvgId=row.tvgId;entry.sourceId=row.sourceId;
+ entry.id=row.entryId;entry.container=row.container;entry.tvgId=row.tvgId;entry.tvgLanguage=row.tvgLanguage;entry.sourceId=row.sourceId;
  entry.plot=row.plot;entry.rating=row.rating;entry.year=row.year;entry.duration=row.duration;
  entry.genre=row.genre;entry.cast=row.cast;entry.director=row.director;
  entry.seasonNumber=row.seasonNumber;entry.episodeNumber=row.episodeNumber;entry.seriesTitle=row.seriesTitle;
@@ -963,7 +967,7 @@ private boolean persistCatalogToDatabase(List<MediaEntry> entries,String fallbac
    row.normalizedName=epgLookupKey(row.name);row.groupName=entry.group==null?"":entry.group;
    row.normalizedGroup=epgLookupKey(row.groupName);row.type=entry.type==null?"":entry.type;
    row.sourceId=entry.sourceId==null||entry.sourceId.isEmpty()?fallbackSource:entry.sourceId;
-   row.logo=entry.logo==null?"":entry.logo;row.tvgId=entry.tvgId==null?"":entry.tvgId;
+   row.logo=entry.logo==null?"":entry.logo;row.tvgId=entry.tvgId==null?"":entry.tvgId;row.tvgLanguage=entry.tvgLanguage==null?"":entry.tvgLanguage;
    row.container=entry.container==null?"":entry.container;row.entryId=entry.id==null?"":entry.id;
    row.plot=entry.plot==null?"":entry.plot;row.rating=entry.rating==null?"":entry.rating;
    row.year=entry.year==null?"":entry.year;row.duration=entry.duration==null?"":entry.duration;
@@ -1004,29 +1008,36 @@ private String readBoundedPlaylistLine(CountingPlaylistInputStream reader)throws
   if(ch==-1&&line.size()==0)return null;
   return line.toString("UTF-8");
  }
-  private M3uAppendResult appendM3uPlaylist(String address,ArrayList<MediaEntry> merged,HashSet<String> seenStreamEntries,int request,int sourceLimit)throws Exception{
+   private String m3uAttributeValue(String line,String attribute){
+  if(line==null||attribute==null||attribute.isEmpty())return "";
+  String marker=attribute+"=\"";int start=line.indexOf(marker);if(start<0)return "";
+  int valueStart=start+marker.length(),end=line.indexOf('"',valueStart);
+  return end>valueStart?line.substring(valueStart,end).trim():"";
+ }
+private M3uAppendResult appendM3uPlaylist(String address,ArrayList<MediaEntry> merged,HashSet<String> seenStreamEntries,int request,int sourceLimit)throws Exception{
  HttpURLConnection connection=open(address);connection.setConnectTimeout(6000);connection.setReadTimeout(10000);
  try{
   int code=connection.getResponseCode();if(code<200||code>=300)throw new IOException("Serveur HTTP "+code);
   InputStream input=connection.getInputStream();if(input==null)throw new IOException("Réponse vide du serveur");
   int count=0;long chars=0L;long linesRead=0L;long bytesRead=0L;boolean truncated=false;
   try(CountingPlaylistInputStream reader=new CountingPlaylistInputStream(input)){
-   String line,name=null,group="Autres",logo="",tvgId="";
+   String line,name=null,group="Autres",logo="",tvgId="",tvgLanguage="";
    while((line=readBoundedPlaylistLine(reader))!=null&&merged.size()<M3U_INITIAL_CATALOG_ITEMS&&count<sourceLimit){
     linesRead++;
     if(request!=m3uLoadRequestId||destroyed)throw new IOException("Chargement M3U annulé");
     chars+=line.length();if(chars>64L*1024L*1024L){truncated=true;break;}
     line=line.trim();if(line.startsWith("\uFEFF"))line=line.substring(1);
     if(line.startsWith("#EXTINF:")){
-     name=line.substring(line.lastIndexOf(',')+1).trim();group="Autres";logo="";tvgId="";
+     name=line.substring(line.lastIndexOf(',')+1).trim();group="Autres";logo="";tvgId="";tvgLanguage="";
      int g=line.indexOf("group-title=\"");
      if(g>=0){int e=line.indexOf('"',g+13);if(e>g)group=line.substring(g+13,e);}
      int tid=line.indexOf("tvg-id=\"");
      if(tid>=0){int te=line.indexOf('"',tid+8);if(te>tid)tvgId=line.substring(tid+8,te);}
      int l=line.indexOf("tvg-logo=\"");
      if(l>=0){int e=line.indexOf('"',l+10);if(e>l)logo=line.substring(l+10,e);}
+     tvgLanguage=m3uAttributeValue(line,"tvg-language");
     }else if(!line.isEmpty()&&!line.startsWith("#")&&name!=null){
-     if(line.startsWith("https://")||line.startsWith("http://")){String identity=line+"\u001F"+name.trim().toLowerCase(Locale.ROOT)+"\u001F"+group.trim().toLowerCase(Locale.ROOT)+"\u001F"+tvgId.trim().toLowerCase(Locale.ROOT);if(seenStreamEntries.add(identity)){MediaEntry entry=new MediaEntry(name,line,group,logo,"m3u");entry.tvgId=tvgId;entry.sourceId=Uri.parse(address).getHost();merged.add(entry);count++;if(merged.size()==250||(merged.size()>250&&merged.size()%3000==0)){ArrayList<MediaEntry> partial=new ArrayList<>(merged);postUi(()->{if(request!=m3uLoadRequestId||destroyed)return;all.clear();all.addAll(partial);publishCatalogSnapshot();homeFeaturedCache=null;if(!splashLoadFinished){status.setText("Catalogue disponible • chargement en arrière-plan");renderList();onStartupPlaylistLoadFinished(true,"CATALOGUE DISPONIBLE • CHARGEMENT EN COURS");}else if(!section.equals("ACCUEIL"))renderList();});}}}
+     if(line.startsWith("https://")||line.startsWith("http://")){String identity=line+"\u001F"+name.trim().toLowerCase(Locale.ROOT)+"\u001F"+group.trim().toLowerCase(Locale.ROOT)+"\u001F"+tvgId.trim().toLowerCase(Locale.ROOT);if(seenStreamEntries.add(identity)){MediaEntry entry=new MediaEntry(name,line,group,logo,"m3u");entry.tvgId=tvgId;entry.tvgLanguage=tvgLanguage;entry.sourceId=Uri.parse(address).getHost();merged.add(entry);count++;if(merged.size()==250||(merged.size()>250&&merged.size()%3000==0)){ArrayList<MediaEntry> partial=new ArrayList<>(merged);postUi(()->{if(request!=m3uLoadRequestId||destroyed)return;all.clear();all.addAll(partial);publishCatalogSnapshot();homeFeaturedCache=null;if(!splashLoadFinished){status.setText("Catalogue disponible • chargement en arrière-plan");renderList();onStartupPlaylistLoadFinished(true,"CATALOGUE DISPONIBLE • CHARGEMENT EN COURS");}else if(!section.equals("ACCUEIL"))renderList();});}}}
      name=null;tvgId="";
     }
    }
@@ -1144,7 +1155,7 @@ private void loadAllPlaylists(boolean force){
 }
     private Map<String,String> safeCategories(String action,ArrayList<String> warnings,String label){try{return parseCategories(get(api(action,"")));}catch(Exception e){warnings.add(label+" indisponibles ("+e.getClass().getSimpleName()+")");return new HashMap<>();}}
     private Map<String,String> parseCategories(String json)throws JSONException{Map<String,String> map=new HashMap<>();JSONArray a=new JSONArray(json);for(int i=0;i<a.length();i++){JSONObject o=a.optJSONObject(i);if(o!=null){String id=o.optString("category_id","");if(!id.isEmpty())map.put(id,o.optString("category_name","Autres"));}}return map;}
-    private void parseXtreamArray(ArrayList<MediaEntry> out,String json,String type,String fallback,String streamPrefix,Map<String,String> categories)throws JSONException{JSONArray a=new JSONArray(json);String fallbackCategory=type.equals("live")?"TV en direct":type.equals("movie")?"Films":"Séries";for(int i=0;i<a.length()&&out.size()<MAX_CATALOG_ITEMS;i++){JSONObject o=a.optJSONObject(i);if(o==null)continue;String id=o.optString(type.equals("series")?"series_id":"stream_id",o.optString("id",""));if(id.isEmpty())continue;String name=o.optString("name",type.equals("series")?"Série":"Contenu");String categoryId=o.optString("category_id");String cat=o.optString("category_name",categories.containsKey(categoryId)?categories.get(categoryId):fallbackCategory);String logo=o.optString("stream_icon",o.optString("cover",""));String ext=o.optString("container_extension",fallback);String path=streamPrefix+id+"."+ext;MediaEntry m=new MediaEntry(name,path,cat,logo,type);m.id=id;m.container=ext;m.tvgId=o.optString("epg_channel_id","");m.sourceId="XTREAM:"+Uri.parse(xtreamBase).getHost();m.rating=o.optString("rating","");m.year=o.optString("year",o.optString("releaseDate",""));m.duration=o.optString("duration","");m.genre=o.optString("genre","");m.plot=o.optString("plot","");m.cast=o.optString("cast","");m.director=o.optString("director","");out.add(m);}}
+    private void parseXtreamArray(ArrayList<MediaEntry> out,String json,String type,String fallback,String streamPrefix,Map<String,String> categories)throws JSONException{JSONArray a=new JSONArray(json);String fallbackCategory=type.equals("live")?"TV en direct":type.equals("movie")?"Films":"Séries";for(int i=0;i<a.length()&&out.size()<MAX_CATALOG_ITEMS;i++){JSONObject o=a.optJSONObject(i);if(o==null)continue;String id=o.optString(type.equals("series")?"series_id":"stream_id",o.optString("id",""));if(id.isEmpty())continue;String name=o.optString("name",type.equals("series")?"Série":"Contenu");String categoryId=o.optString("category_id");String cat=o.optString("category_name",categories.containsKey(categoryId)?categories.get(categoryId):fallbackCategory);String logo=o.optString("stream_icon",o.optString("cover",""));String ext=o.optString("container_extension",fallback);String path=streamPrefix+id+"."+ext;MediaEntry m=new MediaEntry(name,path,cat,logo,type);m.id=id;m.container=ext;m.tvgId=o.optString("epg_channel_id","");m.tvgLanguage=o.optString("language",o.optString("tvg_language",o.optString("audio_language","")));m.sourceId="XTREAM:"+Uri.parse(xtreamBase).getHost();m.rating=o.optString("rating","");m.year=o.optString("year",o.optString("releaseDate",""));m.duration=o.optString("duration","");m.genre=o.optString("genre","");m.plot=o.optString("plot","");m.cast=o.optString("cast","");m.director=o.optString("director","");out.add(m);}}
 
     private void recordSuccessfulStream(String url){
         if(url==null||url.isEmpty()||prefs==null)return;
@@ -1261,7 +1272,22 @@ private void loadAllPlaylists(boolean force){
         }
         return value.contains(f);
     }
-    private boolean matchesAny(String value,String... terms){
+         private boolean isFrenchLanguageEntry(MediaEntry entry){
+         if(entry==null)return false;
+         String language=entry.tvgLanguage==null?"":entry.tvgLanguage.trim().toLowerCase(Locale.ROOT);
+         if(!language.isEmpty()){
+             if(language.equals("fr")||language.equals("fra")||language.equals("fre")||matchesAny(language,"french","français","francais","francophone"))return true;
+             if(matchesAny(language,"english","anglais","spanish","español","espanol","arabic","arabe","portuguese","português","portugues","german","deutsch","italian","italiano","turkish","russian","русский","hindi"))return false;
+         }
+         String name=entry.name==null?"":entry.name.toLowerCase(Locale.ROOT);
+         String group=entry.group==null?"":entry.group.toLowerCase(Locale.ROOT);
+         String id=entry.tvgId==null?"":entry.tvgId.toLowerCase(Locale.ROOT);
+         String metadata=name+" "+group+" "+id;
+         if(matchesAny(metadata,"francophone","français","francais","french language","langue française","langue francaise","version française","version francaise","en français","en francais"))return true;
+         if(matchesAny(name,"english","anglais","español","espanol","spanish","arabic","arabe","português","portugues","portuguese","deutsch","german","italiano","italian","turkish","russian","hindi"))return false;
+         return matchesAny(metadata,"tv5 monde","tv5monde","france 24","france 2","france 3","france 4","france 5","franceinfo","france info","tf1","m6","arte france","cnews","bfm tv","bfmtv","lci","w9","tfx","canal+","canal plus","rtbf","rtp","radio canada","radio-canada","tva","tele quebec","télé québec","ortb","rti","tvt togo","tv togolaise","nci côte","nci cote");
+     }
+private boolean matchesAny(String value,String... terms){
         if(value==null)return false;
         String v=value.toLowerCase(Locale.ROOT);
         for(String term:terms)if(v.contains(term))return true;
@@ -1552,7 +1578,7 @@ private void loadAllPlaylists(boolean force){
     private MediaEntry mediaEntryFromCatalogRow(CatalogEntryEntity row){
         if(row==null)return null;
         MediaEntry entry=new MediaEntry(row.name,row.url,row.groupName,row.logo,row.type);
-        entry.id=row.entryId;entry.container=row.container;entry.tvgId=row.tvgId;entry.sourceId=row.sourceId;
+        entry.id=row.entryId;entry.container=row.container;entry.tvgId=row.tvgId;entry.tvgLanguage=row.tvgLanguage;entry.sourceId=row.sourceId;
         entry.plot=row.plot;entry.rating=row.rating;entry.year=row.year;entry.duration=row.duration;
         entry.genre=row.genre;entry.cast=row.cast;entry.director=row.director;
         entry.seasonNumber=row.seasonNumber;entry.episodeNumber=row.episodeNumber;entry.seriesTitle=row.seriesTitle;
@@ -1637,7 +1663,9 @@ private void loadAllPlaylists(boolean force){
                     if(matchesUniversalSearch(entry,query))visible.add(entry);
                 }
             }else{
-                ArrayList<MediaEntry> preferred=new ArrayList<>();
+                ArrayList<MediaEntry> frenchRecent=new ArrayList<>();
+                ArrayList<MediaEntry> frenchOther=new ArrayList<>();
+                ArrayList<MediaEntry> otherRecent=new ArrayList<>();
                 ArrayList<MediaEntry> other=new ArrayList<>();
                 int scanned=0;
                 for(MediaEntry entry:sourceSnapshot){
@@ -1646,18 +1674,19 @@ private void loadAllPlaylists(boolean force){
                     if(!seenEntries.add(entry.url))continue;
                     if(PROFILE_CHILD.equals(profileSnapshot)&&isAdultEntry(entry))continue;
                     if(!matchSection(entry)||!filterMatches(filterSnapshot,entry.group,entry.name))continue;
-                    if(recentSnapshot.contains(entry.url))preferred.add(entry);else other.add(entry);
+                    if(isFrenchLanguageEntry(entry)){if(recentSnapshot.contains(entry.url))frenchRecent.add(entry);else frenchOther.add(entry);}else if(recentSnapshot.contains(entry.url))otherRecent.add(entry);else other.add(entry);
                 }
                 for(MediaEntry entry:localSectionSnapshot){
                     if((++scanned&127)==0&&(request!=catalogRequestId||destroyed))return;
                     if(entry==null||entry.url==null||entry.url.isEmpty()||!seenEntries.add(entry.url))continue;
                     if(PROFILE_CHILD.equals(profileSnapshot)&&isAdultEntry(entry))continue;
                     if(!matchSection(entry)||!filterMatches(filterSnapshot,entry.group,entry.name))continue;
-                    if(recentSnapshot.contains(entry.url))preferred.add(entry);else other.add(entry);
+                    if(isFrenchLanguageEntry(entry)){if(recentSnapshot.contains(entry.url))frenchRecent.add(entry);else frenchOther.add(entry);}else if(recentSnapshot.contains(entry.url))otherRecent.add(entry);else other.add(entry);
                 }
-                preferred.addAll(other);
-                other.clear();
-                visible=preferred;
+                frenchRecent.addAll(frenchOther);
+                frenchRecent.addAll(otherRecent);
+                frenchRecent.addAll(other);
+                visible=frenchRecent;
             }
             if(request!=catalogRequestId||destroyed)return;
             final ArrayList<MediaEntry> result=visible;
