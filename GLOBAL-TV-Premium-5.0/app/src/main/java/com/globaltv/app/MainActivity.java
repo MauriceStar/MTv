@@ -877,6 +877,7 @@ private void loadAllPlaylists(boolean force){
   ArrayList<MediaEntry> merged=new ArrayList<>();HashSet<String> seenStreamEntries=new HashSet<>();ArrayList<String> errors=new ArrayList<>();ArrayList<String> sourceResults=new ArrayList<>();
   int completedSources=0;
   LinkedHashSet<String> incompleteThisLoad=new LinkedHashSet<>();
+  ArrayList<String> truncatedSources=new ArrayList<>();
   for(int sourceIndex=0;sourceIndex<urls.size();sourceIndex++){
    String address=urls.get(sourceIndex);
    if(request!=catalogRequestId||destroyed)break;
@@ -885,11 +886,26 @@ private void loadAllPlaylists(boolean force){
    final String progressHost=host;final int progressIndex=sourceIndex+1;final int progressTotal=urls.size();
    postUi(()->{if(request==catalogRequestId&&status!=null)status.setText("Chargement M3U "+progressIndex+"/"+progressTotal+" • "+progressHost);});
    long startedAt=SystemClock.elapsedRealtime();int sourceCount=0;String outcome="OK";
-   try{int sourceLimit=Math.max(1,MAX_CATALOG_ITEMS/urls.size());M3uAppendResult append=appendM3uPlaylist(address,merged,seenStreamEntries,request,sourceLimit);sourceCount=append.count;if(append.truncated)incompleteThisLoad.add(address);}
+   try{int sourceLimit=Math.max(1,MAX_CATALOG_ITEMS/urls.size());M3uAppendResult append=appendM3uPlaylist(address,merged,seenStreamEntries,request,sourceLimit);sourceCount=append.count;if(append.truncated){incompleteThisLoad.add(address);truncatedSources.add(address);}}
    catch(Exception ex){outcome="ÉCHEC";incompleteThisLoad.add(address);String reason=ex.getMessage();if(reason==null||reason.trim().isEmpty())reason=ex.getClass().getSimpleName();errors.add(host+": "+reason);}
    if(merged.size()>=MAX_CATALOG_ITEMS){for(int remaining=sourceIndex;remaining<urls.size();remaining++)incompleteThisLoad.add(urls.get(remaining));}
    long elapsed=Math.max(0L,SystemClock.elapsedRealtime()-startedAt);completedSources++;
    sourceResults.add(host+" : "+sourceCount+" élément(s), "+(elapsed/1000.0)+" s"+("OK".equals(outcome)?"":" • "+outcome));
+  }
+  // Redistribue les places inutilisées par les playlists courtes aux sources tronquées.
+  // Chaque reprise repart du début, mais les identifiants déjà vus sont ignorés.
+  for(int retryIndex=0;retryIndex<truncatedSources.size()&&merged.size()<MAX_CATALOG_ITEMS;retryIndex++){
+   if(request!=catalogRequestId||destroyed)return;
+   int remainingSlots=MAX_CATALOG_ITEMS-merged.size();
+   int remainingSources=truncatedSources.size()-retryIndex;
+   int retryLimit=Math.max(1,(remainingSlots+remainingSources-1)/remainingSources);
+   String retryAddress=truncatedSources.get(retryIndex);
+   try{
+    M3uAppendResult retry=appendM3uPlaylist(retryAddress,merged,seenStreamEntries,request,retryLimit);
+    if(!retry.truncated)incompleteThisLoad.remove(retryAddress);
+   }catch(Exception retryError){
+    android.util.Log.w("MTv-Catalog","Unable to continue truncated source: "+retryAddress,retryError);
+   }
   }
   if(request!=catalogRequestId||destroyed)return;
   synchronized(incompleteM3uSources){incompleteM3uSources.clear();incompleteM3uSources.addAll(incompleteThisLoad);}
