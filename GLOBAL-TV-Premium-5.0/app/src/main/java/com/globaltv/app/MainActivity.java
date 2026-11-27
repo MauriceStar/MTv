@@ -780,12 +780,14 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
         String orderKey="progressive_category_next_source_"+key(targetSection);int startIndex=prefs.getInt(orderKey,0)%sources.size();if(startIndex<0)startIndex+=sources.size();
         ArrayList<String> orderedSources=new ArrayList<>(sources.size());for(int i=0;i<sources.size();i++)orderedSources.add(sources.get((startIndex+i)%sources.size()));
         prefs.edit().putInt(orderKey,(startIndex+1)%sources.size()).apply();
-        final HashSet<String> existingUrls=new HashSet<>();
-        for(MediaEntry entry:all)if(entry!=null&&entry.url!=null&&!entry.url.isEmpty())existingUrls.add(entry.url);
-        final int remainingCapacity=MAX_CATALOG_ITEMS-existingUrls.size();if(remainingCapacity<=0)return;
+        final List<MediaEntry> scanSnapshot=catalogSnapshot;
         progressiveCategoryScanInFlight=true;prefs.edit().putLong(cooldownKey,now).apply();
         final int scanGeneration=progressiveCategoryScanGeneration;
         try{io.execute(()->{
+            HashSet<String> existingUrls=new HashSet<>();
+            for(MediaEntry entry:scanSnapshot)if(entry!=null&&entry.url!=null&&!entry.url.isEmpty())existingUrls.add(entry.url);
+            final int remainingCapacity=MAX_CATALOG_ITEMS-existingUrls.size();
+            if(remainingCapacity<=0){progressiveCategoryScanInFlight=false;return;}
             ArrayList<MediaEntry> found=new ArrayList<>();HashSet<String> knownUrls=new HashSet<>(existingUrls);long totalChars=0L;long scanStartedAt=SystemClock.elapsedRealtime();
             try{
                 for(String address:orderedSources){
