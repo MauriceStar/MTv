@@ -1480,6 +1480,7 @@ private void loadAllPlaylists(boolean force){
     private void play(MediaEntry c){countedWatchUrls.clear();failedInCurrentRun.clear();transientRetryAttempts.clear();startPlayer(c);}
     private List<MediaEntry> playableQueue(MediaEntry selected){
         List<MediaEntry> source=section.equals("MTV")?mtvCatalogSnapshot:catalogSnapshot;
+        if(source.indexOf(selected)<0&&!localDatabaseSnapshot.isEmpty())source=localDatabaseSnapshot;
         ArrayList<MediaEntry> queue=new ArrayList<>();
         String query=search==null?"":search.getText().toString().toLowerCase(Locale.ROOT);
         // Construire uniquement la suite autour de la chaîne choisie : ne pas allouer
@@ -2444,7 +2445,7 @@ private void loadAllPlaylists(boolean force){
         if(event.getAction()==KeyEvent.ACTION_DOWN&&isWebSection(section)&&webContainer!=null&&webContainer.getVisibility()==View.VISIBLE&&event.getKeyCode()==KeyEvent.KEYCODE_DPAD_UP&&mtvWebView!=null&&mtvWebView.hasFocus()&&!mtvWebView.canScrollVertically(-1)){
             View menu=null;View webNav=webContainer.getChildAt(0);if(webNav instanceof ViewGroup)menu=((ViewGroup)webNav).getChildAt(0);if(menu!=null){menu.requestFocus();return true;}
         }
-        if(isWebSection(section)&&mtvWebView!=null&&mtvWebView.getVisibility()==View.VISIBLE&&event.getAction()==KeyEvent.ACTION_DOWN&&event.getRepeatCount()==0&&(event.getKeyCode()==KeyEvent.KEYCODE_CHANNEL_UP||event.getKeyCode()==KeyEvent.KEYCODE_CHANNEL_DOWN||event.getKeyCode()==KeyEvent.KEYCODE_MEDIA_NEXT||event.getKeyCode()==KeyEvent.KEYCODE_MEDIA_PREVIOUS||event.getKeyCode()==KeyEvent.KEYCODE_P)){
+        if(isWebSection(section)&&mtvWebView!=null&&mtvWebView.getVisibility()==View.VISIBLE&&event.getAction()==KeyEvent.ACTION_DOWN&&event.getRepeatCount()==0&&(event.getKeyCode()==KeyEvent.KEYCODE_CHANNEL_UP||event.getKeyCode()==KeyEvent.KEYCODE_CHANNEL_DOWN||event.getKeyCode()==KeyEvent.KEYCODE_MEDIA_NEXT||event.getKeyCode()==KeyEvent.KEYCODE_MEDIA_PREVIOUS||event.getKeyCode()==KeyEvent.KEYCODE_P||event.getKeyCode()==KeyEvent.KEYCODE_PAGE_UP||event.getKeyCode()==KeyEvent.KEYCODE_PAGE_DOWN)){
             int webKey=event.getKeyCode();mtvWebView.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN,webKey));mtvWebView.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_UP,webKey));return true;
         }
         if(isWebSection(section)&&mtvWebView!=null&&mtvWebView.getVisibility()==View.VISIBLE&&event.getAction()==KeyEvent.ACTION_DOWN&&(event.getKeyCode()==KeyEvent.KEYCODE_DPAD_UP||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_DOWN||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_LEFT||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_RIGHT||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_CENTER||event.getKeyCode()==KeyEvent.KEYCODE_ENTER)&&!mtvWebView.hasFocus())mtvWebView.requestFocus();
