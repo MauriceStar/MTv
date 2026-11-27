@@ -17,6 +17,7 @@ public class CatalogEntryEntity {
  @NonNull public String sourceId="";
  public String logo="";
  public String tvgId="";
+ public String tvgLanguage="";
  public String container="";
  public String entryId="";
  public String plot="";
