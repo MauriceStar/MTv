@@ -945,6 +945,7 @@ private void loadPlaylist(String url){if(url!=null&&(url.startsWith("http://")||
   try(BufferedReader reader=new BufferedReader(new InputStreamReader(input,"UTF-8"))){
    String line,name=null,group="Autres",logo="",tvgId="";
    while((line=readBoundedPlaylistLine(reader))!=null&&merged.size()<M3U_INITIAL_CATALOG_ITEMS&&count<sourceLimit){
+    linesRead++;
     if(request!=m3uLoadRequestId||destroyed)throw new IOException("Chargement M3U annulé");
     chars+=line.length();if(chars>64L*1024L*1024L){truncated=true;break;}
     line=line.trim();if(line.startsWith("\uFEFF"))line=line.substring(1);
@@ -1012,6 +1013,8 @@ private void loadAllPlaylists(boolean force){
    String retryAddress=truncatedSources.get(retryIndex);
    try{
     M3uAppendResult retry=appendM3uPlaylist(retryAddress,merged,seenStreamEntries,request,retryLimit);
+    long previousCursor=initialLineCursors.containsKey(retryAddress)?initialLineCursors.get(retryAddress):0L;
+    initialLineCursors.put(retryAddress,Math.max(previousCursor,retry.linesRead));
     if(!retry.truncated)incompleteThisLoad.remove(retryAddress);
    }catch(Exception retryError){
     android.util.Log.w("MTv-Catalog","Unable to continue truncated source: "+retryAddress,retryError);
