@@ -1486,25 +1486,44 @@ private void loadAllPlaylists(boolean force){
     private void play(MediaEntry c){countedWatchUrls.clear();failedInCurrentRun.clear();transientRetryAttempts.clear();startPlayer(c);}
     private List<MediaEntry> playableQueue(MediaEntry selected){
         List<MediaEntry> source=section.equals("MTV")?mtvCatalogSnapshot:catalogSnapshot;
-        if(source.indexOf(selected)<0&&!localDatabaseSnapshot.isEmpty())source=localDatabaseSnapshot;
+        if(selected!=null&&source.indexOf(selected)<0&&!localDatabaseSnapshot.isEmpty())source=localDatabaseSnapshot;
         ArrayList<MediaEntry> queue=new ArrayList<>();
-        String query=search==null?"":search.getText().toString().toLowerCase(Locale.ROOT);
-        // Construire uniquement la suite autour de la chaîne choisie : ne pas allouer
-        // une seconde liste de plusieurs dizaines de milliers d'éléments sur le thread UI.
+        if(selected==null||selected.url==null||source.isEmpty()){if(selected!=null)queue.add(selected);return queue;}
+        String query=search==null?"":search.getText().toString().trim().toLowerCase(Locale.ROOT);
         int selectedSourceIndex=source.indexOf(selected);
-        if(selectedSourceIndex<0)selectedSourceIndex=0;
+        if(selectedSourceIndex<0){queue.add(selected);return queue;}
         final int maxQueue=32;
-        for(int i=selectedSourceIndex;i<source.size()&&queue.size()<maxQueue;i++){
+        final int maxPrevious=8;
+        ArrayList<MediaEntry> previous=new ArrayList<>();
+        HashSet<String> seenUrls=new HashSet<>();
+        seenUrls.add(selected.url);
+        int scanned=0;
+        for(int i=selectedSourceIndex-1;i>=0&&previous.size()<maxPrevious&&scanned<512;i--,scanned++){
             MediaEntry entry=source.get(i);
-            if(entry==null||entry.url==null||!(entry.url.startsWith("http://")||entry.url.startsWith("https://")))continue;
+            if(entry==null||entry.url==null||entry.url.isEmpty()||seenUrls.contains(entry.url))continue;
+            if(!(entry.url.startsWith("http://")||entry.url.startsWith("https://")))continue;
             if(PROFILE_CHILD.equals(activeProfile)&&isAdultEntry(entry))continue;
-            if(!matchSectionFor(entry))continue;
+            if(!matchSection(entry))continue;
             String searchable=((entry.name==null?"":entry.name)+" "+(entry.group==null?"":entry.group)).toLowerCase(Locale.ROOT);
             if(!query.isEmpty()&&!searchable.contains(query))continue;
             if(activeFilter!=null&&!filterMatches(activeFilter,entry.group,entry.name))continue;
-            queue.add(entry);
+            seenUrls.add(entry.url);previous.add(entry);
         }
-        if(queue.isEmpty()||queue.get(0)!=selected)queue.add(0,selected);
+        Collections.reverse(previous);
+        queue.addAll(previous);
+        queue.add(selected);
+        scanned=0;
+        for(int i=selectedSourceIndex+1;i<source.size()&&queue.size()<maxQueue&&scanned<1024;i++,scanned++){
+            MediaEntry entry=source.get(i);
+            if(entry==null||entry.url==null||entry.url.isEmpty()||seenUrls.contains(entry.url))continue;
+            if(!(entry.url.startsWith("http://")||entry.url.startsWith("https://")))continue;
+            if(PROFILE_CHILD.equals(activeProfile)&&isAdultEntry(entry))continue;
+            if(!matchSection(entry))continue;
+            String searchable=((entry.name==null?"":entry.name)+" "+(entry.group==null?"":entry.group)).toLowerCase(Locale.ROOT);
+            if(!query.isEmpty()&&!searchable.contains(query))continue;
+            if(activeFilter!=null&&!filterMatches(activeFilter,entry.group,entry.name))continue;
+            seenUrls.add(entry.url);queue.add(entry);
+        }
         return queue;
     }
     private MediaEntry nextPlayable(MediaEntry failed){
