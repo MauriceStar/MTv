@@ -907,6 +907,7 @@ private boolean persistCatalogToDatabase(List<MediaEntry> entries,String fallbac
  try{
   CatalogDao dao=CatalogDatabase.getInstance(getApplicationContext()).catalogDao();
   ArrayList<CatalogEntryEntity> batch=new ArrayList<>(400);
+  long catalogUpdatedAt=System.currentTimeMillis();
   for(MediaEntry entry:entries){
    if((m3uLoad?request!=m3uLoadRequestId:request!=catalogRequestId)||destroyed)return false;
    if(entry==null||entry.url==null||entry.url.isEmpty())continue;
@@ -923,7 +924,7 @@ private boolean persistCatalogToDatabase(List<MediaEntry> entries,String fallbac
    row.genre=entry.genre==null?"":entry.genre;row.cast=entry.cast==null?"":entry.cast;
    row.director=entry.director==null?"":entry.director;row.seasonNumber=entry.seasonNumber;
    row.episodeNumber=entry.episodeNumber;row.seriesTitle=entry.seriesTitle==null?"":entry.seriesTitle;
-   row.updatedAt=System.currentTimeMillis();batch.add(row);
+   row.updatedAt=catalogUpdatedAt;batch.add(row);
    if(batch.size()>=400){dao.upsertAll(batch);persistedRows+=batch.size();batch.clear();}
   }
   if(!batch.isEmpty()){
