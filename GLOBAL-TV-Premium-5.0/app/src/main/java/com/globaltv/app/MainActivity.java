@@ -214,6 +214,7 @@ private String[] progressiveSearchTokens=new String[0];
     private static final int MAX_PROGRESSIVE_CATEGORY_BATCH=80;
     private volatile boolean progressiveCategoryScanInFlight=false;
     private volatile String pendingProgressiveCategorySection="";
+    private volatile int progressiveCategoryScanGeneration=0;
     private volatile boolean m3uCatalogLoading=false;
     private int maxRenderItems=120;
     private int renderedCatalogItems=0;
@@ -332,7 +333,7 @@ private String[] progressiveSearchTokens=new String[0];
         brandSplash=splash;
         decor.addView(splash,new ViewGroup.LayoutParams(-1,-1));
         splash.start();
-        splashTimeoutRunnable=()->{if(brandSplash==null||destroyed)return;if(!splashLoadFinished){catalogRequestId++;m3uLoadRequestId++;m3uCatalogLoading=false;splashLoadFinished=true;if(status!=null)status.setText("Délai de connexion dépassé. Vérifie Internet ou tes sources.");renderList();brandSplash.setMessage("CONNEXION LENTE • VÉRIFIE TES SOURCES");brandSplash.setProgressComplete();}finishBrandSplash();};
+        splashTimeoutRunnable=()->{if(brandSplash==null||destroyed)return;if(!splashLoadFinished){catalogRequestId++;m3uLoadRequestId++;m3uCatalogLoading=false;progressiveCategoryScanGeneration++;pendingProgressiveCategorySection="";splashLoadFinished=true;if(status!=null)status.setText("Délai de connexion dépassé. Vérifie Internet ou tes sources.");renderList();brandSplash.setMessage("CONNEXION LENTE • VÉRIFIE TES SOURCES");brandSplash.setProgressComplete();}finishBrandSplash();};
         mainHandler.postDelayed(splashTimeoutRunnable,120000L);
     }
     private void onStartupPlaylistLoadFinished(boolean success,String message){if(brandSplash==null)return;splashLoadFinished=true;brandSplash.setMessage(message);brandSplash.setProgressComplete();long elapsed=android.os.SystemClock.uptimeMillis()-splashStartedAt;long remaining=Math.max(0L,15000L-elapsed);mainHandler.postDelayed(()->{if(splashLoadFinished)finishBrandSplash();},remaining);}
@@ -783,11 +784,12 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
         for(MediaEntry entry:all)if(entry!=null&&entry.url!=null&&!entry.url.isEmpty())existingUrls.add(entry.url);
         final int remainingCapacity=MAX_CATALOG_ITEMS-existingUrls.size();if(remainingCapacity<=0)return;
         progressiveCategoryScanInFlight=true;prefs.edit().putLong(cooldownKey,now).apply();
+        final int scanGeneration=progressiveCategoryScanGeneration;
         try{io.execute(()->{
             ArrayList<MediaEntry> found=new ArrayList<>();HashSet<String> knownUrls=new HashSet<>(existingUrls);long totalChars=0L;long scanStartedAt=SystemClock.elapsedRealtime();
             try{
                 for(String address:orderedSources){
-                    if(destroyed||SystemClock.elapsedRealtime()-scanStartedAt>12000L||found.size()>=Math.min(MAX_PROGRESSIVE_CATEGORY_BATCH,remainingCapacity)||totalChars>=4L*1024L*1024L)break;
+                    if(destroyed||scanGeneration!=progressiveCategoryScanGeneration||SystemClock.elapsedRealtime()-scanStartedAt>12000L||found.size()>=Math.min(MAX_PROGRESSIVE_CATEGORY_BATCH,remainingCapacity)||totalChars>=4L*1024L*1024L)break;
                     HttpURLConnection connection=null;String cursorKey=progressiveCategoryCursorKey(address,targetSection);
                     long initialCursor=prefs.getLong("m3u_initial_cursor_"+key(address),0L);
                     long initialByteCursor=prefs.getLong("m3u_initial_byte_cursor_"+key(address),0L);
@@ -825,7 +827,7 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
                             }
                             long lineNumber=cursorLines;
                             String line,name=null,group="Autres",logo="",tvgId="";long sourceChars=0L;
-                            while(!reachedEnd&&SystemClock.elapsedRealtime()-scanStartedAt<=12000L&&found.size()-foundBeforeSource<20&&found.size()<Math.min(MAX_PROGRESSIVE_CATEGORY_BATCH,remainingCapacity)){
+                            while(!reachedEnd&&scanGeneration==progressiveCategoryScanGeneration&&SystemClock.elapsedRealtime()-scanStartedAt<=12000L&&found.size()-foundBeforeSource<20&&found.size()<Math.min(MAX_PROGRESSIVE_CATEGORY_BATCH,remainingCapacity)){
                                 if(destroyed)break;line=readBoundedPlaylistLine(reader);if(line==null){reachedEnd=true;break;}
                                 lineNumber++;long lineSize=line.length()+1L;sourceChars+=lineSize;totalChars+=lineSize;
                                 if(sourceChars>1L*1024L*1024L||totalChars>4L*1024L*1024L)break;
@@ -850,21 +852,22 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
                     }catch(Exception error){android.util.Log.w("MTv-Catalog","Progressive category scan failed for "+targetSection,error);}
                     finally{if(connection!=null)connection.disconnect();}
                 }
-                if(!found.isEmpty())persistAdditionalCatalogEntries(found);
+                if(scanGeneration==progressiveCategoryScanGeneration&&!found.isEmpty())persistAdditionalCatalogEntries(found);
             }finally{
                 progressiveCategoryScanInFlight=false;
                 String queuedSection=pendingProgressiveCategorySection;pendingProgressiveCategorySection="";
-                if(!queuedSection.isEmpty())mainHandler.postDelayed(()->{if(!destroyed&&queuedSection.equals(section))requestProgressiveCategoryScan(queuedSection);},1200L);
+                if(!queuedSection.isEmpty())mainHandler.postDelayed(()->{if(!destroyed&&!m3uCatalogLoading&&queuedSection.equals(section))requestProgressiveCategoryScan(queuedSection);},1200L);
             }
+            if(scanGeneration!=progressiveCategoryScanGeneration)return;
             boolean hasMoreSources=false;
             for(String address:sources){long initial=prefs.getLong("m3u_initial_cursor_"+key(address),0L);long cursor=prefs.getLong(progressiveCategoryCursorKey(address,targetSection),initial);if(cursor>=0L){hasMoreSources=true;break;}}
             if(hasMoreSources&&!destroyed&&existingUrls.size()+found.size()<MAX_CATALOG_ITEMS){
-                mainHandler.postDelayed(()->{if(!destroyed&&targetSection.equals(section)&&hasWindowFocus()&&(search==null||search.getText().toString().trim().isEmpty())&&(player==null||!player.isPlaying()))requestProgressiveCategoryScan(targetSection);},30000L);
+                mainHandler.postDelayed(()->{if(scanGeneration==progressiveCategoryScanGeneration&&!destroyed&&targetSection.equals(section)&&hasWindowFocus()&&(search==null||search.getText().toString().trim().isEmpty())&&(player==null||!player.isPlaying()))requestProgressiveCategoryScan(targetSection);},30000L);
             }
             if(found.isEmpty()||destroyed)return;
             final ArrayList<MediaEntry> additions=found;
             postUi(()->{
-                if(destroyed)return;HashSet<String> currentUrls=new HashSet<>();
+                if(destroyed||scanGeneration!=progressiveCategoryScanGeneration)return;HashSet<String> currentUrls=new HashSet<>();
                 for(MediaEntry entry:all)if(entry!=null&&entry.url!=null)currentUrls.add(entry.url);
                 int added=0;for(MediaEntry entry:additions){if(all.size()>=MAX_CATALOG_ITEMS)break;if(entry!=null&&entry.url!=null&&currentUrls.add(entry.url)){all.add(entry);added++;}}
                 if(added>0){publishCatalogSnapshot();homeFeaturedCache=null;normalizedSearchIndex.clear();if(targetSection.equals(section)&&(search==null||search.getText().toString().trim().isEmpty()))renderList();}
@@ -1028,7 +1031,8 @@ private void loadAllPlaylists(boolean force){
    return;
   }
  }
- m3uCatalogLoading=true;
+ m3uCatalogLoading=true;progressiveCategoryScanGeneration++;pendingProgressiveCategorySection="";
+ SharedPreferences.Editor categoryCursorReset=prefs.edit();for(String storedKey:prefs.getAll().keySet())if(storedKey.startsWith("progressive_category_cursor_")||storedKey.startsWith("progressive_category_version_"))categoryCursorReset.remove(storedKey);categoryCursorReset.apply();
  final int request=++m3uLoadRequestId;catalogRequestId++;progressiveSearchRequestId++;progressiveSearchCacheQuery="";progressiveSearchCacheAt=0L;progressiveSearchResults.clear();databaseSearchRequestId++;databaseSearchQuery="";databaseSearchResults.clear();ArrayList<String> urls=new ArrayList<>();
  for(String prioritySource:BUILT_IN_PLAYLISTS)if(playlistSources.contains(prioritySource))urls.add(prioritySource);
  for(String savedSource:playlistSources)if(!DEFAULT_PLAYLIST.equals(savedSource)&&!Arrays.asList(BUILT_IN_PLAYLISTS).contains(savedSource))urls.add(savedSource);
@@ -1095,7 +1099,7 @@ private void loadAllPlaylists(boolean force){
     private String api(String action,String extra){String base=xtreamBase;if(!base.endsWith("/"))base+="/";return base+"player_api.php?username="+enc(xtreamUser)+"&password="+enc(xtreamPass)+"&action="+action+(extra==null?"":extra);}
     private String enc(String s){try{return java.net.URLEncoder.encode(s,"UTF-8");}catch(Exception e){return s;}}
     private void loadXtream(){
- m3uLoadRequestId++;m3uCatalogLoading=false;
+ m3uLoadRequestId++;m3uCatalogLoading=false;progressiveCategoryScanGeneration++;pendingProgressiveCategorySection="";
  final int request=++catalogRequestId;status.setText("Connexion au serveur Xtream Codes…");
  executeIo(()->{
   ArrayList<MediaEntry> parsed=new ArrayList<>();ArrayList<String> endpointErrors=new ArrayList<>(),endpointReports=new ArrayList<>();String err=null;
@@ -2686,7 +2690,7 @@ private void loadAllPlaylists(boolean force){
     @Override protected void onStart(){super.onStart();if(resumePlaybackOnStart&&player!=null){resumePlaybackOnStart=false;player.play();}if(playbackSaveRunnable!=null)mainHandler.postDelayed(playbackSaveRunnable,15000L);}
     @Override protected void onStop(){super.onStop();if(playbackSaveRunnable!=null)mainHandler.removeCallbacks(playbackSaveRunnable);if(player!=null){resumePlaybackOnStart=player.isPlaying();savePlaybackPosition();player.pause();}}
     @Override protected void onDestroy(){
-        destroyed=true;catalogRequestId++;m3uLoadRequestId++;m3uCatalogLoading=false;mtvPlaylistRequestId++;epgRequestId++;if(pendingSearch!=null)mainHandler.removeCallbacks(pendingSearch);
+        destroyed=true;catalogRequestId++;m3uLoadRequestId++;m3uCatalogLoading=false;progressiveCategoryScanGeneration++;pendingProgressiveCategorySection="";mtvPlaylistRequestId++;epgRequestId++;if(pendingSearch!=null)mainHandler.removeCallbacks(pendingSearch);
         if(webCustomView!=null)hideWebCustomView();
         for(WebView popup:new HashSet<>(webPopupViews)){try{popup.stopLoading();popup.destroy();}catch(Exception ignored){}}webPopupViews.clear();
         if(mtvWebView!=null){try{mtvWebView.stopLoading();mtvWebView.loadUrl("about:blank");mtvWebView.clearHistory();if(mtvWebView.getParent() instanceof ViewGroup)((ViewGroup)mtvWebView.getParent()).removeView(mtvWebView);mtvWebView.destroy();}catch(Exception ignored){}mtvWebView=null;}
