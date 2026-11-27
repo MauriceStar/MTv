@@ -1353,14 +1353,20 @@ private void loadAllPlaylists(boolean force){
         entry.seasonNumber=row.seasonNumber;entry.episodeNumber=row.episodeNumber;entry.seriesTitle=row.seriesTitle;
         return entry;
     }
-    private List<MediaEntry> getLocalDatabaseSnapshot(){
+    private List<MediaEntry> getLocalDatabaseSnapshot(int inMemoryCount){
         if(localDatabaseLoaded)return localDatabaseSnapshot;
         synchronized(this){
             if(localDatabaseLoaded)return localDatabaseSnapshot;
             ArrayList<MediaEntry> cached=new ArrayList<>();
             try{
                 CatalogDao dao=CatalogDatabase.getInstance(getApplicationContext()).catalogDao();
-                for(CatalogEntryEntity row:dao.allEntries(MAX_CATALOG_ITEMS)){
+                int cachedCount=dao.count();
+                if(cachedCount<=inMemoryCount){
+                    localDatabaseSnapshot=Collections.emptyList();
+                    localDatabaseLoaded=true;
+                    return localDatabaseSnapshot;
+                }
+                for(CatalogEntryEntity row:dao.allEntries(Math.min(MAX_CATALOG_ITEMS,cachedCount))){
                     MediaEntry entry=mediaEntryFromCatalogRow(row);
                     if(entry!=null&&entry.url!=null&&!entry.url.isEmpty())cached.add(entry);
                 }
@@ -1397,7 +1403,7 @@ private void loadAllPlaylists(boolean force){
         }
         executeIo(()->{
             List<MediaEntry> localSectionSnapshot=universalSearch||sectionSnapshot.equals("MTV")||sectionSnapshot.equals("HISTORIQUE")||sectionSnapshot.equals("FAVORIS")
-                ?Collections.emptyList():getLocalDatabaseSnapshot();
+                ?Collections.emptyList():getLocalDatabaseSnapshot(sourceSnapshot.size());
             HashSet<String> seenEntries=new HashSet<>();
             ArrayList<MediaEntry> visible;
             if(universalSearch){
