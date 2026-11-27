@@ -1097,6 +1097,45 @@ private void loadAllPlaylists(boolean force){
             }).show();
     }
 
+    private boolean isNetworkConnected(){
+        try{
+            android.net.ConnectivityManager manager=(android.net.ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE);
+            android.net.NetworkInfo info=manager==null?null:manager.getActiveNetworkInfo();
+            return info!=null&&info.isConnected();
+        }catch(Exception ignored){return false;}
+    }
+    private void addSignalMeter(LinearLayout panel,int accent){
+        boolean connected=isNetworkConnected();
+        LinearLayout meter=row();meter.setGravity(Gravity.CENTER);panel.addView(meter,new LinearLayout.LayoutParams(-1,dp(54)));
+        ArrayList<View> bars=new ArrayList<>();
+        for(int i=0;i<7;i++){
+            View bar=new View(this);
+            GradientDrawable shape=bg(connected?accent:0xFF65717D,4);
+            bar.setBackground(shape);
+            LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(dp(6),dp(8+i*2));
+            params.leftMargin=dp(2);params.rightMargin=dp(2);
+            meter.addView(bar,params);bars.add(bar);
+        }
+        TextView label=text(connected?"RÉSEAU DISPONIBLE":"HORS LIGNE",8,connected?accent:0xFF9AA4AE,true);
+        label.setGravity(Gravity.CENTER);label.setLetterSpacing(0.07f);
+        LinearLayout.LayoutParams labelParams=new LinearLayout.LayoutParams(-1,dp(20));labelParams.topMargin=dp(3);panel.addView(label,labelParams);
+        ValueAnimator animation=ValueAnimator.ofFloat(0f,1f);animation.setDuration(1050L);animation.setRepeatCount(ValueAnimator.INFINITE);animation.setRepeatMode(ValueAnimator.RESTART);
+        animation.addUpdateListener(value->{
+            float phase=(Float)value.getAnimatedValue();
+            for(int i=0;i<bars.size();i++){
+                float wave=(float)((Math.sin((phase*Math.PI*2)+(i*0.82))+1d)*0.5d);
+                int height=connected?dp(8)+(int)(wave*dp(34)):dp(5)+(int)(wave*dp(3));
+                View bar=bars.get(i);LinearLayout.LayoutParams params=(LinearLayout.LayoutParams)bar.getLayoutParams();
+                if(params.height!=height){params.height=height;bar.setLayoutParams(params);}
+                bar.setAlpha(connected?0.65f+wave*0.35f:0.45f);
+            }
+        });
+        panel.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener(){
+            public void onViewAttachedToWindow(View view){if(!animation.isStarted())animation.start();}
+            public void onViewDetachedFromWindow(View view){animation.cancel();}
+        });
+        if(panel.isAttachedToWindow())animation.start();
+    }
     private void renderHome(){
         showLinearCatalog();list.removeAllViews();homeRailFocusCards.clear();
         LinearLayout hero=row();hero.setGravity(Gravity.CENTER_VERTICAL);GradientDrawable heroBg=new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,new int[]{0xFF101722,0xFF17243A,0xFF111923});heroBg.setCornerRadius(dp(18));hero.setBackground(heroBg);hero.setPadding(dp(18),dp(12),dp(15),dp(12));
@@ -1106,9 +1145,7 @@ private void loadAllPlaylists(boolean force){
         TextView welcomeHint=text("Vos chaînes et vos découvertes, réunies au même endroit.",10,0xFFB8C6D8,false);welcomeHint.setMaxLines(2);copy.addView(welcomeHint,new LinearLayout.LayoutParams(-1,dp(30)));
         TextView live=text("▶  REGARDER LE DIRECT",10,0xFF1B1008,true);live.setId(View.generateViewId());live.setGravity(Gravity.CENTER);live.setBackground(bg(ACCENT,10));live.setTextColor(Color.BLACK);live.setFocusable(true);live.setClickable(true);LinearLayout.LayoutParams liveParams=new LinearLayout.LayoutParams(dp(174),dp(36));liveParams.topMargin=dp(5);copy.addView(live,liveParams);live.setOnFocusChangeListener((v,f)->stylePlayerButton((TextView)v,f));live.setOnClickListener(v->navigateTo("TV EN DIRECT"));
         LinearLayout signalPanel=column();signalPanel.setGravity(Gravity.CENTER);hero.addView(signalPanel,new LinearLayout.LayoutParams(dp(116),-1));
-        TextView signal=text("◉",37,0xFFFFB24A,true);signal.setGravity(Gravity.CENTER);GradientDrawable signalBg=bg(0xFF24354D,38);signalBg.setStroke(dp(1),0xFF5279A8);signal.setBackground(signalBg);signalPanel.addView(signal,new LinearLayout.LayoutParams(dp(72),dp(72)));
-        TextView signalTitle=text("SIGNAL ACTIF",9,0xFFFFC66D,true);signalTitle.setGravity(Gravity.CENTER);signalTitle.setLetterSpacing(0.08f);LinearLayout.LayoutParams signalTitleParams=new LinearLayout.LayoutParams(-1,dp(22));signalTitleParams.topMargin=dp(3);signalPanel.addView(signalTitle,signalTitleParams);
-        ValueAnimator signalPulse=ValueAnimator.ofFloat(0.88f,1.08f);signalPulse.setDuration(1050L);signalPulse.setRepeatCount(ValueAnimator.INFINITE);signalPulse.setRepeatMode(ValueAnimator.REVERSE);signalPulse.addUpdateListener(a->{float scale=(Float)a.getAnimatedValue();signal.setScaleX(scale);signal.setScaleY(scale);signal.setAlpha(0.78f+((scale-0.88f)*1.35f));});signal.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener(){public void onViewAttachedToWindow(View v){if(!signalPulse.isStarted())signalPulse.start();}public void onViewDetachedFromWindow(View v){signalPulse.cancel();}});if(signal.isAttachedToWindow())signalPulse.start();
+        addSignalMeter(signalPanel,0xFFFFB24A);
         if(search!=null)search.setNextFocusDownId(live.getId());
         TextView categoryHeading=text("✨",18,CYAN,true);categoryHeading.setId(View.generateViewId());categoryHeading.setFocusable(true);categoryHeading.setLetterSpacing(0.1f);live.setNextFocusDownId(categoryHeading.getId());list.addView(categoryHeading,new LinearLayout.LayoutParams(-1,dp(34)));
         HorizontalScrollView categoryScroll=new HorizontalScrollView(this);categoryScroll.setHorizontalScrollBarEnabled(false);categoryScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);LinearLayout categoryRow=row();categoryScroll.addView(categoryRow);list.addView(categoryScroll,new LinearLayout.LayoutParams(-1,dp(92)));
