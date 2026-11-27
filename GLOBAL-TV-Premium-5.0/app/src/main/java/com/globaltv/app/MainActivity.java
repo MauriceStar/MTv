@@ -769,6 +769,18 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
     }
     private String progressiveCategoryCursorKey(String address,String targetSection){return "progressive_category_cursor_"+key(address+"|"+targetSection);}
     private String progressiveCategoryVersionKey(String address,String targetSection){return "progressive_category_version_"+key(address+"|"+targetSection);}
+    private void scheduleProgressiveCategoryContinuation(String targetSection,int scanGeneration){
+        mainHandler.postDelayed(()->{
+            if(destroyed||scanGeneration!=progressiveCategoryScanGeneration||!targetSection.equals(section)||!hasWindowFocus()
+                    ||(search!=null&&!search.getText().toString().trim().isEmpty()))return;
+            if(player!=null&&player.isPlaying()){
+                scheduleProgressiveCategoryContinuation(targetSection,scanGeneration);
+                return;
+            }
+            requestProgressiveCategoryScan(targetSection);
+        },30000L);
+    }
+
     private void requestProgressiveCategoryScan(String targetSection){
         if(destroyed||prefs==null||m3uCatalogLoading||!"M3U".equals(sourceMode)||!isProgressiveCategorySection(targetSection)||progressiveSearchInFlight)return;
         if(progressiveCategoryScanInFlight){pendingProgressiveCategorySection=targetSection;return;}
@@ -791,6 +803,7 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
             ArrayList<MediaEntry> found=new ArrayList<>();HashSet<String> knownUrls=new HashSet<>(existingUrls);long totalChars=0L;long scanStartedAt=SystemClock.elapsedRealtime();
             try{
                 for(String address:orderedSources){
+                    if(player!=null&&player.isPlaying())break;
                     if(destroyed||scanGeneration!=progressiveCategoryScanGeneration||SystemClock.elapsedRealtime()-scanStartedAt>12000L||found.size()>=Math.min(MAX_PROGRESSIVE_CATEGORY_BATCH,remainingCapacity)||totalChars>=4L*1024L*1024L)break;
                     HttpURLConnection connection=null;String cursorKey=progressiveCategoryCursorKey(address,targetSection);
                     long initialCursor=prefs.getLong("m3u_initial_cursor_"+key(address),0L);
@@ -829,7 +842,7 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
                             }
                             long lineNumber=cursorLines;
                             String line,name=null,group="Autres",logo="",tvgId="";long sourceChars=0L;
-                            while(!reachedEnd&&scanGeneration==progressiveCategoryScanGeneration&&SystemClock.elapsedRealtime()-scanStartedAt<=12000L&&found.size()-foundBeforeSource<20&&found.size()<Math.min(MAX_PROGRESSIVE_CATEGORY_BATCH,remainingCapacity)){
+                            while(!reachedEnd&&scanGeneration==progressiveCategoryScanGeneration&&(player==null||!player.isPlaying())&&SystemClock.elapsedRealtime()-scanStartedAt<=12000L&&found.size()-foundBeforeSource<20&&found.size()<Math.min(MAX_PROGRESSIVE_CATEGORY_BATCH,remainingCapacity)){
                                 if(destroyed)break;line=readBoundedPlaylistLine(reader);if(line==null){reachedEnd=true;break;}
                                 lineNumber++;long lineSize=line.length()+1L;sourceChars+=lineSize;totalChars+=lineSize;
                                 if(sourceChars>1L*1024L*1024L||totalChars>4L*1024L*1024L)break;
@@ -864,7 +877,7 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
             boolean hasMoreSources=false;
             for(String address:sources){long initial=prefs.getLong("m3u_initial_cursor_"+key(address),0L);long cursor=prefs.getLong(progressiveCategoryCursorKey(address,targetSection),initial);if(cursor>=0L){hasMoreSources=true;break;}}
             if(hasMoreSources&&!destroyed&&existingUrls.size()+found.size()<MAX_CATALOG_ITEMS){
-                mainHandler.postDelayed(()->{if(scanGeneration==progressiveCategoryScanGeneration&&!destroyed&&targetSection.equals(section)&&hasWindowFocus()&&(search==null||search.getText().toString().trim().isEmpty())&&(player==null||!player.isPlaying()))requestProgressiveCategoryScan(targetSection);},30000L);
+                scheduleProgressiveCategoryContinuation(targetSection,scanGeneration);
             }
             if(found.isEmpty()||destroyed)return;
             final ArrayList<MediaEntry> additions=found;
