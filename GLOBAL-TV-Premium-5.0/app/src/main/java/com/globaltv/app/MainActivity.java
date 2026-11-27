@@ -212,6 +212,7 @@ private String[] progressiveSearchTokens=new String[0];
     private static final int M3U_INITIAL_CATALOG_ITEMS=27000;
     private static final int MAX_PROGRESSIVE_CATEGORY_BATCH=80;
     private volatile boolean progressiveCategoryScanInFlight=false;
+    private volatile boolean m3uCatalogLoading=false;
     private int maxRenderItems=120;
     private int renderedCatalogItems=0;
     private boolean appendCatalogPage=false;
@@ -758,7 +759,7 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
     private String progressiveCategoryCursorKey(String address,String targetSection){return "progressive_category_cursor_"+key(address+"|"+targetSection);}
     private String progressiveCategoryVersionKey(String address,String targetSection){return "progressive_category_version_"+key(address+"|"+targetSection);}
     private void requestProgressiveCategoryScan(String targetSection){
-        if(destroyed||prefs==null||!isProgressiveCategorySection(targetSection)||progressiveCategoryScanInFlight||progressiveSearchInFlight)return;
+        if(destroyed||prefs==null||m3uCatalogLoading||!isProgressiveCategorySection(targetSection)||progressiveCategoryScanInFlight||progressiveSearchInFlight)return;
         long now=System.currentTimeMillis();String cooldownKey="progressive_category_last_"+key(targetSection);
         long last=prefs.getLong(cooldownKey,0L);if(last>0L&&now>=last&&now-last<20000L)return;
         final ArrayList<String> sources;
@@ -968,6 +969,7 @@ private void loadAllPlaylists(boolean force){
    return;
   }
  }
+ m3uCatalogLoading=true;
  final int request=++catalogRequestId;progressiveSearchRequestId++;progressiveSearchCacheQuery="";progressiveSearchCacheAt=0L;progressiveSearchResults.clear();databaseSearchRequestId++;databaseSearchQuery="";databaseSearchResults.clear();ArrayList<String> urls=new ArrayList<>();
  for(String prioritySource:BUILT_IN_PLAYLISTS)if(playlistSources.contains(prioritySource))urls.add(prioritySource);
  for(String savedSource:playlistSources)if(!DEFAULT_PLAYLIST.equals(savedSource)&&!Arrays.asList(BUILT_IN_PLAYLISTS).contains(savedSource))urls.add(savedSource);
@@ -994,7 +996,7 @@ private void loadAllPlaylists(boolean force){
   }
   // Redistribue les places inutilisées par les playlists courtes aux sources tronquées.
   // Chaque reprise repart du début, mais les identifiants déjà vus sont ignorés.
-  for(int retryIndex=0;retryIndex<truncatedSources.size()&&merged.size()<MAX_CATALOG_ITEMS;retryIndex++){
+  for(int retryIndex=0;retryIndex<truncatedSources.size()&&merged.size()<M3U_INITIAL_CATALOG_ITEMS;retryIndex++){
    if(request!=catalogRequestId||destroyed)return;
    int remainingSlots=M3U_INITIAL_CATALOG_ITEMS-merged.size();
    int remainingSources=truncatedSources.size()-retryIndex;
@@ -1017,7 +1019,7 @@ private void loadAllPlaylists(boolean force){
   if(!sourceResults.isEmpty()){summary.append(" • ");int shown=Math.min(4,sourceResults.size());for(int i=0;i<shown;i++){if(i>0)summary.append(" | ");summary.append(sourceResults.get(i));}if(sourceResults.size()>shown)summary.append(" | +").append(sourceResults.size()-shown).append(" autre(s)");}
   final String firstError=errors.isEmpty()?null:errors.get(0);final String finalSummary=summary.toString();errors.clear();sourceResults.clear();
   if(catalogPersisted&&loaded>0)prefs.edit().putLong("catalog_last_refresh",System.currentTimeMillis()).putInt("progressive_category_catalog_version",1).apply();
-  postUi(()->{if(request!=catalogRequestId)return;homeFeaturedCache=null;normalizedSearchIndex.clear();all.clear();all.addAll(merged);publishCatalogSnapshot();merged.clear();sourceMode="M3U";sourceLabel.setText("SOURCES : "+urls.size()+" M3U");
+  postUi(()->{if(request!=catalogRequestId)return;m3uCatalogLoading=false;homeFeaturedCache=null;normalizedSearchIndex.clear();all.clear();all.addAll(merged);publishCatalogSnapshot();merged.clear();sourceMode="M3U";sourceLabel.setText("SOURCES : "+urls.size()+" M3U");
    if(loaded==0){String problem=firstError==null?"Aucune chaîne reçue. Vérifie tes sources.":"Erreur M3U : "+firstError;status.setText(problem+" • "+finalSummary);renderList();onStartupPlaylistLoadFinished(false,"AUCUNE PLAYLIST DISPONIBLE • VÉRIFIE TES SOURCES");return;}
    status.setText(finalSummary);renderList();onStartupPlaylistLoadFinished(true,loaded+" CHAÎNES CHARGÉES • PRÊT À REGARDER");
   });
