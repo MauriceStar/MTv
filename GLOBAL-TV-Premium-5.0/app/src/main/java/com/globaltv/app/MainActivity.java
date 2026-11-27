@@ -1353,24 +1353,31 @@ private void loadAllPlaylists(boolean force){
         entry.seasonNumber=row.seasonNumber;entry.episodeNumber=row.episodeNumber;entry.seriesTitle=row.seriesTitle;
         return entry;
     }
-    private List<MediaEntry> getLocalDatabaseSnapshot(int inMemoryCount){
+    private List<MediaEntry> getLocalDatabaseSnapshot(List<MediaEntry> inMemorySnapshot,int request){
         if(localDatabaseLoaded)return localDatabaseSnapshot;
         synchronized(this){
             if(localDatabaseLoaded)return localDatabaseSnapshot;
             ArrayList<MediaEntry> cached=new ArrayList<>();
+            HashSet<String> knownUrls=new HashSet<>();
+            if(inMemorySnapshot!=null)for(MediaEntry entry:inMemorySnapshot){
+                if(entry!=null&&entry.url!=null&&!entry.url.isEmpty())knownUrls.add(entry.url);
+            }
             try{
                 CatalogDao dao=CatalogDatabase.getInstance(getApplicationContext()).catalogDao();
-                int cachedCount=dao.count();
-                if(cachedCount<=inMemoryCount){
-                    localDatabaseSnapshot=Collections.emptyList();
-                    localDatabaseLoaded=true;
-                    return localDatabaseSnapshot;
-                }
-                for(CatalogEntryEntity row:dao.allEntries(Math.min(MAX_CATALOG_ITEMS,cachedCount))){
-                    MediaEntry entry=mediaEntryFromCatalogRow(row);
-                    if(entry!=null&&entry.url!=null&&!entry.url.isEmpty())cached.add(entry);
+                int cachedCount=Math.min(MAX_CATALOG_ITEMS,dao.count());
+                final int pageSize=500;
+                for(int offset=0;offset<cachedCount;offset+=pageSize){
+                    if(request!=catalogRequestId||destroyed)return Collections.emptyList();
+                    List<CatalogEntryEntity> page=dao.page(Math.min(pageSize,cachedCount-offset),offset);
+                    if(page==null||page.isEmpty())break;
+                    for(CatalogEntryEntity row:page){
+                        if(row==null||row.url==null||row.url.isEmpty()||!knownUrls.add(row.url))continue;
+                        MediaEntry entry=mediaEntryFromCatalogRow(row);
+                        if(entry!=null)cached.add(entry);
+                    }
                 }
             }catch(Exception error){android.util.Log.w("MTv-Catalog","Unable to read local catalogue",error);}
+            if(request!=catalogRequestId||destroyed)return Collections.emptyList();
             localDatabaseSnapshot=Collections.unmodifiableList(cached);
             localDatabaseLoaded=true;
             return localDatabaseSnapshot;
@@ -1403,7 +1410,7 @@ private void loadAllPlaylists(boolean force){
         }
         executeIo(()->{
             List<MediaEntry> localSectionSnapshot=universalSearch||sectionSnapshot.equals("MTV")||sectionSnapshot.equals("HISTORIQUE")||sectionSnapshot.equals("FAVORIS")
-                ?Collections.emptyList():getLocalDatabaseSnapshot(sourceSnapshot.size());
+                ?Collections.emptyList():getLocalDatabaseSnapshot(sourceSnapshot,request);
             HashSet<String> seenEntries=new HashSet<>();
             ArrayList<MediaEntry> visible;
             if(universalSearch){
