@@ -213,6 +213,7 @@ private String[] progressiveSearchTokens=new String[0];
     private static final int M3U_INITIAL_CATALOG_ITEMS=27000;
     private static final int MAX_PROGRESSIVE_CATEGORY_BATCH=80;
     private volatile boolean progressiveCategoryScanInFlight=false;
+    private volatile String pendingProgressiveCategorySection="";
     private volatile boolean m3uCatalogLoading=false;
     private int maxRenderItems=120;
     private int renderedCatalogItems=0;
@@ -761,7 +762,9 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
     private String progressiveCategoryCursorKey(String address,String targetSection){return "progressive_category_cursor_"+key(address+"|"+targetSection);}
     private String progressiveCategoryVersionKey(String address,String targetSection){return "progressive_category_version_"+key(address+"|"+targetSection);}
     private void requestProgressiveCategoryScan(String targetSection){
-        if(destroyed||prefs==null||m3uCatalogLoading||!isProgressiveCategorySection(targetSection)||progressiveCategoryScanInFlight||progressiveSearchInFlight)return;
+        if(destroyed||prefs==null||m3uCatalogLoading||!isProgressiveCategorySection(targetSection)||progressiveSearchInFlight)return;
+        if(progressiveCategoryScanInFlight){pendingProgressiveCategorySection=targetSection;return;}
+        if(player!=null&&player.isPlaying())return;
         long now=System.currentTimeMillis();String cooldownKey="progressive_category_last_"+key(targetSection);
         long last=prefs.getLong(cooldownKey,0L);if(last>0L&&now>=last&&now-last<20000L)return;
         final ArrayList<String> sources;
@@ -820,7 +823,16 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
                     finally{if(connection!=null)connection.disconnect();}
                 }
                 if(!found.isEmpty())persistAdditionalCatalogEntries(found);
-            }finally{progressiveCategoryScanInFlight=false;}
+            }finally{
+                progressiveCategoryScanInFlight=false;
+                String queuedSection=pendingProgressiveCategorySection;pendingProgressiveCategorySection="";
+                if(!queuedSection.isEmpty())mainHandler.postDelayed(()->{if(!destroyed&&queuedSection.equals(section))requestProgressiveCategoryScan(queuedSection);},1200L);
+            }
+            boolean hasMoreSources=false;
+            for(String address:sources){long initial=prefs.getLong("m3u_initial_cursor_"+key(address),0L);long cursor=prefs.getLong(progressiveCategoryCursorKey(address,targetSection),initial);if(cursor>=0L){hasMoreSources=true;break;}}
+            if(hasMoreSources&&!destroyed&&existingUrls.size()+found.size()<MAX_CATALOG_ITEMS){
+                mainHandler.postDelayed(()->{if(!destroyed&&targetSection.equals(section)&&hasWindowFocus()&&(search==null||search.getText().toString().trim().isEmpty())&&(player==null||!player.isPlaying()))requestProgressiveCategoryScan(targetSection);},30000L);
+            }
             if(found.isEmpty()||destroyed)return;
             final ArrayList<MediaEntry> additions=found;
             postUi(()->{
