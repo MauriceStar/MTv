@@ -209,6 +209,9 @@ private String[] progressiveSearchTokens=new String[0];
     private boolean splashLoadFinished=false;
     private Runnable splashTimeoutRunnable;
     private static final int MAX_CATALOG_ITEMS=30000;
+    private static final int M3U_INITIAL_CATALOG_ITEMS=27000;
+    private static final int MAX_PROGRESSIVE_CATEGORY_BATCH=80;
+    private volatile boolean progressiveCategoryScanInFlight=false;
     private int maxRenderItems=120;
     private int renderedCatalogItems=0;
     private boolean appendCatalogPage=false;
@@ -745,7 +748,104 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
  });
 }
 
-private MediaEntry fromCatalogRow(CatalogEntryEntity row){
+
+    private boolean isProgressiveCategorySection(String value){
+        return "TV EN DIRECT".equals(value)||"FILMS".equals(value)||"SÉRIES".equals(value)||"ANIMÉS".equals(value)
+            ||"SPORTS".equals(value)||"CINÉMA".equals(value)||"DIVERTISSEMENT".equals(value)||"JEUNESSE".equals(value)
+            ||"MAGAZINE".equals(value)||"DOCUMENTAIRE".equals(value)||"ÉDUCATION".equals(value)||"RELIGION".equals(value)
+            ||"SCIENCE & TECHNOLOGIE".equals(value)||"NOVELAS".equals(value);
+    }
+    private String progressiveCategoryCursorKey(String address,String targetSection){return "progressive_category_cursor_"+key(address+"|"+targetSection);}
+    private String progressiveCategoryVersionKey(String address,String targetSection){return "progressive_category_version_"+key(address+"|"+targetSection);}
+    private void requestProgressiveCategoryScan(String targetSection){
+        if(destroyed||prefs==null||!isProgressiveCategorySection(targetSection)||progressiveCategoryScanInFlight||progressiveSearchInFlight)return;
+        long now=System.currentTimeMillis();String cooldownKey="progressive_category_last_"+key(targetSection);
+        long last=prefs.getLong(cooldownKey,0L);if(last>0L&&now>=last&&now-last<20000L)return;
+        final ArrayList<String> sources;
+        synchronized(incompleteM3uSources){if(incompleteM3uSources.isEmpty())return;sources=new ArrayList<>(incompleteM3uSources);}
+        final HashSet<String> existingUrls=new HashSet<>();
+        for(MediaEntry entry:all)if(entry!=null&&entry.url!=null&&!entry.url.isEmpty())existingUrls.add(entry.url);
+        final int remainingCapacity=MAX_CATALOG_ITEMS-existingUrls.size();if(remainingCapacity<=0)return;
+        progressiveCategoryScanInFlight=true;prefs.edit().putLong(cooldownKey,now).apply();
+        try{io.execute(()->{
+            ArrayList<MediaEntry> found=new ArrayList<>();HashSet<String> knownUrls=new HashSet<>(existingUrls);long totalChars=0L;
+            try{
+                for(String address:sources){
+                    if(destroyed||found.size()>=Math.min(MAX_PROGRESSIVE_CATEGORY_BATCH,remainingCapacity)||totalChars>=8L*1024L*1024L)break;
+                    HttpURLConnection connection=null;String cursorKey=progressiveCategoryCursorKey(address,targetSection);
+                    long cursorLines=prefs.getLong(cursorKey,0L);if(cursorLines<0L)continue;
+                    long safeCursorLines=cursorLines;boolean reachedEnd=false;int foundBeforeSource=found.size();
+                    try{
+                        connection=open(address);int code=connection.getResponseCode();if(code<200||code>=300)continue;
+                        String etag=connection.getHeaderField("ETag"),lastModified=connection.getHeaderField("Last-Modified"),contentLength=connection.getHeaderField("Content-Length");
+                        String sourceVersion=(etag==null?"":etag)+"|"+(lastModified==null?"":lastModified)+"|"+(contentLength==null?"":contentLength);
+                        String versionKey=progressiveCategoryVersionKey(address,targetSection),previousVersion=prefs.getString(versionKey,"");
+                        if(!previousVersion.isEmpty()&&!sourceVersion.equals("||")&&!previousVersion.equals(sourceVersion)){cursorLines=0L;safeCursorLines=0L;prefs.edit().remove(cursorKey).apply();}
+                        if(!sourceVersion.equals("||"))prefs.edit().putString(versionKey,sourceVersion).apply();
+                        InputStream input=connection.getInputStream();if(input==null)continue;
+                        try(BufferedReader reader=new BufferedReader(new InputStreamReader(input,"UTF-8"))){
+                            long lineNumber=0L;
+                            while(lineNumber<cursorLines){String skipped=readBoundedPlaylistLine(reader);if(skipped==null){reachedEnd=true;break;}lineNumber++;}
+                            String line,name=null,group="Autres",logo="",tvgId="";long sourceChars=0L;
+                            while(!reachedEnd&&found.size()-foundBeforeSource<20&&found.size()<Math.min(MAX_PROGRESSIVE_CATEGORY_BATCH,remainingCapacity)){
+                                if(destroyed)break;line=readBoundedPlaylistLine(reader);if(line==null){reachedEnd=true;break;}
+                                lineNumber++;long lineSize=line.length()+1L;sourceChars+=lineSize;totalChars+=lineSize;
+                                if(sourceChars>2L*1024L*1024L||totalChars>8L*1024L*1024L)break;
+                                line=line.trim();if(line.startsWith("\uFEFF"))line=line.substring(1);
+                                if(line.startsWith("#EXTINF:")){
+                                    name=line.substring(line.lastIndexOf(',')+1).trim();group="Autres";logo="";tvgId="";
+                                    int g=line.indexOf("group-title=\"");if(g>=0){int e=line.indexOf('"',g+13);if(e>g)group=line.substring(g+13,e);}
+                                    int tid=line.indexOf("tvg-id=\"");if(tid>=0){int e=line.indexOf('"',tid+8);if(e>tid)tvgId=line.substring(tid+8,e);}
+                                    int l=line.indexOf("tvg-logo=\"");if(l>=0){int e=line.indexOf('"',l+10);if(e>l)logo=line.substring(l+10,e);}
+                                }else if(!line.isEmpty()&&!line.startsWith("#")&&name!=null){
+                                    if(line.startsWith("http://")||line.startsWith("https://")){
+                                        MediaEntry candidate=new MediaEntry(name,line,group,logo,"m3u");candidate.tvgId=tvgId;
+                                        String host=Uri.parse(address).getHost();candidate.sourceId=host==null?"M3U":host;
+                                        if(matchSection(candidate,targetSection)&&knownUrls.add(candidate.url))found.add(candidate);
+                                    }
+                                    safeCursorLines=lineNumber;name=null;tvgId="";
+                                }
+                            }
+                        }
+                        if(reachedEnd)prefs.edit().putLong(cursorKey,-1L).apply();
+                        else if(safeCursorLines>cursorLines)prefs.edit().putLong(cursorKey,safeCursorLines).apply();
+                    }catch(Exception error){android.util.Log.w("MTv-Catalog","Progressive category scan failed for "+targetSection,error);}
+                    finally{if(connection!=null)connection.disconnect();}
+                }
+                if(!found.isEmpty())persistAdditionalCatalogEntries(found);
+            }finally{progressiveCategoryScanInFlight=false;}
+            if(found.isEmpty()||destroyed)return;
+            final ArrayList<MediaEntry> additions=found;
+            postUi(()->{
+                if(destroyed)return;HashSet<String> currentUrls=new HashSet<>();
+                for(MediaEntry entry:all)if(entry!=null&&entry.url!=null)currentUrls.add(entry.url);
+                int added=0;for(MediaEntry entry:additions){if(all.size()>=MAX_CATALOG_ITEMS)break;if(entry!=null&&entry.url!=null&&currentUrls.add(entry.url)){all.add(entry);added++;}}
+                if(added>0){publishCatalogSnapshot();homeFeaturedCache=null;normalizedSearchIndex.clear();if(targetSection.equals(section)&&(search==null||search.getText().toString().trim().isEmpty()))renderList();}
+            });
+        });}catch(RejectedExecutionException rejected){progressiveCategoryScanInFlight=false;android.util.Log.w("MTv-Catalog","Category scan deferred: background queue is full",rejected);}
+    }
+    private void persistAdditionalCatalogEntries(List<MediaEntry> entries){
+        if(entries==null||entries.isEmpty()||destroyed)return;
+        try{
+            CatalogDao dao=CatalogDatabase.getInstance(getApplicationContext()).catalogDao();ArrayList<CatalogEntryEntity> batch=new ArrayList<>(100);
+            for(MediaEntry entry:entries){
+                if(destroyed)break;if(entry==null||entry.url==null||entry.url.isEmpty())continue;
+                CatalogEntryEntity row=new CatalogEntryEntity();
+                String identity=entry.url+"\\u001F"+(entry.name==null?"":entry.name)+"\\u001F"+(entry.group==null?"":entry.group)+"\\u001F"+(entry.tvgId==null?"":entry.tvgId)+"\\u001F"+(entry.type==null?"":entry.type);
+                row.id=key(identity);row.url=entry.url;row.name=entry.name==null?"":entry.name;row.normalizedName=epgLookupKey(row.name);
+                row.groupName=entry.group==null?"":entry.group;row.normalizedGroup=epgLookupKey(row.groupName);row.type=entry.type==null?"":entry.type;
+                row.sourceId=entry.sourceId==null?"":entry.sourceId;row.logo=entry.logo==null?"":entry.logo;row.tvgId=entry.tvgId==null?"":entry.tvgId;
+                row.container=entry.container==null?"":entry.container;row.entryId=entry.id==null?"":entry.id;row.plot=entry.plot==null?"":entry.plot;
+                row.rating=entry.rating==null?"":entry.rating;row.year=entry.year==null?"":entry.year;row.duration=entry.duration==null?"":entry.duration;
+                row.genre=entry.genre==null?"":entry.genre;row.cast=entry.cast==null?"":entry.cast;row.director=entry.director==null?"":entry.director;
+                row.seasonNumber=entry.seasonNumber;row.episodeNumber=entry.episodeNumber;row.seriesTitle=entry.seriesTitle==null?"":entry.seriesTitle;
+                row.updatedAt=System.currentTimeMillis();batch.add(row);
+            }
+            if(!batch.isEmpty()){dao.upsertAll(batch);dao.pruneToLimit(MAX_CATALOG_ITEMS);localDatabaseLoaded=false;localDatabaseSnapshot=Collections.emptyList();}
+        }catch(Exception error){android.util.Log.w("MTv-Catalog","Unable to persist progressive category entries",error);}
+    }
+
+    private MediaEntry fromCatalogRow(CatalogEntryEntity row){
  if(row==null||row.url==null||row.url.isEmpty())return null;
  MediaEntry entry=new MediaEntry(row.name,row.url,row.groupName,row.logo,row.type);
  entry.id=row.entryId;entry.container=row.container;entry.tvgId=row.tvgId;entry.sourceId=row.sourceId;
@@ -810,7 +910,7 @@ private boolean persistCatalogToDatabase(List<MediaEntry> entries,String fallbac
    if(request!=catalogRequestId||destroyed)return false;
    dao.upsertAll(batch);persistedRows+=batch.size();
   }
-  if(persistedRows>0){localDatabaseLoaded=false;localDatabaseSnapshot=Collections.emptyList();}
+  if(persistedRows>0){if("M3U".equals(fallbackSource))dao.pruneToLimit(M3U_INITIAL_CATALOG_ITEMS);else dao.pruneToLimit(MAX_CATALOG_ITEMS);localDatabaseLoaded=false;localDatabaseSnapshot=Collections.emptyList();}
   return persistedRows>0&&request==catalogRequestId&&!destroyed;
  }catch(Exception e){android.util.Log.w("MTv-Catalog","Local catalog persistence failed",e);return false;}
 }
@@ -836,7 +936,7 @@ private void loadPlaylist(String url){if(url!=null&&(url.startsWith("http://")||
   int count=0;long chars=0L;boolean truncated=false;
   try(BufferedReader reader=new BufferedReader(new InputStreamReader(input,"UTF-8"))){
    String line,name=null,group="Autres",logo="",tvgId="";
-   while((line=readBoundedPlaylistLine(reader))!=null&&merged.size()<MAX_CATALOG_ITEMS&&count<sourceLimit){
+   while((line=readBoundedPlaylistLine(reader))!=null&&merged.size()<M3U_INITIAL_CATALOG_ITEMS&&count<sourceLimit){
     if(request!=catalogRequestId||destroyed)throw new IOException("Chargement M3U annulé");
     chars+=line.length();if(chars>64L*1024L*1024L){truncated=true;break;}
     line=line.trim();if(line.startsWith("\uFEFF"))line=line.substring(1);
@@ -853,14 +953,14 @@ private void loadPlaylist(String url){if(url!=null&&(url.startsWith("http://")||
      name=null;tvgId="";
     }
    }
-   if(merged.size()>=MAX_CATALOG_ITEMS||count>=sourceLimit)truncated=true;
+   if(merged.size()>=M3U_INITIAL_CATALOG_ITEMS||count>=sourceLimit)truncated=true;
   }
   return new M3uAppendResult(count,truncated);
  }finally{connection.disconnect();}
 }
 private void loadAllPlaylists(){loadAllPlaylists(true);}
 private void loadAllPlaylists(boolean force){
- if(!force&&!all.isEmpty()){
+ if(!force&&!all.isEmpty()&&prefs.getInt("progressive_category_catalog_version",0)>=1){
   long lastRefresh=prefs.getLong("catalog_last_refresh",0L);
   if(lastRefresh>0L&&System.currentTimeMillis()-lastRefresh<6L*60L*60L*1000L){
    status.setText(all.size()+" chaînes disponibles • catalogue local à jour");
@@ -881,14 +981,14 @@ private void loadAllPlaylists(boolean force){
   for(int sourceIndex=0;sourceIndex<urls.size();sourceIndex++){
    String address=urls.get(sourceIndex);
    if(request!=catalogRequestId||destroyed)break;
-   if(merged.size()>=MAX_CATALOG_ITEMS){for(int remaining=sourceIndex;remaining<urls.size();remaining++)incompleteThisLoad.add(urls.get(remaining));break;}
+   if(merged.size()>=M3U_INITIAL_CATALOG_ITEMS){for(int remaining=sourceIndex;remaining<urls.size();remaining++)incompleteThisLoad.add(urls.get(remaining));break;}
    String host=Uri.parse(address).getHost();if(host==null||host.isEmpty())host="Source "+(sourceIndex+1);
    final String progressHost=host;final int progressIndex=sourceIndex+1;final int progressTotal=urls.size();
    postUi(()->{if(request==catalogRequestId&&status!=null)status.setText("Chargement M3U "+progressIndex+"/"+progressTotal+" • "+progressHost);});
    long startedAt=SystemClock.elapsedRealtime();int sourceCount=0;String outcome="OK";
-   try{int sourceLimit=Math.max(1,MAX_CATALOG_ITEMS/urls.size());M3uAppendResult append=appendM3uPlaylist(address,merged,seenStreamEntries,request,sourceLimit);sourceCount=append.count;if(append.truncated){incompleteThisLoad.add(address);truncatedSources.add(address);}}
+   try{int sourceLimit=Math.max(1,M3U_INITIAL_CATALOG_ITEMS/urls.size());M3uAppendResult append=appendM3uPlaylist(address,merged,seenStreamEntries,request,sourceLimit);sourceCount=append.count;if(append.truncated){incompleteThisLoad.add(address);truncatedSources.add(address);}}
    catch(Exception ex){outcome="ÉCHEC";incompleteThisLoad.add(address);String reason=ex.getMessage();if(reason==null||reason.trim().isEmpty())reason=ex.getClass().getSimpleName();errors.add(host+": "+reason);}
-   if(merged.size()>=MAX_CATALOG_ITEMS){for(int remaining=sourceIndex;remaining<urls.size();remaining++)incompleteThisLoad.add(urls.get(remaining));}
+   if(merged.size()>=M3U_INITIAL_CATALOG_ITEMS){for(int remaining=sourceIndex;remaining<urls.size();remaining++)incompleteThisLoad.add(urls.get(remaining));}
    long elapsed=Math.max(0L,SystemClock.elapsedRealtime()-startedAt);completedSources++;
    sourceResults.add(host+" : "+sourceCount+" élément(s), "+(elapsed/1000.0)+" s"+("OK".equals(outcome)?"":" • "+outcome));
   }
@@ -896,7 +996,7 @@ private void loadAllPlaylists(boolean force){
   // Chaque reprise repart du début, mais les identifiants déjà vus sont ignorés.
   for(int retryIndex=0;retryIndex<truncatedSources.size()&&merged.size()<MAX_CATALOG_ITEMS;retryIndex++){
    if(request!=catalogRequestId||destroyed)return;
-   int remainingSlots=MAX_CATALOG_ITEMS-merged.size();
+   int remainingSlots=M3U_INITIAL_CATALOG_ITEMS-merged.size();
    int remainingSources=truncatedSources.size()-retryIndex;
    int retryLimit=Math.max(1,(remainingSlots+remainingSources-1)/remainingSources);
    String retryAddress=truncatedSources.get(retryIndex);
@@ -910,13 +1010,13 @@ private void loadAllPlaylists(boolean force){
   if(request!=catalogRequestId||destroyed)return;
   synchronized(incompleteM3uSources){incompleteM3uSources.clear();incompleteM3uSources.addAll(incompleteThisLoad);}
   prefs.edit().putStringSet("incomplete_m3u_sources",new HashSet<>(incompleteThisLoad)).apply();
-  prefs.edit().remove("catalog_last_refresh").commit();final boolean catalogPersisted=persistCatalogToDatabase(merged,"M3U",request);seenStreamEntries.clear();final int loaded=merged.size();final int checkedSources=completedSources;final boolean capped=loaded>=MAX_CATALOG_ITEMS;
+  prefs.edit().remove("catalog_last_refresh").commit();final boolean catalogPersisted=persistCatalogToDatabase(merged,"M3U",request);seenStreamEntries.clear();final int loaded=merged.size();final int checkedSources=completedSources;final boolean capped=loaded>=M3U_INITIAL_CATALOG_ITEMS;
   StringBuilder summary=new StringBuilder().append(loaded).append(" éléments • ").append(checkedSources).append("/").append(urls.size()).append(" sources analysées");
   if(!errors.isEmpty())summary.append(" • ").append(errors.size()).append(" échec(s)");
-  if(capped)summary.append(" • limite de ").append(MAX_CATALOG_ITEMS).append(" atteinte, sources restantes ignorées");
+  if(capped)summary.append(" • plafond initial atteint, 3 000 places réservées à l'enrichissement progressif des rubriques");
   if(!sourceResults.isEmpty()){summary.append(" • ");int shown=Math.min(4,sourceResults.size());for(int i=0;i<shown;i++){if(i>0)summary.append(" | ");summary.append(sourceResults.get(i));}if(sourceResults.size()>shown)summary.append(" | +").append(sourceResults.size()-shown).append(" autre(s)");}
   final String firstError=errors.isEmpty()?null:errors.get(0);final String finalSummary=summary.toString();errors.clear();sourceResults.clear();
-  if(catalogPersisted&&loaded>0)prefs.edit().putLong("catalog_last_refresh",System.currentTimeMillis()).apply();
+  if(catalogPersisted&&loaded>0)prefs.edit().putLong("catalog_last_refresh",System.currentTimeMillis()).putInt("progressive_category_catalog_version",1).apply();
   postUi(()->{if(request!=catalogRequestId)return;homeFeaturedCache=null;normalizedSearchIndex.clear();all.clear();all.addAll(merged);publishCatalogSnapshot();merged.clear();sourceMode="M3U";sourceLabel.setText("SOURCES : "+urls.size()+" M3U");
    if(loaded==0){String problem=firstError==null?"Aucune chaîne reçue. Vérifie tes sources.":"Erreur M3U : "+firstError;status.setText(problem+" • "+finalSummary);renderList();onStartupPlaylistLoadFinished(false,"AUCUNE PLAYLIST DISPONIBLE • VÉRIFIE TES SOURCES");return;}
    status.setText(finalSummary);renderList();onStartupPlaylistLoadFinished(true,loaded+" CHAÎNES CHARGÉES • PRÊT À REGARDER");
@@ -971,23 +1071,24 @@ private void loadAllPlaylists(boolean force){
     }
     private boolean hasHistory(MediaEntry c){if(c==null||c.url==null||c.url.isEmpty())return false;try{return historyKeysCache.contains("history_"+key(c.url));}catch(Exception ex){return false;}}
     private long historyPosition(MediaEntry c){if(c==null||c.url==null||prefs==null)return 0L;try{Object value=prefs.getAll().get("position_"+key(c.url));return value instanceof Number?Math.max(0L,((Number)value).longValue()):0L;}catch(Exception ex){return 0L;}}
-    private boolean matchSection(MediaEntry c){
+    private boolean matchSection(MediaEntry c){return matchSection(c,section);}
+    private boolean matchSection(MediaEntry c,String targetSection){
         if(c==null||c.url==null||c.url.isEmpty())return false;
-        if(section.equals("MTV")) return mtvItems.contains(c);
-        if(section.equals("MUSIQUE"))return isMusicEntry(c);
-        if(section.equals("INFOS"))return isNewsEntry(c);
-        String g=c.group==null?"":c.group.toLowerCase(Locale.ROOT),n=c.name==null?"":c.name.toLowerCase(Locale.ROOT);if(section.equals("FAVORIS")){if(!favorites.contains(c.url))return false;if(activeFilter!=null&&!activeFilter.equals("Tout")){Set<String> group=favoriteGroups.get(activeFilter);return group!=null&&group.contains(c.url);}return true;}if(section.equals("HISTORIQUE"))return hasHistory(c);if(section.equals("GUIDE TV"))return (c.type.equals("live")||c.type.equals("m3u"))&&!c.tvgId.isEmpty();String type=c.type==null?"":c.type;if(section.equals("TV EN DIRECT"))return type.equals("live")||type.equals("m3u");if(section.equals("FILMS"))return type.equals("movie")||g.contains("movie")||g.contains("film")||g.contains("vod");if(section.equals("SÉRIES"))return type.equals("series")||g.contains("series");if(section.equals("ANIMÉS"))return matchesAny(g+" "+n+" "+c.genre+" "+c.plot+" "+c.seriesTitle,"anime","animé","animes","animés","anime tv","anime series","anime movies","animation","animations","animated series","animated movies","cartoon","cartoons","manga","mangas","toon","toons","otaku","shonen","shounen","shojo","shoujo","seinen","isekai","animax","crunchyroll","japanese animation","japanimation","anime japan","dessin animé","dessins animés","dessin anime","animation japonaise","kids animation","children animation");
+        if(targetSection.equals("MTV")) return mtvItems.contains(c);
+        if(targetSection.equals("MUSIQUE"))return isMusicEntry(c);
+        if(targetSection.equals("INFOS"))return isNewsEntry(c);
+        String g=c.group==null?"":c.group.toLowerCase(Locale.ROOT),n=c.name==null?"":c.name.toLowerCase(Locale.ROOT);if(targetSection.equals("FAVORIS")){if(!favorites.contains(c.url))return false;if(activeFilter!=null&&!activeFilter.equals("Tout")){Set<String> group=favoriteGroups.get(activeFilter);return group!=null&&group.contains(c.url);}return true;}if(targetSection.equals("HISTORIQUE"))return hasHistory(c);if(targetSection.equals("GUIDE TV"))return (c.type.equals("live")||c.type.equals("m3u"))&&!c.tvgId.isEmpty();String type=c.type==null?"":c.type;if(targetSection.equals("TV EN DIRECT"))return type.equals("live")||type.equals("m3u");if(targetSection.equals("FILMS"))return type.equals("movie")||g.contains("movie")||g.contains("film")||g.contains("vod");if(targetSection.equals("SÉRIES"))return type.equals("series")||g.contains("series");if(targetSection.equals("ANIMÉS"))return matchesAny(g+" "+n+" "+c.genre+" "+c.plot+" "+c.seriesTitle,"anime","animé","animes","animés","anime tv","anime series","anime movies","animation","animations","animated series","animated movies","cartoon","cartoons","manga","mangas","toon","toons","otaku","shonen","shounen","shojo","shoujo","seinen","isekai","animax","crunchyroll","japanese animation","japanimation","anime japan","dessin animé","dessins animés","dessin anime","animation japonaise","kids animation","children animation");
         String categoryText=g+" "+n+" "+(c.tvgId==null?"":c.tvgId)+" "+(c.genre==null?"":c.genre)+" "+(c.plot==null?"":c.plot)+" "+(c.seriesTitle==null?"":c.seriesTitle);
-        if(section.equals("SPORTS"))return matchesAny(categoryText,"sport","football","soccer","basket","tennis","rugby","cricket","formula 1","f1","motogp","volley","boxing","wrestling");
-        if(section.equals("CINÉMA"))return c.type.equals("movie")||matchesAny(categoryText,"cinema","cinéma","movie","film","vod");
-        if(section.equals("DIVERTISSEMENT"))return matchesAny(categoryText,"entertainment","divertissement","variety","variete","reality","show","talk show","comedy","humour","game show");
-        if(section.equals("JEUNESSE"))return matchesAny(categoryText,"kids","children","jeunesse","junior","cartoon","child","preschool","family");
-        if(section.equals("MAGAZINE"))return matchesAny(categoryText,"magazine","lifestyle","fashion","people","actualité magazine","current affairs");
-        if(section.equals("DOCUMENTAIRE"))return matchesAny(categoryText,"documentary","documentaire","discovery","history","nature","wildlife","science doc");
-        if(section.equals("ÉDUCATION"))return matchesAny(categoryText,"education","éducation","educational","learning","school","university","formation","cours");
-        if(section.equals("RELIGION"))return matchesAny(categoryText,"religion","religious","gospel","church","islam","christ","faith","coran","bible");
-        if(section.equals("SCIENCE & TECHNOLOGIE"))return matchesAny(categoryText,"science","technology","technologie","tech","innovation","engineering","informatique","space","astronomy");
-        if(section.equals("NOVELAS"))return matchesAny(categoryText,"novela","novelas","telenovela","telenovelas","tele novela","tele-novela","soap","soap opera","soap operas","drama series","latin drama","latino drama","series latina","series latinas","novela tv","novela mexicana","novelas mexicanas","novela colombiana","novelas colombianas","novela brasileña","novelas brasileñas","novela turca","novelas turcas","turkish drama","turkish series","serie turca","series turcas","drama turco","dramas turcos","dizi","diziler","dorama","doramas","k-drama","kdrama","korean drama","korean series","drama coreano","dramas coreanos","televisa","univision","las estrellas","caracol novelas","azteca novelas","mexican drama","spanish drama","drama latino","melodrama");
+        if(targetSection.equals("SPORTS"))return matchesAny(categoryText,"sport","football","soccer","basket","tennis","rugby","cricket","formula 1","f1","motogp","volley","boxing","wrestling");
+        if(targetSection.equals("CINÉMA"))return c.type.equals("movie")||matchesAny(categoryText,"cinema","cinéma","movie","film","vod");
+        if(targetSection.equals("DIVERTISSEMENT"))return matchesAny(categoryText,"entertainment","divertissement","variety","variete","reality","show","talk show","comedy","humour","game show");
+        if(targetSection.equals("JEUNESSE"))return matchesAny(categoryText,"kids","children","jeunesse","junior","cartoon","child","preschool","family");
+        if(targetSection.equals("MAGAZINE"))return matchesAny(categoryText,"magazine","lifestyle","fashion","people","actualité magazine","current affairs");
+        if(targetSection.equals("DOCUMENTAIRE"))return matchesAny(categoryText,"documentary","documentaire","discovery","history","nature","wildlife","science doc");
+        if(targetSection.equals("ÉDUCATION"))return matchesAny(categoryText,"education","éducation","educational","learning","school","university","formation","cours");
+        if(targetSection.equals("RELIGION"))return matchesAny(categoryText,"religion","religious","gospel","church","islam","christ","faith","coran","bible");
+        if(targetSection.equals("SCIENCE & TECHNOLOGIE"))return matchesAny(categoryText,"science","technology","technologie","tech","innovation","engineering","informatique","space","astronomy");
+        if(targetSection.equals("NOVELAS"))return matchesAny(categoryText,"novela","novelas","telenovela","telenovelas","tele novela","tele-novela","soap","soap opera","soap operas","drama series","latin drama","latino drama","series latina","series latinas","novela tv","novela mexicana","novelas mexicanas","novela colombiana","novelas colombianas","novela brasileña","novelas brasileñas","novela turca","novelas turcas","turkish drama","turkish series","serie turca","series turcas","drama turco","dramas turcos","dizi","diziler","dorama","doramas","k-drama","kdrama","korean drama","korean series","drama coreano","dramas coreanos","televisa","univision","las estrellas","caracol novelas","azteca novelas","mexican drama","spanish drama","drama latino","melodrama");
         return true;}
     private boolean filterMatches(String filter,String group,String name){
         if(filter==null||filter.equals("Tout"))return true;
@@ -1415,6 +1516,7 @@ private void loadAllPlaylists(boolean force){
         final String filterSnapshot=activeFilter;
         final String profileSnapshot=activeProfile;
         final boolean universalSearch=!query.isEmpty();
+        if(!universalSearch)requestProgressiveCategoryScan(sectionSnapshot);
         List<MediaEntry> source=sectionSnapshot.equals("MTV")?mtvCatalogSnapshot:catalogSnapshot;
         final ArrayList<MediaEntry> sourceSnapshot=new ArrayList<>(source);
         final ArrayList<MediaEntry> databaseSnapshot=new ArrayList<>(databaseSearchResults);
