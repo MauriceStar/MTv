@@ -764,7 +764,7 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
     private boolean isProgressiveCategorySection(String value){
         return "TV EN DIRECT".equals(value)||"FILMS".equals(value)||"SÉRIES".equals(value)||"ANIMÉS".equals(value)
             ||"SPORTS".equals(value)||"CINÉMA".equals(value)||"DIVERTISSEMENT".equals(value)||"JEUNESSE".equals(value)
-            ||"MAGAZINE".equals(value)||"DOCUMENTAIRE".equals(value)||"ÉDUCATION".equals(value)||"RELIGION".equals(value)
+            ||"MAGAZINE".equals(value)||"DOCUMENTAIRE".equals(value)||"INFOS".equals(value)||"MUSIQUE".equals(value)||"ÉDUCATION".equals(value)||"RELIGION".equals(value)
             ||"SCIENCE & TECHNOLOGIE".equals(value)||"NOVELAS".equals(value);
     }
     private String progressiveCategoryCursorKey(String address,String targetSection){return "progressive_category_cursor_"+key(address+"|"+targetSection);}
