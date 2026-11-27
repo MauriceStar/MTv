@@ -868,7 +868,10 @@ private void loadAllPlaylists(boolean force){
    return;
   }
  }
- final int request=++catalogRequestId;progressiveSearchRequestId++;progressiveSearchCacheQuery="";progressiveSearchCacheAt=0L;progressiveSearchResults.clear();databaseSearchRequestId++;databaseSearchQuery="";databaseSearchResults.clear();ArrayList<String> urls=new ArrayList<>(playlistSources);if(urls.isEmpty())urls.add(DEFAULT_PLAYLIST);
+ final int request=++catalogRequestId;progressiveSearchRequestId++;progressiveSearchCacheQuery="";progressiveSearchCacheAt=0L;progressiveSearchResults.clear();databaseSearchRequestId++;databaseSearchQuery="";databaseSearchResults.clear();ArrayList<String> urls=new ArrayList<>();
+ for(String prioritySource:BUILT_IN_PLAYLISTS)if(playlistSources.contains(prioritySource))urls.add(prioritySource);
+ for(String savedSource:playlistSources)if(!DEFAULT_PLAYLIST.equals(savedSource)&&!Arrays.asList(BUILT_IN_PLAYLISTS).contains(savedSource))urls.add(savedSource);
+ if(playlistSources.contains(DEFAULT_PLAYLIST)||urls.isEmpty())urls.add(DEFAULT_PLAYLIST);
  status.setText("Chargement de "+urls.size()+" source(s) M3U…");
  executeIo(()->{
   ArrayList<MediaEntry> merged=new ArrayList<>();HashSet<String> seenStreamEntries=new HashSet<>();ArrayList<String> errors=new ArrayList<>();ArrayList<String> sourceResults=new ArrayList<>();
