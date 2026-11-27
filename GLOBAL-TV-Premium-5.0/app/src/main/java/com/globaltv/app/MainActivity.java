@@ -858,7 +858,7 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
                                     int l=line.indexOf("tvg-logo=\"");if(l>=0){int e=line.indexOf('"',l+10);if(e>l)logo=line.substring(l+10,e);}tvgLanguage=m3uAttributeValue(line,"tvg-language");
                                 }else if(!line.isEmpty()&&!line.startsWith("#")&&name!=null){
                                     if(line.startsWith("http://")||line.startsWith("https://")){
-                                        MediaEntry candidate=new MediaEntry(name,line,group,logo,"m3u");candidate.tvgId=tvgId;
+                                        MediaEntry candidate=new MediaEntry(name,line,group,logo,"m3u");candidate.tvgId=tvgId;candidate.tvgLanguage=tvgLanguage;
                                         String host=Uri.parse(address).getHost();candidate.sourceId=host==null?"M3U":host;
                                         if(matchSection(candidate,targetSection)&&knownUrls.add(candidate.url))found.add(candidate);
                                     }
