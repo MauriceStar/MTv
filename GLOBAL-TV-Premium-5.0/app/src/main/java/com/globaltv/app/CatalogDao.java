@@ -18,6 +18,9 @@ public interface CatalogDao {
     @Query("SELECT * FROM catalog_entries WHERE normalizedName LIKE '%' || :token || '%' OR normalizedGroup LIKE '%' || :token || '%' OR lower(tvgId) LIKE '%' || :token || '%' OR lower(plot) LIKE '%' || :token || '%' OR lower(genre) LIKE '%' || :token || '%' OR lower(`cast`) LIKE '%' || :token || '%' OR lower(director) LIKE '%' || :token || '%' OR lower(seriesTitle) LIKE '%' || :token || '%' OR lower(year) LIKE '%' || :token || '%' OR lower(rating) LIKE '%' || :token || '%' OR lower(duration) LIKE '%' || :token || '%' OR lower(type) LIKE '%' || :token || '%' OR lower(container) LIKE '%' || :token || '%' ORDER BY name COLLATE NOCASE LIMIT :limit")
     List<CatalogEntryEntity> searchToken(String token, int limit);
 
+    @Query("SELECT * FROM catalog_entries ORDER BY name COLLATE NOCASE LIMIT :limit")
+    List<CatalogEntryEntity> allEntries(int limit);
+
     @Query("SELECT COUNT(*) FROM catalog_entries")
     int count();
 
