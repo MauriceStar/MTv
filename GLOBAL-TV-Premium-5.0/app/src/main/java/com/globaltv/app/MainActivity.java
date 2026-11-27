@@ -770,7 +770,7 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
     private String progressiveCategoryCursorKey(String address,String targetSection){return "progressive_category_cursor_"+key(address+"|"+targetSection);}
     private String progressiveCategoryVersionKey(String address,String targetSection){return "progressive_category_version_"+key(address+"|"+targetSection);}
     private void requestProgressiveCategoryScan(String targetSection){
-        if(destroyed||prefs==null||m3uCatalogLoading||!isProgressiveCategorySection(targetSection)||progressiveSearchInFlight)return;
+        if(destroyed||prefs==null||m3uCatalogLoading||!"M3U".equals(sourceMode)||!isProgressiveCategorySection(targetSection)||progressiveSearchInFlight)return;
         if(progressiveCategoryScanInFlight){pendingProgressiveCategorySection=targetSection;return;}
         if(player!=null&&player.isPlaying())return;
         long now=System.currentTimeMillis();String cooldownKey="progressive_category_last_"+key(targetSection);
@@ -801,7 +801,7 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
                         connection=open(address);connection.setConnectTimeout(6000);connection.setReadTimeout(8000);
                         if(cursorBytes>0L)connection.setRequestProperty("Range","bytes="+cursorBytes+"-");
                         int code=connection.getResponseCode();
-                        if(code==416){prefs.edit().putLong(cursorKey,-1L).putLong(byteCursorKey,-1L).apply();continue;}
+                        if(code==416){if(cursorBytes>initialByteCursor||cursorLines>initialCursor){prefs.edit().putLong(cursorKey,initialCursor).putLong(byteCursorKey,initialByteCursor).remove(progressiveCategoryVersionKey(address,targetSection)).apply();}else if(cursorBytes>0L||cursorLines>0L){prefs.edit().putLong(cursorKey,0L).putLong(byteCursorKey,0L).remove(progressiveCategoryVersionKey(address,targetSection)).apply();}else{prefs.edit().putLong(cursorKey,-1L).putLong(byteCursorKey,-1L).apply();}continue;}
                         if(code!=200&&code!=206)continue;boolean rangeAccepted=code==206;
                         String etag=connection.getHeaderField("ETag"),lastModified=connection.getHeaderField("Last-Modified"),contentLength=connection.getHeaderField("Content-Length");
                         String contentRange=connection.getHeaderField("Content-Range");if(rangeAccepted){contentLength=contentRange!=null&&contentRange.contains("/")?contentRange.substring(contentRange.lastIndexOf('/')+1):"";}
@@ -852,7 +852,7 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
                     }catch(Exception error){android.util.Log.w("MTv-Catalog","Progressive category scan failed for "+targetSection,error);}
                     finally{if(connection!=null)connection.disconnect();}
                 }
-                if(scanGeneration==progressiveCategoryScanGeneration&&!found.isEmpty())persistAdditionalCatalogEntries(found);
+                if(scanGeneration==progressiveCategoryScanGeneration&&!destroyed&&!m3uCatalogLoading&&"M3U".equals(sourceMode)&&!found.isEmpty())persistAdditionalCatalogEntries(found,scanGeneration);
             }finally{
                 progressiveCategoryScanInFlight=false;
                 String queuedSection=pendingProgressiveCategorySection;pendingProgressiveCategorySection="";
@@ -874,12 +874,12 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
             });
         });}catch(RejectedExecutionException rejected){progressiveCategoryScanInFlight=false;android.util.Log.w("MTv-Catalog","Category scan deferred: background queue is full",rejected);}
     }
-    private void persistAdditionalCatalogEntries(List<MediaEntry> entries){
-        if(entries==null||entries.isEmpty()||destroyed)return;
+    private void persistAdditionalCatalogEntries(List<MediaEntry> entries,int scanGeneration){
+        if(entries==null||entries.isEmpty()||destroyed||m3uCatalogLoading||!"M3U".equals(sourceMode)||scanGeneration!=progressiveCategoryScanGeneration)return;
         try{
             CatalogDao dao=CatalogDatabase.getInstance(getApplicationContext()).catalogDao();ArrayList<CatalogEntryEntity> batch=new ArrayList<>(100);
             for(MediaEntry entry:entries){
-                if(destroyed)break;if(entry==null||entry.url==null||entry.url.isEmpty())continue;
+                if(destroyed||m3uCatalogLoading||scanGeneration!=progressiveCategoryScanGeneration||!"M3U".equals(sourceMode))break;if(entry==null||entry.url==null||entry.url.isEmpty())continue;
                 CatalogEntryEntity row=new CatalogEntryEntity();
                 String identity=entry.url+"\\u001F"+(entry.name==null?"":entry.name)+"\\u001F"+(entry.group==null?"":entry.group)+"\\u001F"+(entry.tvgId==null?"":entry.tvgId)+"\\u001F"+(entry.type==null?"":entry.type);
                 row.id=key(identity);row.url=entry.url;row.name=entry.name==null?"":entry.name;row.normalizedName=epgLookupKey(row.name);
@@ -891,7 +891,7 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
                 row.seasonNumber=entry.seasonNumber;row.episodeNumber=entry.episodeNumber;row.seriesTitle=entry.seriesTitle==null?"":entry.seriesTitle;
                 row.updatedAt=System.currentTimeMillis();batch.add(row);
             }
-            if(!batch.isEmpty()){dao.upsertAll(batch);dao.pruneToLimit(MAX_CATALOG_ITEMS);localDatabaseLoaded=false;localDatabaseSnapshot=Collections.emptyList();}
+            if(!batch.isEmpty()&&!destroyed&&!m3uCatalogLoading&&"M3U".equals(sourceMode)&&scanGeneration==progressiveCategoryScanGeneration){dao.upsertAll(batch);if(!destroyed&&scanGeneration==progressiveCategoryScanGeneration){dao.pruneToLimit(MAX_CATALOG_ITEMS);localDatabaseLoaded=false;localDatabaseSnapshot=Collections.emptyList();}}
         }catch(Exception error){android.util.Log.w("MTv-Catalog","Unable to persist progressive category entries",error);}
     }
 
