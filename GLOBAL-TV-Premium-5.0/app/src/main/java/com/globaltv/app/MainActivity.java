@@ -1646,22 +1646,26 @@ private boolean matchesAny(String value,String... terms){
             HashSet<String> seenEntries=new HashSet<>();
             ArrayList<MediaEntry> visible;
             if(universalSearch){
-                visible=new ArrayList<>();
+                ArrayList<MediaEntry> frenchMatches=new ArrayList<>();
+                ArrayList<MediaEntry> otherMatches=new ArrayList<>();
                 int scanned=0;
                 for(MediaEntry entry:sourceSnapshot){
                     if((++scanned&127)==0&&(request!=catalogRequestId||destroyed))return;
                     if(entry==null||entry.url==null||entry.url.isEmpty())continue;
                     if(PROFILE_CHILD.equals(profileSnapshot)&&isAdultEntry(entry))continue;
                     if(!seenEntries.add(catalogSearchIdentity(entry)))continue;
-                    if(matchesUniversalSearch(entry,query))visible.add(entry);
+                    if(matchesUniversalSearch(entry,query)){if(isFrenchLanguageEntry(entry))frenchMatches.add(entry);else otherMatches.add(entry);}
                 }
                 for(MediaEntry entry:databaseSnapshot){
                     if((++scanned&127)==0&&(request!=catalogRequestId||destroyed))return;
                     if(entry==null||entry.url==null||entry.url.isEmpty())continue;
                     if(PROFILE_CHILD.equals(profileSnapshot)&&isAdultEntry(entry))continue;
                     if(!seenEntries.add(catalogSearchIdentity(entry)))continue;
-                    if(matchesUniversalSearch(entry,query))visible.add(entry);
+                    if(matchesUniversalSearch(entry,query)){if(isFrenchLanguageEntry(entry))frenchMatches.add(entry);else otherMatches.add(entry);}
                 }
+                visible=new ArrayList<>(frenchMatches.size()+otherMatches.size());
+                visible.addAll(frenchMatches);
+                visible.addAll(otherMatches);
             }else{
                 ArrayList<MediaEntry> frenchRecent=new ArrayList<>();
                 ArrayList<MediaEntry> frenchOther=new ArrayList<>();
