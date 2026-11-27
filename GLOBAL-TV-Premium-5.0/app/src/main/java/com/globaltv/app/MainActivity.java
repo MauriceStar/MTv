@@ -1032,7 +1032,7 @@ private void loadAllPlaylists(boolean force){
   }
  }
  m3uCatalogLoading=true;progressiveCategoryScanGeneration++;pendingProgressiveCategorySection="";
- SharedPreferences.Editor categoryCursorReset=prefs.edit();for(String storedKey:prefs.getAll().keySet())if(storedKey.startsWith("progressive_category_cursor_")||storedKey.startsWith("progressive_category_version_"))categoryCursorReset.remove(storedKey);categoryCursorReset.apply();
+ SharedPreferences.Editor categoryCursorReset=prefs.edit();for(String storedKey:prefs.getAll().keySet())if(storedKey.startsWith("progressive_category_cursor_")||storedKey.startsWith("progressive_category_version_")||storedKey.startsWith("m3u_initial_cursor_")||storedKey.startsWith("m3u_initial_byte_cursor_"))categoryCursorReset.remove(storedKey);categoryCursorReset.apply();
  final int request=++m3uLoadRequestId;catalogRequestId++;progressiveSearchRequestId++;progressiveSearchCacheQuery="";progressiveSearchCacheAt=0L;progressiveSearchResults.clear();databaseSearchRequestId++;databaseSearchQuery="";databaseSearchResults.clear();ArrayList<String> urls=new ArrayList<>();
  for(String prioritySource:BUILT_IN_PLAYLISTS)if(playlistSources.contains(prioritySource))urls.add(prioritySource);
  for(String savedSource:playlistSources)if(!DEFAULT_PLAYLIST.equals(savedSource)&&!Arrays.asList(BUILT_IN_PLAYLISTS).contains(savedSource))urls.add(savedSource);
