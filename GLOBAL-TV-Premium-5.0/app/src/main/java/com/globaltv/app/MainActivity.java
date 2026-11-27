@@ -828,7 +828,7 @@ private void loadPlaylist(String url){if(url!=null&&(url.startsWith("http://")||
   if(ch==-1&&line.length()==0)return null;
   return line.toString();
  }
- private M3uAppendResult appendM3uPlaylist(String address,ArrayList<MediaEntry> merged,HashSet<String> seenStreamEntries,int request)throws Exception{
+ private M3uAppendResult appendM3uPlaylist(String address,ArrayList<MediaEntry> merged,HashSet<String> seenStreamEntries,int request,int sourceLimit)throws Exception{
  HttpURLConnection connection=open(address);connection.setConnectTimeout(6000);connection.setReadTimeout(10000);
  try{
   int code=connection.getResponseCode();if(code<200||code>=300)throw new IOException("Serveur HTTP "+code);
@@ -836,7 +836,7 @@ private void loadPlaylist(String url){if(url!=null&&(url.startsWith("http://")||
   int count=0;long chars=0L;boolean truncated=false;
   try(BufferedReader reader=new BufferedReader(new InputStreamReader(input,"UTF-8"))){
    String line,name=null,group="Autres",logo="",tvgId="";
-   while((line=readBoundedPlaylistLine(reader))!=null&&merged.size()<MAX_CATALOG_ITEMS){
+   while((line=readBoundedPlaylistLine(reader))!=null&&merged.size()<MAX_CATALOG_ITEMS&&count<sourceLimit){
     if(request!=catalogRequestId||destroyed)throw new IOException("Chargement M3U annulé");
     chars+=line.length();if(chars>64L*1024L*1024L){truncated=true;break;}
     line=line.trim();if(line.startsWith("\uFEFF"))line=line.substring(1);
@@ -853,7 +853,7 @@ private void loadPlaylist(String url){if(url!=null&&(url.startsWith("http://")||
      name=null;tvgId="";
     }
    }
-   if(merged.size()>=MAX_CATALOG_ITEMS)truncated=true;
+   if(merged.size()>=MAX_CATALOG_ITEMS||count>=sourceLimit)truncated=true;
   }
   return new M3uAppendResult(count,truncated);
  }finally{connection.disconnect();}
@@ -885,7 +885,7 @@ private void loadAllPlaylists(boolean force){
    final String progressHost=host;final int progressIndex=sourceIndex+1;final int progressTotal=urls.size();
    postUi(()->{if(request==catalogRequestId&&status!=null)status.setText("Chargement M3U "+progressIndex+"/"+progressTotal+" • "+progressHost);});
    long startedAt=SystemClock.elapsedRealtime();int sourceCount=0;String outcome="OK";
-   try{M3uAppendResult append=appendM3uPlaylist(address,merged,seenStreamEntries,request);sourceCount=append.count;if(append.truncated)incompleteThisLoad.add(address);}
+   try{int sourceLimit=Math.max(1,MAX_CATALOG_ITEMS/urls.size());M3uAppendResult append=appendM3uPlaylist(address,merged,seenStreamEntries,request,sourceLimit);sourceCount=append.count;if(append.truncated)incompleteThisLoad.add(address);}
    catch(Exception ex){outcome="ÉCHEC";incompleteThisLoad.add(address);String reason=ex.getMessage();if(reason==null||reason.trim().isEmpty())reason=ex.getClass().getSimpleName();errors.add(host+": "+reason);}
    if(merged.size()>=MAX_CATALOG_ITEMS){for(int remaining=sourceIndex;remaining<urls.size();remaining++)incompleteThisLoad.add(urls.get(remaining));}
    long elapsed=Math.max(0L,SystemClock.elapsedRealtime()-startedAt);completedSources++;
