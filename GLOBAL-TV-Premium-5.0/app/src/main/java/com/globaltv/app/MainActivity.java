@@ -813,7 +813,7 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
                     long safeCursorLines=cursorLines,safeCursorBytes=cursorBytes;boolean reachedEnd=false;int foundBeforeSource=found.size();
                     try{
                         long requestedCursorBytes=cursorBytes;
-                        connection=open(address);connection.setConnectTimeout(6000);connection.setReadTimeout(8000);
+                        connection=open(address);connection.setConnectTimeout(6000);connection.setReadTimeout(2000);
                         if(cursorBytes>0L)connection.setRequestProperty("Range","bytes="+cursorBytes+"-");
                         int code=connection.getResponseCode();
                         if(code==416){if(cursorBytes>initialByteCursor||cursorLines>initialCursor){prefs.edit().putLong(cursorKey,initialCursor).putLong(byteCursorKey,initialByteCursor).remove(progressiveCategoryVersionKey(address,targetSection)).apply();}else if(cursorBytes>0L||cursorLines>0L){prefs.edit().putLong(cursorKey,0L).putLong(byteCursorKey,0L).remove(progressiveCategoryVersionKey(address,targetSection)).apply();}else{prefs.edit().putLong(cursorKey,-1L).putLong(byteCursorKey,-1L).apply();}continue;}
