@@ -816,12 +816,12 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
                             if(!rangeAccepted&&cursorBytes>0L){
                                 while(reader.bytesRead<cursorBytes&&SystemClock.elapsedRealtime()-scanStartedAt<=12000L){long skipped=reader.skip(cursorBytes-reader.bytesRead);if(skipped<=0L){if(reader.read()==-1){reachedEnd=true;break;}}}
                                 if(reader.bytesRead<cursorBytes&&!reachedEnd)continue;
-                                if(reachedEnd)continue;
+                                if(reachedEnd){prefs.edit().putLong(cursorKey,-1L).putLong(byteCursorKey,-1L).apply();continue;}
                             }else if(!rangeAccepted&&cursorLines>0L){
                                 long skippedLines=0L;
                                 while(skippedLines<cursorLines&&SystemClock.elapsedRealtime()-scanStartedAt<=12000L){String skipped=readBoundedPlaylistLine(reader);if(skipped==null){reachedEnd=true;break;}skippedLines++;}
                                 if(skippedLines<cursorLines&&!reachedEnd)continue;
-                                if(reachedEnd)continue;
+                                if(reachedEnd){prefs.edit().putLong(cursorKey,-1L).putLong(byteCursorKey,-1L).apply();continue;}
                             }
                             long lineNumber=cursorLines;
                             String line,name=null,group="Autres",logo="",tvgId="";long sourceChars=0L;
