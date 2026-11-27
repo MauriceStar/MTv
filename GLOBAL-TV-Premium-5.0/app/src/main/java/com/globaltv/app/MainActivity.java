@@ -284,11 +284,18 @@ private String[] progressiveSearchTokens=new String[0];
         String seriesTitle="";
         MediaEntry(String n,String u,String g,String l,String t){name=n;url=u;group=g;logo=l;type=t;id="";container="m3u8";tvgId="";sourceId="";}
     }
+    static class CountingPlaylistInputStream extends BufferedInputStream {
+        long bytesRead=0L;
+        CountingPlaylistInputStream(InputStream input){super(input,8192);}
+        @Override public synchronized int read()throws IOException{int value=super.read();if(value!=-1)bytesRead++;return value;}
+        @Override public synchronized long skip(long count)throws IOException{long skipped=super.skip(count);bytesRead+=skipped;return skipped;}
+    }
     static class M3uAppendResult {
         final int count;
         final boolean truncated;
         final long linesRead;
-        M3uAppendResult(int count,boolean truncated,long linesRead){this.count=count;this.truncated=truncated;this.linesRead=linesRead;}
+        final long bytesRead;
+        M3uAppendResult(int count,boolean truncated,long linesRead,long bytesRead){this.count=count;this.truncated=truncated;this.linesRead=linesRead;this.bytesRead=bytesRead;}
     }
     @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);getWindow().setStatusBarColor(BG);getWindow().setNavigationBarColor(BG);prefs=getPreferences(0);Set<String> savedIncompleteSources=prefs.getStringSet("incomplete_m3u_sources",new LinkedHashSet<>());if(savedIncompleteSources!=null)incompleteM3uSources.addAll(savedIncompleteSources);AutoPilotScheduler.sync(this);
         activeProfile=prefs.getString("active_profile",PROFILE_ADULT);
@@ -783,19 +790,33 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
                     if(destroyed||SystemClock.elapsedRealtime()-scanStartedAt>12000L||found.size()>=Math.min(MAX_PROGRESSIVE_CATEGORY_BATCH,remainingCapacity)||totalChars>=4L*1024L*1024L)break;
                     HttpURLConnection connection=null;String cursorKey=progressiveCategoryCursorKey(address,targetSection);
                     long initialCursor=prefs.getLong("m3u_initial_cursor_"+key(address),0L);
+                    long initialByteCursor=prefs.getLong("m3u_initial_byte_cursor_"+key(address),0L);
                     long cursorLines=prefs.getLong(cursorKey,initialCursor);if(cursorLines<0L)continue;
-                    long safeCursorLines=cursorLines;boolean reachedEnd=false;int foundBeforeSource=found.size();
+                    String byteCursorKey=cursorKey+"_bytes";long cursorBytes=prefs.getLong(byteCursorKey,initialByteCursor);
+                    long safeCursorLines=cursorLines,safeCursorBytes=cursorBytes;boolean reachedEnd=false;int foundBeforeSource=found.size();
                     try{
-                        connection=open(address);connection.setConnectTimeout(6000);connection.setReadTimeout(8000);int code=connection.getResponseCode();if(code<200||code>=300)continue;
+                        if(cursorBytes>0L)connection.setRequestProperty("Range","bytes="+cursorBytes+"-");
+                        connection=open(address);connection.setConnectTimeout(6000);connection.setReadTimeout(8000);int code=connection.getResponseCode();
+                        if(code==416){prefs.edit().putLong(cursorKey,-1L).putLong(byteCursorKey,-1L).apply();continue;}
+                        if(code!=200&&code!=206)continue;boolean rangeAccepted=code==206;
                         String etag=connection.getHeaderField("ETag"),lastModified=connection.getHeaderField("Last-Modified"),contentLength=connection.getHeaderField("Content-Length");
+                        String contentRange=connection.getHeaderField("Content-Range");if(rangeAccepted&&contentRange!=null&&contentRange.contains("/"))contentLength=contentRange.substring(contentRange.lastIndexOf('/')+1);
                         String sourceVersion=(etag==null?"":etag)+"|"+(lastModified==null?"":lastModified)+"|"+(contentLength==null?"":contentLength);
                         String versionKey=progressiveCategoryVersionKey(address,targetSection),previousVersion=prefs.getString(versionKey,"");
-                        if(!previousVersion.isEmpty()&&!sourceVersion.equals("||")&&!previousVersion.equals(sourceVersion)){cursorLines=initialCursor;safeCursorLines=initialCursor;prefs.edit().remove(cursorKey).apply();}
-                        if(!sourceVersion.equals("||"))prefs.edit().putString(versionKey,sourceVersion).apply();
+                        if(!previousVersion.isEmpty()&&!sourceVersion.equals("||")&&!previousVersion.equals(sourceVersion)){
+                            cursorLines=initialCursor;cursorBytes=initialByteCursor;safeCursorLines=initialCursor;safeCursorBytes=initialByteCursor;
+                            prefs.edit().putLong(cursorKey,cursorLines).putLong(byteCursorKey,cursorBytes).putString(versionKey,sourceVersion).apply();
+                            if(cursorBytes!=prefs.getLong(byteCursorKey,0L))continue;
+                        }else if(!sourceVersion.equals("||"))prefs.edit().putString(versionKey,sourceVersion).apply();
                         InputStream input=connection.getInputStream();if(input==null)continue;
-                        try(BufferedReader reader=new BufferedReader(new InputStreamReader(input,"UTF-8"))){
-                            long lineNumber=0L;
-                            while(lineNumber<cursorLines){String skipped=readBoundedPlaylistLine(reader);if(skipped==null){reachedEnd=true;break;}lineNumber++;}
+                        try(CountingPlaylistInputStream reader=new CountingPlaylistInputStream(input)){
+                            long baseByteOffset=rangeAccepted?cursorBytes:0L;
+                            if(!rangeAccepted&&cursorBytes>0L){
+                                while(reader.bytesRead<cursorBytes&&SystemClock.elapsedRealtime()-scanStartedAt<=12000L){long skipped=reader.skip(cursorBytes-reader.bytesRead);if(skipped<=0L){if(reader.read()==-1){reachedEnd=true;break;}}}
+                                if(reader.bytesRead<cursorBytes&&!reachedEnd)continue;
+                                if(reachedEnd)continue;
+                            }
+                            long lineNumber=cursorLines;
                             String line,name=null,group="Autres",logo="",tvgId="";long sourceChars=0L;
                             while(!reachedEnd&&SystemClock.elapsedRealtime()-scanStartedAt<=12000L&&found.size()-foundBeforeSource<20&&found.size()<Math.min(MAX_PROGRESSIVE_CATEGORY_BATCH,remainingCapacity)){
                                 if(destroyed)break;line=readBoundedPlaylistLine(reader);if(line==null){reachedEnd=true;break;}
@@ -813,12 +834,12 @@ private void requestProgressiveM3uSearch(String query,String[] tokens,int databa
                                         String host=Uri.parse(address).getHost();candidate.sourceId=host==null?"M3U":host;
                                         if(matchSection(candidate,targetSection)&&knownUrls.add(candidate.url))found.add(candidate);
                                     }
-                                    safeCursorLines=lineNumber;name=null;tvgId="";
+                                    safeCursorLines=lineNumber;safeCursorBytes=baseByteOffset+reader.bytesRead;name=null;tvgId="";
                                 }
                             }
                         }
-                        if(reachedEnd)prefs.edit().putLong(cursorKey,-1L).apply();
-                        else if(safeCursorLines>cursorLines)prefs.edit().putLong(cursorKey,safeCursorLines).apply();
+                        if(reachedEnd)prefs.edit().putLong(cursorKey,-1L).putLong(byteCursorKey,-1L).apply();
+                        else if(safeCursorLines>cursorLines||safeCursorBytes>cursorBytes)prefs.edit().putLong(cursorKey,safeCursorLines).putLong(byteCursorKey,safeCursorBytes).apply();
                     }catch(Exception error){android.util.Log.w("MTv-Catalog","Progressive category scan failed for "+targetSection,error);}
                     finally{if(connection!=null)connection.disconnect();}
                 }
@@ -949,13 +970,22 @@ private void loadPlaylist(String url){if(url!=null&&(url.startsWith("http://")||
   if(ch==-1&&line.length()==0)return null;
   return line.toString();
  }
- private M3uAppendResult appendM3uPlaylist(String address,ArrayList<MediaEntry> merged,HashSet<String> seenStreamEntries,int request,int sourceLimit)throws Exception{
+private String readBoundedPlaylistLine(CountingPlaylistInputStream reader)throws IOException{
+  ByteArrayOutputStream line=new ByteArrayOutputStream(256);int ch;
+  while((ch=reader.read())!=-1){
+   if(ch=='\n')break;
+   if(ch!='\r'){if(line.size()>=1024*1024)throw new IOException("Ligne de playlist trop longue (limite 1 Mo)");line.write(ch);}
+  }
+  if(ch==-1&&line.size()==0)return null;
+  return line.toString("UTF-8");
+ }
+  private M3uAppendResult appendM3uPlaylist(String address,ArrayList<MediaEntry> merged,HashSet<String> seenStreamEntries,int request,int sourceLimit)throws Exception{
  HttpURLConnection connection=open(address);connection.setConnectTimeout(6000);connection.setReadTimeout(10000);
  try{
   int code=connection.getResponseCode();if(code<200||code>=300)throw new IOException("Serveur HTTP "+code);
   InputStream input=connection.getInputStream();if(input==null)throw new IOException("Réponse vide du serveur");
-  int count=0;long chars=0L;long linesRead=0L;boolean truncated=false;
-  try(BufferedReader reader=new BufferedReader(new InputStreamReader(input,"UTF-8"))){
+  int count=0;long chars=0L;long linesRead=0L;long bytesRead=0L;boolean truncated=false;
+  try(CountingPlaylistInputStream reader=new CountingPlaylistInputStream(input)){
    String line,name=null,group="Autres",logo="",tvgId="";
    while((line=readBoundedPlaylistLine(reader))!=null&&merged.size()<M3U_INITIAL_CATALOG_ITEMS&&count<sourceLimit){
     linesRead++;
@@ -971,13 +1001,14 @@ private void loadPlaylist(String url){if(url!=null&&(url.startsWith("http://")||
      int l=line.indexOf("tvg-logo=\"");
      if(l>=0){int e=line.indexOf('"',l+10);if(e>l)logo=line.substring(l+10,e);}
     }else if(!line.isEmpty()&&!line.startsWith("#")&&name!=null){
-     if(line.startsWith("https://")||line.startsWith("http://")){String identity=line+"\u001F"+name.trim().toLowerCase(Locale.ROOT)+"\u001F"+group.trim().toLowerCase(Locale.ROOT)+"\u001F"+tvgId.trim().toLowerCase(Locale.ROOT);if(seenStreamEntries.add(identity)){MediaEntry entry=new MediaEntry(name,line,group,logo,"m3u");entry.tvgId=tvgId;entry.sourceId=Uri.parse(address).getHost();merged.add(entry);count++;if(merged.size()==250||(merged.size()>250&&merged.size()%3000==0)){ArrayList<MediaEntry> partial=new ArrayList<>(merged);postUi(()->{if(request!=catalogRequestId||destroyed)return;all.clear();all.addAll(partial);publishCatalogSnapshot();homeFeaturedCache=null;if(!splashLoadFinished){status.setText("Catalogue disponible • chargement en arrière-plan");renderList();onStartupPlaylistLoadFinished(true,"CATALOGUE DISPONIBLE • CHARGEMENT EN COURS");}else if(!section.equals("ACCUEIL"))renderList();});}}}
+     if(line.startsWith("https://")||line.startsWith("http://")){String identity=line+"\u001F"+name.trim().toLowerCase(Locale.ROOT)+"\u001F"+group.trim().toLowerCase(Locale.ROOT)+"\u001F"+tvgId.trim().toLowerCase(Locale.ROOT);if(seenStreamEntries.add(identity)){MediaEntry entry=new MediaEntry(name,line,group,logo,"m3u");entry.tvgId=tvgId;entry.sourceId=Uri.parse(address).getHost();merged.add(entry);count++;if(merged.size()==250||(merged.size()>250&&merged.size()%3000==0)){ArrayList<MediaEntry> partial=new ArrayList<>(merged);postUi(()->{if(request!=m3uLoadRequestId||destroyed)return;all.clear();all.addAll(partial);publishCatalogSnapshot();homeFeaturedCache=null;if(!splashLoadFinished){status.setText("Catalogue disponible • chargement en arrière-plan");renderList();onStartupPlaylistLoadFinished(true,"CATALOGUE DISPONIBLE • CHARGEMENT EN COURS");}else if(!section.equals("ACCUEIL"))renderList();});}}}
      name=null;tvgId="";
     }
    }
    if(merged.size()>=M3U_INITIAL_CATALOG_ITEMS||count>=sourceLimit)truncated=true;
+   bytesRead=reader.bytesRead;
   }
-  return new M3uAppendResult(count,truncated,linesRead);
+  return new M3uAppendResult(count,truncated,linesRead,bytesRead);
  }finally{connection.disconnect();}
 }
 private void loadAllPlaylists(){loadAllPlaylists(true);}
@@ -1002,6 +1033,7 @@ private void loadAllPlaylists(boolean force){
   LinkedHashSet<String> incompleteThisLoad=new LinkedHashSet<>();
   ArrayList<String> truncatedSources=new ArrayList<>();
   HashMap<String,Long> initialLineCursors=new HashMap<>();
+  HashMap<String,Long> initialByteCursors=new HashMap<>();
   for(int sourceIndex=0;sourceIndex<urls.size();sourceIndex++){
    String address=urls.get(sourceIndex);
    if(request!=m3uLoadRequestId||destroyed)break;
@@ -1010,7 +1042,7 @@ private void loadAllPlaylists(boolean force){
    final String progressHost=host;final int progressIndex=sourceIndex+1;final int progressTotal=urls.size();
    postUi(()->{if(request==m3uLoadRequestId&&status!=null)status.setText("Chargement M3U "+progressIndex+"/"+progressTotal+" • "+progressHost);});
    long startedAt=SystemClock.elapsedRealtime();int sourceCount=0;String outcome="OK";
-   try{int sourceLimit=Math.max(1,M3U_INITIAL_CATALOG_ITEMS/urls.size());M3uAppendResult append=appendM3uPlaylist(address,merged,seenStreamEntries,request,sourceLimit);sourceCount=append.count;initialLineCursors.put(address,append.linesRead);if(append.truncated){incompleteThisLoad.add(address);truncatedSources.add(address);}}
+   try{int sourceLimit=Math.max(1,M3U_INITIAL_CATALOG_ITEMS/urls.size());M3uAppendResult append=appendM3uPlaylist(address,merged,seenStreamEntries,request,sourceLimit);sourceCount=append.count;initialLineCursors.put(address,append.linesRead);initialByteCursors.put(address,append.bytesRead);if(append.truncated){incompleteThisLoad.add(address);truncatedSources.add(address);}}
    catch(Exception ex){outcome="ÉCHEC";incompleteThisLoad.add(address);String reason=ex.getMessage();if(reason==null||reason.trim().isEmpty())reason=ex.getClass().getSimpleName();errors.add(host+": "+reason);}
    if(merged.size()>=M3U_INITIAL_CATALOG_ITEMS){for(int remaining=sourceIndex;remaining<urls.size();remaining++)incompleteThisLoad.add(urls.get(remaining));}
    long elapsed=Math.max(0L,SystemClock.elapsedRealtime()-startedAt);completedSources++;
@@ -1028,6 +1060,8 @@ private void loadAllPlaylists(boolean force){
     M3uAppendResult retry=appendM3uPlaylist(retryAddress,merged,seenStreamEntries,request,retryLimit);
     long previousCursor=initialLineCursors.containsKey(retryAddress)?initialLineCursors.get(retryAddress):0L;
     initialLineCursors.put(retryAddress,Math.max(previousCursor,retry.linesRead));
+    long previousBytes=initialByteCursors.containsKey(retryAddress)?initialByteCursors.get(retryAddress):0L;
+    initialByteCursors.put(retryAddress,Math.max(previousBytes,retry.bytesRead));
     if(!retry.truncated)incompleteThisLoad.remove(retryAddress);
    }catch(Exception retryError){
     android.util.Log.w("MTv-Catalog","Unable to continue truncated source: "+retryAddress,retryError);
@@ -1036,7 +1070,7 @@ private void loadAllPlaylists(boolean force){
   if(request!=m3uLoadRequestId||destroyed)return;
   synchronized(incompleteM3uSources){incompleteM3uSources.clear();incompleteM3uSources.addAll(incompleteThisLoad);}
   prefs.edit().putStringSet("incomplete_m3u_sources",new HashSet<>(incompleteThisLoad)).apply();
-  SharedPreferences.Editor cursorEditor=prefs.edit();for(Map.Entry<String,Long> cursor:initialLineCursors.entrySet())cursorEditor.putLong("m3u_initial_cursor_"+key(cursor.getKey()),cursor.getValue());cursorEditor.apply();
+  SharedPreferences.Editor cursorEditor=prefs.edit();for(Map.Entry<String,Long> cursor:initialLineCursors.entrySet())cursorEditor.putLong("m3u_initial_cursor_"+key(cursor.getKey()),cursor.getValue());for(Map.Entry<String,Long> cursor:initialByteCursors.entrySet())cursorEditor.putLong("m3u_initial_byte_cursor_"+key(cursor.getKey()),cursor.getValue());cursorEditor.apply();
   prefs.edit().remove("catalog_last_refresh").commit();final boolean catalogPersisted=persistCatalogToDatabase(merged,"M3U",request,true);seenStreamEntries.clear();final int loaded=merged.size();final int checkedSources=completedSources;final boolean capped=loaded>=M3U_INITIAL_CATALOG_ITEMS;
   StringBuilder summary=new StringBuilder().append(loaded).append(" éléments • ").append(checkedSources).append("/").append(urls.size()).append(" sources analysées");
   if(!errors.isEmpty())summary.append(" • ").append(errors.size()).append(" échec(s)");
