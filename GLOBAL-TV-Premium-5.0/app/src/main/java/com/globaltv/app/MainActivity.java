@@ -885,7 +885,7 @@ private void loadCachedCatalogThenRefresh(){
 }
 private boolean persistCatalogToDatabase(List<MediaEntry> entries,String fallbackSource,int request){return persistCatalogToDatabase(entries,fallbackSource,request,false);}
  private boolean persistCatalogToDatabase(List<MediaEntry> entries,String fallbackSource,int request,boolean m3uLoad){
- if(entries==null||entries.isEmpty()||(m3uLoad?request!=m3uLoadRequestId:(m3uLoad?request!=m3uLoadRequestId:request!=catalogRequestId))||destroyed)return false;
+ if(entries==null||entries.isEmpty()||(m3uLoad?request!=m3uLoadRequestId:request!=catalogRequestId)||destroyed)return false;
  int persistedRows=0;
  try{
   CatalogDao dao=CatalogDatabase.getInstance(getApplicationContext()).catalogDao();
