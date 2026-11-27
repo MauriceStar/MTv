@@ -43,7 +43,32 @@ jobs:
 
       - name: Build debug APK
         working-directory: GLOBAL-TV-Premium-5.0
-        run: gradle assembleDebug --no-daemon --stacktrace
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            echo "Gradle build attempt ${attempt}/3"
+            set +e
+            gradle assembleDebug --no-daemon --stacktrace 2>&1 | tee /tmp/gradle-build.log
+            build_status=${PIPESTATUS[0]}
+            set -e
+
+            if [ "${build_status}" -eq 0 ]; then
+              exit 0
+            fi
+
+            if ! grep -Eqi 'HTTP 429|status code 429|Too Many Requests' /tmp/gradle-build.log; then
+              echo "Build failed for a reason other than a Maven Central rate limit; stopping retries."
+              exit "${build_status}"
+            fi
+
+            if [ "${attempt}" -lt 3 ]; then
+              echo "Maven Central rate limit detected; waiting 25 seconds before retry."
+              sleep 25
+            fi
+          done
+
+          echo "Build still blocked by Maven Central rate limiting after 3 attempts."
+          exit 1
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
